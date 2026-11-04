@@ -1,0 +1,34 @@
+# Build
+bin/
+obj/
+artifacts/
+publish/
+TestResults/
+*.binlog
+
+# IDEs
+.vs/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# Node
+node_modules/
+
+# Segredos e configuração local
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+secrets/
+*.pfx
+*.p12
+*.key
+*.pem
+
+# Dados locais
+*.db
+*.db-shm
+*.db-wal
+*.log

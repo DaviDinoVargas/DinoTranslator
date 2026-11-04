@@ -1,0 +1,13 @@
+* text=auto
+
+*.cs      text diff=csharp
+*.razor   text
+*.xaml    text
+*.ts      text
+*.md      text
+*.sh      text eol=lf
+
+*.png     binary
+*.ico     binary
+*.woff2   binary
+*.ttf     binary
