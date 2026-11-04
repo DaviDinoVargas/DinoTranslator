@@ -1,0 +1,146 @@
+@page "/sala"
+@implements IAsyncDisposable
+@using DinoTranslator.Shared.Room
+@using Microsoft.AspNetCore.SignalR.Client
+@inject AuthClient Auth
+@inject RoomConnection Connection
+@inject NavigationManager Navigation
+
+<main class="room">
+  <header class="room__bar">
+    <span class="room__connection room__connection--@ConnectionClass">@ConnectionText</span>
+    <button type="button" class="button button--quiet" @onclick="LogoutAsync">Sair</button>
+  </header>
+
+  @if (_problem is not null)
+  {
+    <p class="room__problem" role="alert">
+      @_problem
+      @if (_canRetry)
+      {
+        <button type="button" class="button button--quiet" @onclick="ConnectAsync">Tentar de novo</button>
+      }
+    </p>
+  }
+
+  <section class="stage">
+    @foreach (var participant in OrderedParticipants)
+    {
+      var isMe = participant.Profile.Id == Auth.CurrentUser?.Id;
+      <article class="tile tile--@LanguageClass(participant.Profile.Language)">
+        <p class="tile__name">@(isMe ? "Você" : participant.Profile.DisplayName)</p>
+        <p class="tile__meta">
+          @participant.Profile.Language ·
+          <span class="tile__presence tile__presence--@(participant.Online ? "online" : "offline")">
+            @(participant.Online ? "online" : "offline")
+          </span>
+        </p>
+      </article>
+    }
+  </section>
+</main>
+
+@code {
+    private List<Participant> _participants = [];
+    private string? _problem;
+    private bool _canRetry;
+
+    /// <summary>O outro usuário primeiro; você depois.</summary>
+    private IEnumerable<Participant> OrderedParticipants =>
+        _participants.OrderBy(p => p.Profile.Id == Auth.CurrentUser?.Id);
+
+    private string ConnectionClass => Connection.State switch
+    {
+        HubConnectionState.Connected => "ok",
+        HubConnectionState.Disconnected => "off",
+        _ => "wait",
+    };
+
+    private string ConnectionText => Connection.State switch
+    {
+        HubConnectionState.Connected => "conectado",
+        HubConnectionState.Disconnected => "desconectado",
+        _ => "reconectando…",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Auth.CurrentUser is null)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        Auth.SessionChanged += OnSessionChanged;
+        Connection.PresenceChanged += OnPresenceChanged;
+        Connection.StateChanged += OnConnectionChanged;
+        Connection.SessionReplaced += OnSessionReplaced;
+        await ConnectAsync();
+    }
+
+    private async Task ConnectAsync()
+    {
+        _problem = null;
+        _canRetry = false;
+        try
+        {
+            await Connection.StartAsync();
+            _participants = await Connection.GetParticipantsAsync();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or HubException or InvalidOperationException)
+        {
+            _problem = "Sem conexão com o servidor.";
+            _canRetry = true;
+        }
+    }
+
+    private async Task LogoutAsync()
+    {
+        await Connection.StopAsync();
+        await Auth.LogoutAsync();
+        Navigation.NavigateTo("/");
+    }
+
+    private void OnPresenceChanged(Participant changed) => InvokeAsync(() =>
+    {
+        _participants = _participants
+            .Select(p => p.Profile.Id == changed.Profile.Id ? changed : p)
+            .ToList();
+        StateHasChanged();
+    });
+
+    private void OnConnectionChanged() => InvokeAsync(async () =>
+    {
+        if (Connection.State == HubConnectionState.Connected)
+        {
+            _participants = await Connection.GetParticipantsAsync();
+        }
+        StateHasChanged();
+    });
+
+    private void OnSessionReplaced() => InvokeAsync(() =>
+    {
+        _problem = "Esta conta foi aberta em outra janela ou computador.";
+        _canRetry = true;
+        StateHasChanged();
+    });
+
+    private void OnSessionChanged() => InvokeAsync(() =>
+    {
+        if (Auth.CurrentUser is null)
+        {
+            Navigation.NavigateTo("/");
+        }
+    });
+
+    private static string LanguageClass(string language) => language == Languages.Russian ? "ru" : "br";
+
+    public ValueTask DisposeAsync()
+    {
+        Auth.SessionChanged -= OnSessionChanged;
+        Connection.PresenceChanged -= OnPresenceChanged;
+        Connection.StateChanged -= OnConnectionChanged;
+        Connection.SessionReplaced -= OnSessionReplaced;
+        return ValueTask.CompletedTask;
+    }
+}
