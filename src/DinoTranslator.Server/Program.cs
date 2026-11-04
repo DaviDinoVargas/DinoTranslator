@@ -23,6 +23,7 @@ builder.Services.AddAccounts();
 builder.Services.AddTokenAuthentication();
 builder.Services.AddAuthRateLimits();
 builder.Services.AddRoom();
+builder.Services.AddIceServers();
 
 var app = builder.Build();
 
@@ -53,6 +54,7 @@ app.UseAuthorization();
 app.MapHealthChecks("/health");
 app.MapAuthEndpoints();
 app.MapRoom();
+app.MapIceServers();
 
 await app.RunAsync();
 return 0;
