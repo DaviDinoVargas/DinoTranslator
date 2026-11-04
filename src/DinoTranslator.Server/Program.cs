@@ -1,8 +1,12 @@
 using DinoTranslator.Server.Auth;
+using DinoTranslator.Server.Cli;
 using DinoTranslator.Server.Data;
 using DinoTranslator.Server.Infrastructure;
 
-var builder = WebApplication.CreateBuilder(args);
+// "users ..." administra as contas e sai; sem argumentos, sobe o servidor.
+var isUsersCommand = args is ["users", ..];
+
+var builder = WebApplication.CreateBuilder(isUsersCommand ? [] : args);
 
 builder.WebHost.ConfigureKestrel(options =>
 {
@@ -20,6 +24,17 @@ var app = builder.Build();
 
 await app.Services.MigrateDatabaseAsync();
 
+if (isUsersCommand)
+{
+    Console.OutputEncoding = System.Text.Encoding.UTF8;
+    await using var scope = app.Services.CreateAsyncScope();
+    var commands = new UserCommands(
+        scope.ServiceProvider.GetRequiredService<UserAdministration>(),
+        Console.Out,
+        new ConsoleSecretReader());
+    return await commands.RunAsync(args[1..]);
+}
+
 app.UseForwardedHeaders();
 app.UseExceptionHandler();
 if (!app.Environment.IsDevelopment())
@@ -31,5 +46,6 @@ app.UseSecurityHeaders();
 app.MapHealthChecks("/health");
 
 await app.RunAsync();
+return 0;
 
 public partial class Program;
