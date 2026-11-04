@@ -20,8 +20,7 @@ public partial class MainWindow : Window
 
         var webView = new BlazorWebView { HostPage = @"wwwroot\index.html", Services = services };
         webView.RootComponents.Add(new RootComponent { Selector = "#app", ComponentType = typeof(Routes) });
-        // Fora da pasta do programa: em "Arquivos de Programas" o usuário não tem permissão de escrita.
-        webView.BlazorWebViewInitializing += (_, e) => e.UserDataFolder = settings.WebViewDataFolder;
+        WebViewSecurity.Apply(webView, settings);
         Host.Children.Add(webView);
 
         UpdateClocks();
