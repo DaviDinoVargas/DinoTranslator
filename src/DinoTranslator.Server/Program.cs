@@ -19,6 +19,7 @@ builder.Services.AddHealthChecks();
 builder.Services.AddReverseProxySupport();
 builder.Services.AddDatabase();
 builder.Services.AddAccounts();
+builder.Services.AddTokenAuthentication();
 
 var app = builder.Build();
 
@@ -42,8 +43,11 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 app.UseSecurityHeaders();
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapHealthChecks("/health");
+app.MapAuthEndpoints();
 
 await app.RunAsync();
 return 0;
