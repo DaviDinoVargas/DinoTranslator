@@ -1,3 +1,4 @@
+using DinoTranslator.Server.Auth;
 using DinoTranslator.Server.Data;
 using DinoTranslator.Server.Infrastructure;
 
@@ -13,6 +14,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
 builder.Services.AddReverseProxySupport();
 builder.Services.AddDatabase();
+builder.Services.AddAccounts();
 
 var app = builder.Build();
 
