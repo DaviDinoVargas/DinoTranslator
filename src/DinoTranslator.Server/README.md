@@ -9,6 +9,8 @@ API do DinoTranslator: login, sinalização das chamadas, chats e tradução.
 | `Jwt:SigningKey`       | `Jwt__SigningKey`        | Chave HMAC em base64 com pelo menos 32 bytes        |
 | `ConnectionStrings:Database` | `ConnectionStrings__Database` | Opcional. Padrão: `data/dinotranslator.db` |
 | `ReverseProxy:KnownNetworks` | `ReverseProxy__KnownNetworks__0` | Redes do proxy (Caddy) cujos `X-Forwarded-*` são aceitos |
+| `Ice:StunUrls`, `Ice:TurnUrls` | `Ice__TurnUrls__0` … | Endereços do coturn (`stun:`, `turn:`, `turns:`) |
+| `Ice:TurnSecret` | `Ice__TurnSecret` | Igual ao `static-auth-secret` do coturn (32+ caracteres) |
 
 Gerar uma chave:
 
@@ -22,7 +24,7 @@ Em desenvolvimento, guarde a chave em user-secrets (fica fora do repositório):
 dotnet user-secrets set "Jwt:SigningKey" "<chave>" --project src/DinoTranslator.Server
 ```
 
-O servidor não sobe sem uma chave válida.
+O servidor não sobe sem uma chave válida. O token JWT só é aceito no cabeçalho `Authorization`, nunca na URL.
 
 ## Contas
 
@@ -50,5 +52,7 @@ dotnet run -- users remove <usuario>
 | POST   | `/api/auth/refresh` | —            | 30/min        |
 | POST   | `/api/auth/logout`  | —            | 30/min        |
 | GET    | `/api/me`           | JWT          | —             |
+| GET    | `/api/ice-servers`  | JWT          | —             |
+| WS     | `/hubs/sala`        | JWT no cabeçalho | 50 mensagens/s por conexão |
 
 Os controles de segurança estão descritos em [docs/SEGURANCA.md](../../docs/SEGURANCA.md).

@@ -66,6 +66,8 @@ public static class AuthSetup
                 };
                 bearer.Events = new JwtBearerEvents
                 {
+                    // O token só é aceito no cabeçalho Authorization (o cliente SignalR .NET o envia
+                    // também em WebSocket); nunca na query, onde acabaria em URLs e logs.
                     // Senha trocada ou conta removida invalidam na hora os tokens já emitidos.
                     OnTokenValidated = async context =>
                     {
