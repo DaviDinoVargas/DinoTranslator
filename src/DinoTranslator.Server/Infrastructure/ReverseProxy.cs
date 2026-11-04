@@ -10,17 +10,15 @@ namespace DinoTranslator.Server.Infrastructure;
 /// </summary>
 public static class ReverseProxy
 {
-    public static IServiceCollection AddReverseProxySupport(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddReverseProxySupport(this IServiceCollection services)
     {
-        var networks = configuration.GetSection("ReverseProxy:KnownNetworks").Get<string[]>() ?? [];
-
-        services.Configure<ForwardedHeadersOptions>(options =>
+        services.AddOptions<ForwardedHeadersOptions>().Configure<IConfiguration>((options, configuration) =>
         {
             options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
             options.ForwardLimit = 1;
             options.KnownNetworks.Clear();
             options.KnownProxies.Clear();
-            foreach (var cidr in networks)
+            foreach (var cidr in configuration.GetSection("ReverseProxy:KnownNetworks").Get<string[]>() ?? [])
             {
                 var network = System.Net.IPNetwork.Parse(cidr);
                 options.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(network.BaseAddress, network.PrefixLength));
