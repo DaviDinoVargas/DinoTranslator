@@ -1,14 +1,22 @@
+using DinoTranslator.Server.Data;
 using DinoTranslator.Server.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.AddServerHeader = false;
+    options.Limits.MaxRequestBodySize = 64 * 1024;
+});
 
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
-builder.Services.AddReverseProxySupport(builder.Configuration);
+builder.Services.AddReverseProxySupport();
+builder.Services.AddDatabase();
 
 var app = builder.Build();
+
+await app.Services.MigrateDatabaseAsync();
 
 app.UseForwardedHeaders();
 app.UseExceptionHandler();
@@ -20,6 +28,6 @@ app.UseSecurityHeaders();
 
 app.MapHealthChecks("/health");
 
-app.Run();
+await app.RunAsync();
 
 public partial class Program;
