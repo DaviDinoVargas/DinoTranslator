@@ -20,6 +20,7 @@ builder.Services.AddReverseProxySupport();
 builder.Services.AddDatabase();
 builder.Services.AddAccounts();
 builder.Services.AddTokenAuthentication();
+builder.Services.AddAuthRateLimits();
 
 var app = builder.Build();
 
@@ -43,6 +44,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 app.UseSecurityHeaders();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 

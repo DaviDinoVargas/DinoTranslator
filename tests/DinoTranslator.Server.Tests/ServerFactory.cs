@@ -15,6 +15,9 @@ public class ServerFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:Database", $"Data Source={_databasePath};Pooling=False");
         builder.UseSetting("Jwt:SigningKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+        // Limites altos por padrão; o teste do limite usa os próprios valores.
+        builder.UseSetting("Auth:LoginPermitsPerMinute", "1000");
+        builder.UseSetting("Auth:RefreshPermitsPerMinute", "1000");
     }
 
     protected override void Dispose(bool disposing)

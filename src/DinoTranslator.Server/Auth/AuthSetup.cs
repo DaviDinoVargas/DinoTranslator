@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Threading.RateLimiting;
 using DinoTranslator.Server.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -82,5 +84,41 @@ public static class AuthSetup
 
         services.AddAuthorization();
         return services;
+    }
+
+    public const string LoginRateLimit = "login";
+    public const string RefreshRateLimit = "refresh";
+
+    /// <summary>Janela fixa de 1 min por IP, sem fila; o excesso recebe 429 com Retry-After.</summary>
+    public static IServiceCollection AddAuthRateLimits(this IServiceCollection services)
+    {
+        services.AddRateLimiter(limiter =>
+        {
+            limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            limiter.OnRejected = (context, _) =>
+            {
+                if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+                {
+                    context.HttpContext.Response.Headers.RetryAfter =
+                        ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+                }
+                return ValueTask.CompletedTask;
+            };
+            limiter.AddPolicy(LoginRateLimit, context => PerClientIp(context, o => o.LoginPermitsPerMinute));
+            limiter.AddPolicy(RefreshRateLimit, context => PerClientIp(context, o => o.RefreshPermitsPerMinute));
+        });
+        return services;
+    }
+
+    private static RateLimitPartition<string> PerClientIp(HttpContext context, Func<AuthOptions, int> permits)
+    {
+        var options = context.RequestServices.GetRequiredService<IOptions<AuthOptions>>().Value;
+        var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "desconhecido";
+        return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = permits(options),
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        });
     }
 }
