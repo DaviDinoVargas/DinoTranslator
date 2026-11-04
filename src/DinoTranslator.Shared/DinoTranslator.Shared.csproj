@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>$(DinoTargetFramework)</TargetFramework>
+    <RootNamespace>DinoTranslator.Shared</RootNamespace>
+  </PropertyGroup>
+
+</Project>
