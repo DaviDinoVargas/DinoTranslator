@@ -1,0 +1,19 @@
+<Project>
+  <PropertyGroup>
+    <!-- Versão do .NET centralizada: trocar para net10.0 quando o SDK 10 estiver instalado. -->
+    <DinoTargetFramework>net9.0</DinoTargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <Deterministic>true</Deterministic>
+    <Product>DinoTranslator</Product>
+    <Company>DinoTranslator</Company>
+    <Version>0.1.0</Version>
+    <!-- Dependências com vulnerabilidade conhecida quebram o build. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+  </PropertyGroup>
+</Project>

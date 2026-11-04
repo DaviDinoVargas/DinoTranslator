@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>$(DinoTargetFramework)</TargetFramework>
+    <RootNamespace>DinoTranslator.Server</RootNamespace>
+    <UserSecretsId>dinotranslator-server</UserSecretsId>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DinoTranslator.Shared\DinoTranslator.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DinoTranslator.Server.Tests" />
+  </ItemGroup>
+
+</Project>
