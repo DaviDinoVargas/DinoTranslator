@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Nada vem da internet: scripts, estilos e fontes são só os empacotados no app. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'" />
+  <title>DinoTranslator</title>
+  <base href="/" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div id="app"></div>
+  <div id="blazor-error-ui" role="alert">
+    Ocorreu um erro inesperado. <a href="" class="reload">Recarregar</a>
+  </div>
+  <script src="_framework/blazor.webview.js"></script>
+</body>
+</html>
