@@ -2,6 +2,7 @@ using DinoTranslator.Server.Auth;
 using DinoTranslator.Server.Cli;
 using DinoTranslator.Server.Data;
 using DinoTranslator.Server.Infrastructure;
+using DinoTranslator.Server.Room;
 
 // "users ..." administra as contas e sai; sem argumentos, sobe o servidor.
 var isUsersCommand = args is ["users", ..];
@@ -21,6 +22,7 @@ builder.Services.AddDatabase();
 builder.Services.AddAccounts();
 builder.Services.AddTokenAuthentication();
 builder.Services.AddAuthRateLimits();
+builder.Services.AddRoom();
 
 var app = builder.Build();
 
@@ -50,6 +52,7 @@ app.UseAuthorization();
 
 app.MapHealthChecks("/health");
 app.MapAuthEndpoints();
+app.MapRoom();
 
 await app.RunAsync();
 return 0;
