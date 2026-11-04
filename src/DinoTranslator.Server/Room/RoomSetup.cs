@@ -16,6 +16,7 @@ public static class RoomSetup
             options.EnableDetailedErrors = false;
             options.KeepAliveInterval = TimeSpan.FromSeconds(15);
             options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+            options.AddFilter<HubRateLimitFilter>();
         });
         return services;
     }
