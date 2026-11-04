@@ -6,7 +6,7 @@ Segurança é requisito, não acabamento: cada módulo só é integrado à `main
 
 - **Conteúdo das conversas**: vídeo, áudio, tela, chat e falas.
 - **Credenciais** dos dois usuários.
-- **O servidor**: não pode virar porta de entrada, relay aberto nem fonte de gastos com os provedores.
+- **O servidor**: não pode virar porta de entrada nem relay aberto para terceiros.
 
 ## 2. Ameaças consideradas
 
@@ -24,7 +24,7 @@ Segurança é requisito, não acabamento: cada módulo só é integrado à `main
 | Segredos no repositório                  | Chave de provedor em `appsettings.json`                     | Segredos só em user-secrets/variáveis de ambiente; varredura antes do push |
 | Dependência vulnerável                   | Pacote NuGet/npm com CVE                                    | `dotnet list package --vulnerable` e `npm audit` no CI |
 | Instalador adulterado                    | Arquivo trocado no caminho                                  | Assinatura de código; SHA-256 publicado; atualização verifica assinatura |
-| Abuso de custos                          | Envio contínuo de áudio para gastar créditos                | Só autenticados; limite diário de minutos; tamanho de quadro limitado |
+| Uso abusivo do servidor                  | Envio contínuo de áudio para sobrecarregar a tradução       | Só autenticados; limite diário de minutos; tamanho de quadro limitado |
 
 ## 3. Controles por módulo
 

@@ -23,10 +23,10 @@
 | R12 | Desenvolvido em C#                                | Cliente, servidor e instalador em C#/.NET                                           |
 | R13 | App seguro                                        | Mídia cifrada ponta a ponta, login reforçado, cliente e servidor endurecidos (8 e [SEGURANCA.md](SEGURANCA.md)) |
 
-## 2. Premissas (confirmar — ver seção 13)
+## 2. Premissas (confirmar — ver seção 12)
 
 - Os dois usam **Windows 10 ou 11** — o executável é para Windows.
-- Uso **pessoal**, só entre os dois, sem fins comerciais.
+- Uso **pessoal**, só entre os dois.
 - Cada usuário tem **idioma fixo**: Brasil = `pt-BR`, Rússia = `ru-RU`. Sem detecção automática de idioma, o reconhecimento fica mais preciso.
 - Tradução **direta** PT ⇄ RU, sem passar pelo inglês.
 - Haverá um **servidor** próprio (VPS), necessário para login, chat, tradução e como reserva de conexão.
@@ -123,13 +123,12 @@ microfone ─► 16 kHz ─► VAD ─► STT streaming ─┬─ parcial ─►
 
 O servidor terá adaptadores por provedor; a escolha final sai da **Fase 0**, com gravações reais da fala dos dois.
 
-| Etapa           | Serviços comerciais (candidatos)                                           | Auto-hospedado no servidor                             |
+| Etapa           | Serviços em nuvem (candidatos)                                             | Auto-hospedado no servidor                             |
 |-----------------|----------------------------------------------------------------------------|--------------------------------------------------------|
 | VAD             | —                                                                          | Silero VAD (ONNX, CPU)                                 |
 | STT streaming   | Azure Speech (SDK C# nativo), Deepgram, Soniox, Speechmatics, Yandex SpeechKit | Whisper large-v3-turbo via Whisper.net (C#, CUDA); sherpa-onnx (C#) |
-| Tradução        | DeepL (biblioteca .NET, glossário e formalidade), Azure Translator, Yandex Translate | NLLB-200 \*, MADLAD-400                     |
+| Tradução        | DeepL (biblioteca .NET, glossário e formalidade), Azure Translator, Yandex Translate | NLLB-200, MADLAD-400                        |
 
-\* licença não comercial — aceitável para uso pessoal, não para produto.
 
 > **Atenção — Rússia.** Vários provedores de nuvem dos EUA e da Europa não atendem a Rússia ou restringem o uso por quem está lá, mesmo com as chamadas saindo do seu servidor. Os termos de cada candidato serão lidos na Fase 0. Se for um impedimento, os caminhos são os modelos auto-hospedados no próprio servidor (exige GPU) ou provedores que atendem a Rússia (ex.: Yandex).
 
@@ -235,7 +234,6 @@ O visual (cores, tipografia, componentes) está em [DESIGN.md](DESIGN.md).
 - App publicado **self-contained**: não exige .NET instalado.
 - **Assinatura de código** recomendada; sem ela, o SmartScreen mostra "editor desconhecido".
 - **Atualização**: o app consulta a versão no servidor e oferece baixar o novo instalador (Fase 5).
-- Licença: o WiX v6+ cobra a taxa OSMF de uso comercial; para uso pessoal não se aplica (confirmar ao chegar nessa fase).
 
 ---
 
@@ -273,9 +271,9 @@ DinoTranslator/
 
 ## 10. Fases e módulos
 
-Cada módulo é uma branch (fluxo em [GIT.md](GIT.md)). Estimativas para 1 desenvolvedor dedicado.
+Cada módulo é uma branch (fluxo em [GIT.md](GIT.md)).
 
-### Fase 0 — Validação técnica (~1 semana)
+### Fase 0 — Validação técnica
 
 - [ ] Testar a partir da Rússia, com o usuário real: acesso ao servidor/domínio, P2P direto, TURN em UDP e TLS/443.
 - [ ] Medir ping e banda reais entre os dois.
@@ -284,7 +282,7 @@ Cada módulo é uma branch (fluxo em [GIT.md](GIT.md)). Estimativas para 1 desen
 - [ ] Ler os termos de uso dos provedores quanto a usuários na Rússia.
 - **Entrega**: escolha dos motores e números medidos.
 
-### Fase 1 — Base (~1 semana)
+### Fase 1 — Base
 
 | Branch                  | Conteúdo                                                        |
 |-------------------------|-----------------------------------------------------------------|
@@ -298,7 +296,7 @@ Cada módulo é uma branch (fluxo em [GIT.md](GIT.md)). Estimativas para 1 desen
 
 **Pronto quando**: os dois fazem login no app e se veem "online" um para o outro.
 
-### Fase 2 — Chamada (~2 semanas)
+### Fase 2 — Chamada
 
 | Branch             | Conteúdo                                                             |
 |--------------------|----------------------------------------------------------------------|
@@ -307,7 +305,7 @@ Cada módulo é uma branch (fluxo em [GIT.md](GIT.md)). Estimativas para 1 desen
 
 **Pronto quando**: chamada de 30 min Brasil ⇄ Rússia com câmera e tela 2K, sem quedas, com o ping exibido.
 
-### Fase 3 — Tradução e chats (~2–3 semanas)
+### Fase 3 — Tradução e chats
 
 | Branch               | Conteúdo                                                        |
 |----------------------|-----------------------------------------------------------------|
@@ -318,7 +316,7 @@ Cada módulo é uma branch (fluxo em [GIT.md](GIT.md)). Estimativas para 1 desen
 
 **Pronto quando**: conversa de 15 min com legenda final ≤ 1,5 s após a pausa e tradução aprovada pelos dois.
 
-### Fase 4 — Visual final e instalador (~1–2 semanas)
+### Fase 4 — Visual final e instalador
 
 | Branch            | Conteúdo                                                   |
 |-------------------|------------------------------------------------------------|
@@ -333,19 +331,7 @@ Reconexão transparente, métricas de latência por etapa, atualização automá
 
 ---
 
-## 11. Custos (ordem de grandeza — confirmar preços na Fase 0)
-
-| Item                         | Com APIs comerciais                     | Com modelos próprios                             |
-|------------------------------|-----------------------------------------|--------------------------------------------------|
-| Servidor (VPS + coturn)      | US$ 10–40/mês                           | US$ 10–40/mês                                    |
-| GPU                          | —                                       | US$ 0,30–1,00/h ligada só nas conversas, ou US$ 150–400/mês dedicada |
-| Por hora de conversa         | ~US$ 0,50–2 (STT dos dois + tradução)   | ~0                                               |
-| Domínio                      | ~US$ 10–15/ano                          | ~US$ 10–15/ano                                   |
-| Assinatura de código (opcional) | US$ 10–30/mês ou ~US$ 200–400/ano    | idem                                             |
-
----
-
-## 12. Riscos
+## 11. Riscos
 
 | Risco                                                                                       | Impacto | Mitigação |
 |---------------------------------------------------------------------------------------------|---------|-----------|
@@ -360,10 +346,10 @@ Reconexão transparente, métricas de latência por etapa, atualização automá
 
 ---
 
-## 13. Decisões em aberto
+## 12. Decisões em aberto
 
 1. **Sistema dos dois**: ambos usam Windows? Se o usuário russo usar Mac ou Linux, o cliente muda de WPF para Avalonia.
-2. **Motores**: serviços pagos por uso ou modelos próprios em GPU alugada? Quem cria as contas e chaves?
+2. **Motores**: serviços em nuvem ou modelos próprios rodando no servidor (exige GPU)?
 3. **Servidor**: já existe VPS e domínio? Onde hospedar (sugestão: Europa — Alemanha, Holanda ou Finlândia)?
 4. **Histórico**: guardar chat e falas no servidor? Por quanto tempo?
 5. **.NET 10**: instalar o SDK do .NET 10 (LTS). Hoje a máquina tem só o .NET 9, cujo suporte termina em 10/11/2026; o projeto centraliza a versão em `Directory.Build.props` para a troca ser de uma linha.
