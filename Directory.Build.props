@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
-    <!-- Versão do .NET centralizada: trocar para net10.0 quando o SDK 10 estiver instalado. -->
-    <DinoTargetFramework>net9.0</DinoTargetFramework>
+    <!-- Versão do .NET centralizada (LTS). -->
+    <DinoTargetFramework>net10.0</DinoTargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
