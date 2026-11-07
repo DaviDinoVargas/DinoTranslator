@@ -29,11 +29,22 @@
           </p>
           <button type="button" class="button button--quiet" @onclick="() => _editing = true">Editar perfil</button>
         </div>
+        @if (!Translation.Current.IsConfigured)
+        {
+          <div class="callout" role="note">
+            <p>A tradução ainda não está ligada neste computador. Sem ela em pelo menos um dos dois, a chamada fica sem legendas.</p>
+            <button type="button" class="button button--primary" @onclick="@(() => Navigation.NavigateTo("/configuracoes/traducao"))">Configurar a tradução</button>
+          </div>
+        }
         <button type="button" class="setting-row" @onclick="@(() => Navigation.NavigateTo("/configuracoes/traducao"))">
           <span class="setting-row__label">Tradução</span>
           <span class="setting-row__value">
             @(Translation.Current.IsConfigured ? TranslationSettingsPage.Describe(Translation.Current) : "configurar")
           </span>
+        </button>
+        <button type="button" class="setting-row" @onclick="@(() => Navigation.NavigateTo("/configuracoes/dispositivos"))">
+          <span class="setting-row__label">Câmera e áudio</span>
+          <span class="setting-row__value">testar antes da chamada</span>
         </button>
         <button type="button" class="setting-row" @onclick="@(() => Navigation.NavigateTo("/configuracoes/conexao"))">
           <span class="setting-row__label">Conexão</span>
