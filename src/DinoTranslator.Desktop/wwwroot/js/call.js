@@ -13,10 +13,16 @@ const MAX_SIGNAL_LENGTH = 64 * 1024;
 const MAX_APP_MESSAGE_LENGTH = 16 * 1024;
 const AUDIO_MAX_BITRATE = 128_000;
 const VIDEO_MAX_BITRATE = 2_500_000;
+const SCREEN_MAX = { width: 2560, height: 1440, frameRate: 30 };
+// Tela "nítida" guarda a resolução (texto, código); "fluida" guarda os quadros por segundo (vídeo).
+const SCREEN_BITRATE = { detail: 6_000_000, motion: 8_000_000 };
+const SCREEN_CODECS = ["video/AV1", "video/VP9", "video/H264"];
+const MAX_STREAM_ID_LENGTH = 64;
 
 export class CallPeer {
   /**
-   * @param {object} events callbacks: onState, onStats, onAppMessage, onChannelOpen, onRemoteStream, onError
+   * @param {object} events callbacks: onState, onStats, onAppMessage, onChannelOpen, onRemoteStream,
+   *   onRemoteScreen, onLocalScreen, onScreenStats, onError
    * @param {{polite: boolean}} options o lado "educado" cede quando os dois renegociam ao mesmo tempo
    */
   constructor(events, { polite }) {
@@ -29,6 +35,16 @@ export class CallPeer {
     this.localStream = null;
     this.remoteStream = new MediaStream();
     this.statsTimer = null;
+
+    // Tela compartilhada: um transceptor só para ela, reaproveitado a cada compartilhamento,
+    // e um fluxo de id fixo que o outro lado usa para separar a tela da câmera.
+    this.screenTransceiver = null;
+    this.screenStream = new MediaStream();
+    this.screenTrack = null;
+    this.screenMode = "detail";
+    this.remoteScreenStreamId = null;
+    this.remoteScreen = new MediaStream();
+    this.remoteScreenReceiver = null;
 
     this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" });
     // Canais com id fixo: existem dos dois lados sem troca extra de sinais.
@@ -56,7 +72,16 @@ export class CallPeer {
         this.sendSignal({ candidate: candidate.toJSON() });
       }
     };
-    this.pc.ontrack = ({ track, receiver }) => {
+    this.pc.ontrack = ({ track, streams, receiver }) => {
+      if (streams[0]?.id && streams[0].id === this.remoteScreenStreamId) {
+        for (const previous of this.remoteScreen.getTracks()) {
+          this.remoteScreen.removeTrack(previous);
+        }
+        this.remoteScreen.addTrack(track);
+        this.remoteScreenReceiver = receiver;
+        this.events.onRemoteScreen?.(true);
+        return;
+      }
       this.remoteStream.addTrack(track);
       track.onended = () => this.remoteStream.removeTrack(track);
       this.events.onRemoteStream?.(this.remoteStream, receiver);
@@ -182,6 +207,8 @@ export class CallPeer {
           await this.pc.setLocalDescription(answer);
           this.sendSignal({ description: { type: answer.type, sdp: this.pc.localDescription.sdp } });
         }
+      } else if (message && Object.hasOwn(message, "screen")) {
+        this.onRemoteScreenSignal(message.screen);
       } else if (message?.candidate && typeof message.candidate === "object") {
         try {
           await this.pc.addIceCandidate(message.candidate);
@@ -193,6 +220,17 @@ export class CallPeer {
       }
     } catch (error) {
       this.events.onError?.(String(error));
+    }
+  }
+
+  /** O outro lado avisa, antes da mídia, qual fluxo é a tela; null = parou de compartilhar. */
+  onRemoteScreenSignal(screen) {
+    if (screen === null) {
+      this.remoteScreenStreamId = null;
+      this.remoteScreenReceiver = null;
+      this.events.onRemoteScreen?.(false);
+    } else if (typeof screen?.streamId === "string" && screen.streamId.length <= MAX_STREAM_ID_LENGTH) {
+      this.remoteScreenStreamId = screen.streamId;
     }
   }
 
@@ -243,6 +281,98 @@ export class CallPeer {
     }
   }
 
+  // ---- Tela até 2K -------------------------------------------------------------------
+
+  /** Compartilha a tela; stream permite testar com um vídeo sintético no lugar da captura. */
+  async startScreenShare({ mode = "detail", stream = null } = {}) {
+    if (this.screenTrack) {
+      return;
+    }
+    const capture = stream ?? await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        width: { max: SCREEN_MAX.width },
+        height: { max: SCREEN_MAX.height },
+        frameRate: { ideal: SCREEN_MAX.frameRate, max: SCREEN_MAX.frameRate },
+      },
+      audio: false,
+      selfBrowserSurface: "exclude",
+      surfaceSwitching: "include",
+      systemAudio: "exclude",
+    });
+    const track = capture.getVideoTracks()[0];
+    // Parar pelo próprio Windows também encerra o compartilhamento.
+    track.onended = () => this.stopScreenShare();
+    this.screenTrack = track;
+    this.setScreenMode(mode);
+
+    this.sendSignal({ screen: { streamId: this.screenStream.id } });
+    if (this.screenTransceiver) {
+      await this.screenTransceiver.sender.replaceTrack(track);
+      this.screenTransceiver.direction = "sendonly";
+    } else {
+      // A ordem precisa estar pronta antes de o transceptor disparar a renegociação.
+      const codecs = await this.screenCodecOrder();
+      this.screenTransceiver = this.pc.addTransceiver(track, { direction: "sendonly", streams: [this.screenStream] });
+      try {
+        this.screenTransceiver.setCodecPreferences(codecs);
+      } catch {
+        // Sem preferência: o navegador usa a ordem padrão.
+      }
+    }
+    this.events.onLocalScreen?.(true);
+  }
+
+  async stopScreenShare() {
+    if (!this.screenTrack) {
+      return;
+    }
+    const track = this.screenTrack;
+    this.screenTrack = null;
+    track.onended = null;
+    track.stop();
+    if (this.screenTransceiver && this.pc.signalingState !== "closed") {
+      await this.screenTransceiver.sender.replaceTrack(null);
+      this.screenTransceiver.direction = "inactive";
+    }
+    this.sendSignal({ screen: null });
+    this.events.onLocalScreen?.(false);
+  }
+
+  setScreenMode(mode) {
+    this.screenMode = mode === "motion" ? "motion" : "detail";
+    if (this.screenTrack) {
+      this.screenTrack.contentHint = this.screenMode;
+    }
+    this.tuneSenders();
+  }
+
+  /** Codificação por hardware primeiro; depois AV1 → VP9 → H.264; rtx, red e fec no fim. */
+  async screenCodecOrder() {
+    const codecs = RTCRtpReceiver.getCapabilities?.("video")?.codecs ?? [];
+    const hardware = new Set();
+    for (const contentType of SCREEN_CODECS) {
+      try {
+        const info = await navigator.mediaCapabilities.encodingInfo({
+          type: "webrtc",
+          video: { contentType, width: SCREEN_MAX.width, height: SCREEN_MAX.height, bitrate: SCREEN_BITRATE.detail, framerate: SCREEN_MAX.frameRate },
+        });
+        if (info.supported && info.powerEfficient) {
+          hardware.add(contentType);
+        }
+      } catch {
+        // Sem informação: fica na ordem padrão.
+      }
+    }
+    const rank = (codec) => {
+      const position = SCREEN_CODECS.indexOf(codec.mimeType);
+      if (position === -1) {
+        return SCREEN_CODECS.length * 2;
+      }
+      return (hardware.has(codec.mimeType) ? 0 : SCREEN_CODECS.length) + position;
+    };
+    return [...codecs].sort((a, b) => rank(a) - rank(b));
+  }
+
   async tuneSenders() {
     for (const sender of this.pc.getSenders()) {
       if (!sender.track) {
@@ -258,6 +388,9 @@ export class CallPeer {
           encoding.maxBitrate = AUDIO_MAX_BITRATE;
           encoding.priority = "high";
           encoding.networkPriority = "high";
+        } else if (sender === this.screenTransceiver?.sender) {
+          encoding.maxBitrate = SCREEN_BITRATE[this.screenMode];
+          parameters.degradationPreference = this.screenMode === "detail" ? "maintain-resolution" : "maintain-framerate";
         } else {
           encoding.maxBitrate = VIDEO_MAX_BITRATE;
           parameters.degradationPreference = "balanced";
@@ -298,9 +431,31 @@ export class CallPeer {
       const local = report.get(pair.localCandidateId);
       const rtt = typeof pair.currentRoundTripTime === "number" ? Math.round(pair.currentRoundTripTime * 1000) : -1;
       this.events.onStats?.(rtt, local?.candidateType ?? "desconhecido");
+      await this.collectScreenStats();
     } catch {
       // Estatística é só informativa.
     }
+  }
+
+  /** Resolução, quadros por segundo e codec da tela enviada ou recebida. */
+  async collectScreenStats() {
+    const sending = Boolean(this.screenTrack && this.screenTransceiver);
+    const source = sending ? this.screenTransceiver.sender : this.remoteScreenStreamId ? this.remoteScreenReceiver : null;
+    if (!source) {
+      return;
+    }
+    const report = await source.getStats();
+    let rtp = null;
+    report.forEach((stat) => {
+      if (stat.type === (sending ? "outbound-rtp" : "inbound-rtp") && stat.kind === "video") {
+        rtp = stat;
+      }
+    });
+    if (!rtp?.frameWidth) {
+      return;
+    }
+    const codec = report.get(rtp.codecId)?.mimeType?.replace("video/", "") ?? "";
+    this.events.onScreenStats?.(sending, rtp.frameWidth, rtp.frameHeight, Math.round(rtp.framesPerSecond ?? 0), codec);
   }
 
   // ---- Mensagens do app e encerramento ----------------------------------------------
@@ -315,6 +470,7 @@ export class CallPeer {
 
   close() {
     this.stopStats();
+    this.screenTrack?.stop();
     for (const track of this.localStream?.getTracks() ?? []) {
       track.stop();
     }
@@ -363,6 +519,9 @@ export function create(dotnet, polite) {
     onChannelOpen: () => dotnet.invokeMethodAsync("OnChannelOpen"),
     onError: (message) => dotnet.invokeMethodAsync("OnMediaError", message),
     onRemoteStream: () => {},
+    onRemoteScreen: (active) => dotnet.invokeMethodAsync("OnRemoteScreen", active),
+    onLocalScreen: (active) => dotnet.invokeMethodAsync("OnLocalScreen", active),
+    onScreenStats: (sending, width, height, fps, codec) => dotnet.invokeMethodAsync("OnScreenStats", sending, width, height, fps, codec),
   }, { polite });
 }
 
@@ -372,6 +531,16 @@ export const acceptAnswer = (sdp) => current.acceptAnswer(sdp);
 export const localSdp = () => current?.localSdp() ?? null;
 export const sendApp = (text) => current?.sendApp(text) ?? false;
 export const setTrackEnabled = (kind, enabled) => current?.setTrackEnabled(kind, enabled);
+export const startScreenShare = (mode) => current.startScreenShare({ mode });
+export const stopScreenShare = () => current?.stopScreenShare();
+export const setScreenMode = (mode) => current?.setScreenMode(mode);
+
+/** Teste de ponta a ponta: compartilha um vídeo sintético no lugar da tela. */
+export const shareStream = (stream, mode) => current.startScreenShare({ mode, stream });
+
+export function bindRemoteScreen(video) {
+  video.srcObject = current.remoteScreen;
+}
 
 export async function startMedia(localVideo, remoteVideo, highFidelity) {
   remoteVideo.srcObject = current.remoteStream;
