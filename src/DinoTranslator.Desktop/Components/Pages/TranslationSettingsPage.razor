@@ -1,6 +1,10 @@
 @page "/configuracoes/traducao"
+@implements IDisposable
+@using System.Net.Http
 @using DinoTranslator.Desktop.Services.Translation
+@using DinoTranslator.Desktop.Services.Translation.Local
 @inject TranslationSettingsStore Store
+@inject SpeechEngineFactory Engines
 @inject NavigationManager Navigation
 
 <main class="handshake">
@@ -8,19 +12,17 @@
     <p class="handshake__kicker">Configurações</p>
     <h1 class="handshake__step">Tradução</h1>
     <p class="handshake__hint">
-      Basta um dos dois configurar. Durante a chamada, o áudio das duas pessoas vai deste computador
-      para o serviço escolhido, e as legendas voltam pela própria chamada. A chave fica cifrada neste
-      computador e nunca é enviada à outra pessoa.
+      Basta um dos dois configurar: as legendas chegam à outra pessoa pela própria chamada.
     </p>
 
     @if (Store.Current.IsConfigured && !_editing)
     {
       <div class="profile-card">
         <p class="profile-card__name">@Describe(Store.Current)</p>
-        <p class="profile-card__meta">Chave guardada neste computador.</p>
+        <p class="profile-card__meta">@StatusOf(Store.Current)</p>
         <div class="form__actions">
-          <button type="button" class="button button--quiet" @onclick="() => _editing = true">Trocar</button>
-          <button type="button" class="button button--quiet" @onclick="Remove">Remover chave</button>
+          <button type="button" class="button button--quiet" @onclick="StartEditing">Trocar</button>
+          <button type="button" class="button button--quiet" @onclick="Remove">Desligar tradução</button>
         </div>
       </div>
     }
@@ -28,9 +30,10 @@
     {
       <div class="login__form">
         <label class="field">
-          <span class="field__label">Serviço</span>
-          <select class="field__input" @bind="_provider">
-            <option value="@TranslationProvider.AzureSpeech">Azure Speech</option>
+          <span class="field__label">Onde traduzir</span>
+          <select class="field__input" @bind="_provider" disabled="@Downloading">
+            <option value="@TranslationProvider.Local">Neste computador (sem conta)</option>
+            <option value="@TranslationProvider.AzureSpeech">Azure Speech (conta da Microsoft)</option>
             @if (DeveloperMode)
             {
               <option value="@TranslationProvider.Simulated">Simulado (só desenvolvimento)</option>
@@ -38,8 +41,47 @@
           </select>
         </label>
 
-        @if (_provider == TranslationProvider.AzureSpeech)
+        @if (_provider == TranslationProvider.Local)
         {
+          <p class="handshake__hint">
+            O áudio não sai do computador. O reconhecimento usa a placa de vídeo e a tradução, o processador.
+            É preciso baixar os modelos uma vez; eles são conferidos pela assinatura antes de serem usados.
+          </p>
+          <label class="field">
+            <span class="field__label">Modelo de reconhecimento</span>
+            <select class="field__input" @bind="_localModel" disabled="@Downloading">
+              <option value="@WhisperModel.Turbo">Preciso · Whisper turbo (@Size(LocalModels.WhisperTurbo.Size))</option>
+              <option value="@WhisperModel.Small">Rápido · Whisper small (@Size(LocalModels.WhisperSmall.Size))</option>
+            </select>
+          </label>
+
+          @if (Engines.Models.IsInstalled(_localModel))
+          {
+            <p class="handshake__waiting">Modelos baixados e conferidos.</p>
+          }
+          else if (Downloading)
+          {
+            <div class="download">
+              <div class="download__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@_percent">
+                <div class="download__fill download__fill--@(_percent / 5 * 5)"></div>
+              </div>
+              <p class="handshake__waiting">@_percent% · @_downloadingFile</p>
+              <button type="button" class="button button--quiet" @onclick="CancelDownload">Cancelar</button>
+            </div>
+          }
+          else
+          {
+            <button type="button" class="button" @onclick="DownloadAsync">
+              Baixar modelos (@Size(LocalModels.DownloadSize(_localModel)))
+            </button>
+          }
+        }
+        else if (_provider == TranslationProvider.AzureSpeech)
+        {
+          <p class="handshake__hint">
+            O áudio das duas pessoas vai deste computador para o Azure Speech durante a chamada.
+            A chave fica cifrada aqui e nunca é enviada à outra pessoa.
+          </p>
           <label class="field">
             <span class="field__label">Região do recurso</span>
             <input class="field__input" @bind="_region" placeholder="brazilsouth" spellcheck="false" maxlength="32" />
@@ -56,25 +98,36 @@
         }
 
         <div class="form__actions">
-          <button type="button" class="button button--primary" @onclick="Save">Salvar</button>
+          <button type="button" class="button button--primary" @onclick="Save" disabled="@(!CanSave)">Salvar</button>
           @if (Store.Current.IsConfigured)
           {
-            <button type="button" class="button" @onclick="() => _editing = false">Cancelar</button>
+            <button type="button" class="button" @onclick="() => _editing = false" disabled="@Downloading">Cancelar</button>
           }
         </div>
+
+        @if (_provider == TranslationProvider.Local && Engines.Models.IsInstalled(_localModel) && !Downloading)
+        {
+          <button type="button" class="button button--quiet handshake__cancel" @onclick="RemoveModels">
+            Apagar os modelos baixados
+          </button>
+        }
       </div>
     }
 
-    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))">Voltar</button>
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))" disabled="@Downloading">Voltar</button>
   </section>
 </main>
 
 @code {
-    private TranslationProvider _provider = TranslationProvider.AzureSpeech;
+    private TranslationProvider _provider = TranslationProvider.Local;
+    private WhisperModel _localModel = WhisperModel.Turbo;
     private string? _region;
     private string? _key;
     private string? _error;
     private bool _editing;
+    private CancellationTokenSource? _download;
+    private int _percent;
+    private string _downloadingFile = string.Empty;
 
     /// <summary>O motor simulado só aparece no build Debug.</summary>
     private static bool DeveloperMode { get; } =
@@ -84,11 +137,63 @@
         false;
 #endif
 
+    private bool Downloading => _download is not null;
+
+    private bool CanSave => !Downloading && (_provider != TranslationProvider.Local || Engines.Models.IsInstalled(_localModel));
+
+    private void StartEditing()
+    {
+        _provider = Store.Current.Provider;
+        _localModel = Store.Current.LocalModel ?? WhisperModel.Turbo;
+        _region = Store.Current.Region;
+        _editing = true;
+    }
+
+    private async Task DownloadAsync()
+    {
+        _error = null;
+        _percent = 0;
+        _download = new CancellationTokenSource();
+        var progress = new Progress<DownloadProgress>(p =>
+        {
+            var percent = (int)(p.Downloaded * 100 / Math.Max(1, p.Total));
+            if (percent != _percent || p.FileName != _downloadingFile)
+            {
+                _percent = percent;
+                _downloadingFile = p.FileName;
+                StateHasChanged();
+            }
+        });
+        try
+        {
+            using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            await new ModelDownloader(http, Engines.Models).DownloadAsync(LocalModels.Required(_localModel), progress, _download.Token);
+        }
+        catch (ModelDownloadException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (OperationCanceledException)
+        {
+            _error = "Download cancelado. O que já foi baixado e conferido fica guardado.";
+        }
+        finally
+        {
+            _download.Dispose();
+            _download = null;
+        }
+    }
+
+    private void CancelDownload() => _download?.Cancel();
+
     private void Save()
     {
-        var settings = _provider == TranslationProvider.AzureSpeech
-            ? new TranslationSettings(_provider, _region?.Trim().ToLowerInvariant(), _key?.Trim())
-            : new TranslationSettings(_provider, null, null);
+        var settings = _provider switch
+        {
+            TranslationProvider.AzureSpeech => new TranslationSettings(_provider, _region?.Trim().ToLowerInvariant(), _key?.Trim()),
+            TranslationProvider.Local => new TranslationSettings(_provider, null, null, _localModel),
+            _ => new TranslationSettings(_provider, null, null),
+        };
         _error = TranslationSettings.Validate(settings);
         if (_error is not null)
         {
@@ -106,10 +211,36 @@
         _key = null;
     }
 
+    private void RemoveModels()
+    {
+        Engines.ReleaseLocal();
+        Engines.Models.Remove();
+        if (Store.Current.Provider == TranslationProvider.Local)
+        {
+            Store.Clear();
+        }
+    }
+
+    private string StatusOf(TranslationSettings settings) => settings.Provider switch
+    {
+        TranslationProvider.AzureSpeech => "Chave guardada neste computador.",
+        TranslationProvider.Local when Engines.IsReady(settings) => "Modelos baixados. O áudio não sai do computador.",
+        TranslationProvider.Local => "Os modelos não estão mais no computador. Baixe de novo em Trocar.",
+        _ => string.Empty,
+    };
+
     public static string Describe(TranslationSettings settings) => settings.Provider switch
     {
         TranslationProvider.AzureSpeech => $"Azure Speech · {settings.Region}",
+        TranslationProvider.Local => $"Neste computador · {(settings.LocalModel == WhisperModel.Small ? "rápido" : "preciso")}",
         TranslationProvider.Simulated => "Simulado (desenvolvimento)",
         _ => "Não configurado",
     };
+
+    private static string Size(long bytes) =>
+        bytes >= 1_000_000_000
+            ? $"{bytes / 1_000_000_000.0:0.00} GB".Replace('.', ',')
+            : $"{bytes / 1_000_000} MB";
+
+    public void Dispose() => _download?.Cancel();
 }
