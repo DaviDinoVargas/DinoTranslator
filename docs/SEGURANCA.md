@@ -51,6 +51,7 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 - Áudio enviado ao motor só durante a chamada, a partir da captura do próprio app (blocos de até 64 KB).
 - Legendas recebidas são aceitas só de quem foi escolhido para traduzir e passam pela mesma validação das mensagens do canal.
 - O motor simulado e a variável que o liga existem só no build Debug.
+- Motor local: modelos baixados por HTTPS de versões fixas dos repositórios, conferidos por tamanho e SHA-256 ao baixar e de novo ao carregar (a pasta pode estar em outro disco); arquivo diferente é recusado. A pasta só pode ficar num disco fixo deste computador, e apagar os modelos remove só os arquivos do catálogo.
 
 ### 3.4 Dados locais
 

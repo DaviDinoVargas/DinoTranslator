@@ -279,6 +279,57 @@ select.field__input option {
   font-size: 12px;
 }
 
+/* Download dos modelos locais */
+
+.folder-path {
+  padding: 8px 12px;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--superficie);
+  font: 12px Consolas, monospace;
+  word-break: break-all;
+  user-select: text;
+}
+
+.download {
+  display: grid;
+  gap: 8px;
+}
+
+.download__bar {
+  height: 6px;
+  background: var(--superficie-2);
+}
+
+.download__fill {
+  height: 100%;
+  background: var(--ipe);
+  transition: width 300ms var(--curva);
+}
+
+/* Largura em passos de 5%: a CSP do app não permite estilo inline. */
+.download__fill--0 { width: 0%; }
+.download__fill--5 { width: 5%; }
+.download__fill--10 { width: 10%; }
+.download__fill--15 { width: 15%; }
+.download__fill--20 { width: 20%; }
+.download__fill--25 { width: 25%; }
+.download__fill--30 { width: 30%; }
+.download__fill--35 { width: 35%; }
+.download__fill--40 { width: 40%; }
+.download__fill--45 { width: 45%; }
+.download__fill--50 { width: 50%; }
+.download__fill--55 { width: 55%; }
+.download__fill--60 { width: 60%; }
+.download__fill--65 { width: 65%; }
+.download__fill--70 { width: 70%; }
+.download__fill--75 { width: 75%; }
+.download__fill--80 { width: 80%; }
+.download__fill--85 { width: 85%; }
+.download__fill--90 { width: 90%; }
+.download__fill--95 { width: 95%; }
+.download__fill--100 { width: 100%; }
+
 /* Convite e resposta */
 
 .handshake {

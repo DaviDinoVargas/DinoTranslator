@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using DinoTranslator.Desktop.Services.Translation.Local;
 
 namespace DinoTranslator.Desktop.Services.Translation;
 
@@ -12,12 +13,22 @@ public enum TranslationProvider
     None = 0,
     AzureSpeech = 1,
 
+    /// <summary>Reconhecimento e tradução neste computador (Whisper e NLLB), sem conta nem chave.</summary>
+    Local = 2,
+
     /// <summary>Só no build Debug: legendas geradas a partir do volume do áudio, sem serviço externo.</summary>
     Simulated = 99,
 }
 
 /// <summary>Motor de reconhecimento e tradução deste computador.</summary>
-public sealed partial record TranslationSettings(TranslationProvider Provider, string? Region, string? Key)
+/// <param name="LocalModel">Só no motor local: modelo de reconhecimento escolhido.</param>
+/// <param name="ModelsFolder">Só no motor local: pasta dos modelos, se não for a padrão.</param>
+public sealed partial record TranslationSettings(
+    TranslationProvider Provider,
+    string? Region,
+    string? Key,
+    WhisperModel? LocalModel = null,
+    string? ModelsFolder = null)
 {
     public static TranslationSettings None { get; } = new(TranslationProvider.None, null, null);
 
@@ -32,6 +43,11 @@ public sealed partial record TranslationSettings(TranslationProvider Provider, s
         TranslationProvider.AzureSpeech when settings.Key is null || !KeyPattern().IsMatch(settings.Key) =>
             "Chave inválida. Copie uma das chaves do recurso, sem espaços.",
         TranslationProvider.AzureSpeech => null,
+        TranslationProvider.Local when settings.LocalModel is not { } model || !Enum.IsDefined(model) =>
+            "Escolha o modelo de reconhecimento.",
+        TranslationProvider.Local when settings.ModelsFolder is { } folder && ModelFolder.ValidatePath(folder) is { } folderError =>
+            folderError,
+        TranslationProvider.Local => null,
 #if DEBUG
         TranslationProvider.Simulated => null,
 #endif

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.IO;
 using DinoTranslator.Desktop.Services.Translation;
 using DinoTranslator.Shared;
 using Microsoft.CognitiveServices.Speech;
@@ -37,7 +38,7 @@ public class SpeechEnginesTests
     [Fact]
     public async Task Motor_simulado_gera_provisorias_e_fecha_o_trecho_depois_da_pausa()
     {
-        var engine = SpeechTranslationEngines.Create(new TranslationSettings(TranslationProvider.Simulated, null, null), TimeProvider.System)!;
+        var engine = new SpeechEngineFactory(new DinoTranslator.Desktop.Services.Translation.Local.ModelFolder(Path.GetTempPath())).Create(new TranslationSettings(TranslationProvider.Simulated, null, null))!;
         await using var stream = await engine.StartAsync(
             new SpeechStreamOptions(Languages.PortugueseBrazil, Languages.Ukrainian, []), CancellationToken.None);
         var updates = new List<SpeechUpdate>();
@@ -62,7 +63,7 @@ public class SpeechEnginesTests
     [Fact]
     public async Task Motor_simulado_nao_inventa_fala_no_silencio()
     {
-        var engine = SpeechTranslationEngines.Create(new TranslationSettings(TranslationProvider.Simulated, null, null), TimeProvider.System)!;
+        var engine = new SpeechEngineFactory(new DinoTranslator.Desktop.Services.Translation.Local.ModelFolder(Path.GetTempPath())).Create(new TranslationSettings(TranslationProvider.Simulated, null, null))!;
         await using var stream = await engine.StartAsync(
             new SpeechStreamOptions(Languages.Russian, Languages.Spanish, []), CancellationToken.None);
         var updates = 0;

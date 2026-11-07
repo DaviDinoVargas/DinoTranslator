@@ -39,6 +39,7 @@ public sealed class CallSession(
     ProfileStore profiles,
     TitleBarState titleBar,
     TranslationSettingsStore translationSettings,
+    SpeechEngineFactory engines,
     IUiDispatcher ui,
     TimeProvider time) : IAsyncDisposable
 {
@@ -253,7 +254,7 @@ public sealed class CallSession(
         Problem = null;
         titleBar.SetPeer(Peer?.Name, Peer?.TimeZone);
         Notify();
-        await SendAppAsync(new HelloMessage(translationSettings.Current.IsConfigured));
+        await SendAppAsync(new HelloMessage(engines.IsReady(translationSettings.Current)));
     }
 
     [JSInvokable]
@@ -296,7 +297,7 @@ public sealed class CallSession(
         {
             case HelloMessage hello when _peerHello is null && Role is { } role:
                 _peerHello = hello;
-                Translator = TranslatorChoice.Decide(role, translationSettings.Current.IsConfigured, hello.CanTranslate);
+                Translator = TranslatorChoice.Decide(role, engines.IsReady(translationSettings.Current), hello.CanTranslate);
                 TranslationNotice = Translator == TranslatorSide.None
                     ? "Tradução desligada: nenhum dos dois configurou o motor de tradução (Início › Tradução)."
                     : null;
@@ -398,7 +399,7 @@ public sealed class CallSession(
     {
         if (Translator != TranslatorSide.Here || _translation is not null || !_mediaStarted
             || _module is null || _self is null || Peer is not { } peer || profiles.Current is not { } me
-            || SpeechTranslationEngines.Create(translationSettings.Current, time) is not { } engine)
+            || engines.Create(translationSettings.Current) is not { } engine)
         {
             return;
         }
