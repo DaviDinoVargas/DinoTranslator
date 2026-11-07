@@ -55,7 +55,19 @@
             </select>
           </label>
 
-          @if (Engines.Models.IsInstalled(_localModel))
+          <div class="field">
+            <span class="field__label">Pasta dos modelos</span>
+            <p class="folder-path">@Folder.Path</p>
+            <div class="form__actions">
+              <button type="button" class="button button--quiet" @onclick="ChooseFolder" disabled="@Downloading">Escolher pasta…</button>
+              @if (_modelsFolder is not null)
+              {
+                <button type="button" class="button button--quiet" @onclick="() => _modelsFolder = null" disabled="@Downloading">Usar a pasta padrão</button>
+              }
+            </div>
+          </div>
+
+          @if (Folder.IsInstalled(_localModel))
           {
             <p class="handshake__waiting">Modelos baixados e conferidos.</p>
           }
@@ -105,7 +117,7 @@
           }
         </div>
 
-        @if (_provider == TranslationProvider.Local && Engines.Models.IsInstalled(_localModel) && !Downloading)
+        @if (_provider == TranslationProvider.Local && Folder.IsInstalled(_localModel) && !Downloading)
         {
           <button type="button" class="button button--quiet handshake__cancel" @onclick="RemoveModels">
             Apagar os modelos baixados
@@ -128,6 +140,12 @@
     private CancellationTokenSource? _download;
     private int _percent;
     private string _downloadingFile = string.Empty;
+    private string? _modelsFolder;
+
+    /// <summary>Folga além do download: o disco não pode ficar cheio.</summary>
+    private const long SpareSpace = 1_000_000_000;
+
+    private ModelFolder Folder => _modelsFolder is { } path ? new ModelFolder(path) : Engines.DefaultModels;
 
     /// <summary>O motor simulado só aparece no build Debug.</summary>
     private static bool DeveloperMode { get; } =
@@ -139,19 +157,40 @@
 
     private bool Downloading => _download is not null;
 
-    private bool CanSave => !Downloading && (_provider != TranslationProvider.Local || Engines.Models.IsInstalled(_localModel));
+    private bool CanSave => !Downloading && (_provider != TranslationProvider.Local || Folder.IsInstalled(_localModel));
 
     private void StartEditing()
     {
         _provider = Store.Current.Provider;
         _localModel = Store.Current.LocalModel ?? WhisperModel.Turbo;
         _region = Store.Current.Region;
+        _modelsFolder = Store.Current.ModelsFolder;
         _editing = true;
+    }
+
+    private void ChooseFolder()
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Pasta dos modelos de tradução" };
+        if (dialog.ShowDialog(System.Windows.Application.Current.MainWindow) != true)
+        {
+            return;
+        }
+        _error = ModelFolder.ValidatePath(dialog.FolderName);
+        if (_error is null)
+        {
+            _modelsFolder = dialog.FolderName;
+        }
     }
 
     private async Task DownloadAsync()
     {
         _error = null;
+        var needed = LocalModels.Required(_localModel).Where(f => !Folder.IsInstalled(f)).Sum(f => f.Size);
+        if (Folder.FreeSpace() is { } free && free < needed + SpareSpace)
+        {
+            _error = $"Falta espaço no disco da pasta dos modelos: precisa de {Size(needed + SpareSpace)} livres e há {Size(free)}. Escolha uma pasta em outro disco.";
+            return;
+        }
         _percent = 0;
         _download = new CancellationTokenSource();
         var progress = new Progress<DownloadProgress>(p =>
@@ -167,7 +206,7 @@
         try
         {
             using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-            await new ModelDownloader(http, Engines.Models).DownloadAsync(LocalModels.Required(_localModel), progress, _download.Token);
+            await new ModelDownloader(http, Folder).DownloadAsync(LocalModels.Required(_localModel), progress, _download.Token);
         }
         catch (ModelDownloadException ex)
         {
@@ -191,7 +230,7 @@
         var settings = _provider switch
         {
             TranslationProvider.AzureSpeech => new TranslationSettings(_provider, _region?.Trim().ToLowerInvariant(), _key?.Trim()),
-            TranslationProvider.Local => new TranslationSettings(_provider, null, null, _localModel),
+            TranslationProvider.Local => new TranslationSettings(_provider, null, null, _localModel, _modelsFolder),
             _ => new TranslationSettings(_provider, null, null),
         };
         _error = TranslationSettings.Validate(settings);
@@ -214,7 +253,7 @@
     private void RemoveModels()
     {
         Engines.ReleaseLocal();
-        Engines.Models.Remove();
+        Folder.Remove();
         if (Store.Current.Provider == TranslationProvider.Local)
         {
             Store.Clear();

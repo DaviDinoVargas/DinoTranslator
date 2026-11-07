@@ -281,6 +281,16 @@ select.field__input option {
 
 /* Download dos modelos locais */
 
+.folder-path {
+  padding: 8px 12px;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--superficie);
+  font: 12px Consolas, monospace;
+  word-break: break-all;
+  user-select: text;
+}
+
 .download {
   display: grid;
   gap: 8px;
