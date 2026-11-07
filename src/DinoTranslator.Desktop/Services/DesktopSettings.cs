@@ -26,6 +26,8 @@ public sealed record DesktopSettings(ConnectionMode Mode, Uri? ServerUri, string
 
     public string ProfileFile => Path.Combine(DataFolder, "perfil.json");
 
+    public string TranslationFile => Path.Combine(DataFolder, "motores.dat");
+
     public static DesktopSettings Load()
     {
         var dataFolder = Path.Combine(

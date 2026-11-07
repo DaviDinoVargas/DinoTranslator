@@ -1,4 +1,5 @@
 using System.Net.Http;
+using DinoTranslator.Desktop.Services.Translation;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DinoTranslator.Desktop.Services;
@@ -20,8 +21,11 @@ public static class DesktopServices
         services.AddSingleton(profiles);
         services.AddSingleton(titleBar);
 
+        services.AddSingleton(new TranslationSettingsStore(settings.TranslationFile));
+
         if (settings.Mode == ConnectionMode.Code)
         {
+            services.AddSingleton<IUiDispatcher, WpfUiDispatcher>();
             // Escopo do BlazorWebView: uma sessão de chamada por janela.
             services.AddScoped<CallSession>();
         }
