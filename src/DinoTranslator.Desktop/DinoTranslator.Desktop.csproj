@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DinoTranslator.Shared\DinoTranslator.Shared.csproj" />
+    <ProjectReference Include="..\Installer\DinoTranslator.Installation\DinoTranslator.Installation.csproj" />
   </ItemGroup>
 
   <ItemGroup>

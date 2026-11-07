@@ -13,6 +13,14 @@ public partial class App : Application
         base.OnStartup(e);
         WebViewSecurity.ClearEnvironmentOverrides();
 
+        // Aberto por "Aplicativos instalados" do Windows para desinstalar.
+        if (e.Args is [DinoTranslator.Installation.Installer.UninstallArgument])
+        {
+            MainWindow = new UninstallWindow();
+            MainWindow.Show();
+            return;
+        }
+
         DesktopSettings settings;
         try
         {

@@ -1,4 +1,4 @@
-# Teste de ponta a ponta da chamada por código, no próprio computador.
+﻿# Teste de ponta a ponta da chamada por código, no próprio computador.
 # Abre dois apps (build Debug) com perfis separados — Dino (pt-BR) e Anna (ru-RU) —,
 # troca convite e resposta pela interface e confere conexão, código de segurança,
 # mídia, legendas traduzidas (motor simulado só no computador do Dino), tela compartilhada

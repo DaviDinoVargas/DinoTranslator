@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(DinoTargetFramework)-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>DinoTranslator.Setup</RootNamespace>
+    <AssemblyName>DinoTranslatorSetup</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DinoTranslator.Installation\DinoTranslator.Installation.csproj" />
+  </ItemGroup>
+
+  <!-- O pacote do app (zip do publish) entra no instalador só quando o script tools/criar-instalador.ps1 o fornece. -->
+  <ItemGroup Condition="'$(PayloadZip)' != ''">
+    <EmbeddedResource Include="$(PayloadZip)" LogicalName="payload.zip" />
+  </ItemGroup>
+
+</Project>
