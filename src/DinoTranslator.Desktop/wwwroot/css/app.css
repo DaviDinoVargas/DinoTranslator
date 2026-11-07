@@ -374,6 +374,114 @@ select.field__input option {
   margin-top: 8px;
 }
 
+/* Aviso em destaque na tela inicial */
+
+.callout {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-left: 2px solid var(--ipe);
+  background: var(--ipe-fundo);
+  font-size: 13px;
+}
+
+.callout .button {
+  justify-self: start;
+}
+
+/* Teste de câmera, áudio e tradução */
+
+.devices {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.devices__panel {
+  display: grid;
+  width: min(880px, calc(100% - 32px));
+  gap: 12px;
+  margin: 0 auto;
+  padding: 24px 0;
+}
+
+.devices__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .devices__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.devices__preview {
+  position: relative;
+  margin: 0;
+  aspect-ratio: 16 / 9;
+  border-top: 2px solid var(--ipe);
+  background: #000;
+}
+
+.devices__preview video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: scaleX(-1);
+}
+
+.devices__preview figcaption {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  padding: 4px 10px;
+  background: rgba(18, 17, 15, .82);
+  font: 12px Consolas, monospace;
+}
+
+.meter {
+  height: 6px;
+  margin-top: -6px;
+  background: var(--superficie-2);
+}
+
+.meter__fill {
+  width: 0;
+  height: 100%;
+  background: var(--ok);
+  transition: width 60ms linear;
+}
+
+.meter__fill--loud {
+  background: var(--ipe);
+}
+
+.devices__translation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.devices__results {
+  display: flex;
+  max-height: 320px;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.devices__results .bubble {
+  max-width: 100%;
+  align-self: stretch;
+}
+
 /* Lista de verificação (teste de rede e de dispositivos) */
 
 .checklist {
