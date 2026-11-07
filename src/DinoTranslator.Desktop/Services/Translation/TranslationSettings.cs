@@ -22,7 +22,13 @@ public enum TranslationProvider
 
 /// <summary>Motor de reconhecimento e tradução deste computador.</summary>
 /// <param name="LocalModel">Só no motor local: modelo de reconhecimento escolhido.</param>
-public sealed partial record TranslationSettings(TranslationProvider Provider, string? Region, string? Key, WhisperModel? LocalModel = null)
+/// <param name="ModelsFolder">Só no motor local: pasta dos modelos, se não for a padrão.</param>
+public sealed partial record TranslationSettings(
+    TranslationProvider Provider,
+    string? Region,
+    string? Key,
+    WhisperModel? LocalModel = null,
+    string? ModelsFolder = null)
 {
     public static TranslationSettings None { get; } = new(TranslationProvider.None, null, null);
 
@@ -39,6 +45,8 @@ public sealed partial record TranslationSettings(TranslationProvider Provider, s
         TranslationProvider.AzureSpeech => null,
         TranslationProvider.Local when settings.LocalModel is not { } model || !Enum.IsDefined(model) =>
             "Escolha o modelo de reconhecimento.",
+        TranslationProvider.Local when settings.ModelsFolder is { } folder && ModelFolder.ValidatePath(folder) is { } folderError =>
+            folderError,
         TranslationProvider.Local => null,
 #if DEBUG
         TranslationProvider.Simulated => null,

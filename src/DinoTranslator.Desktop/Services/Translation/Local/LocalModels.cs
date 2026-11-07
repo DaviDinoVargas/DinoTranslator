@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.IO;
+using System.Security.Cryptography;
 
 namespace DinoTranslator.Desktop.Services.Translation.Local;
 
@@ -61,16 +63,27 @@ public static class LocalModels
         [Whisper(model), TranslatorEncoder, TranslatorDecoder, TranslatorVocabulary];
 
     public static long DownloadSize(WhisperModel model) => Required(model).Sum(f => f.Size);
+
+    public static IReadOnlyList<ModelFile> All { get; } =
+        [WhisperTurbo, WhisperSmall, TranslatorEncoder, TranslatorDecoder, TranslatorVocabulary];
 }
 
-/// <summary>Pasta dos modelos em %LOCALAPPDATA%\DinoTranslator\modelos.</summary>
+/// <summary>
+/// Pasta dos modelos: %LOCALAPPDATA%\DinoTranslator\modelos por padrão, ou outra escolhida
+/// nas configurações (ex.: em outro disco).
+/// </summary>
 public sealed class ModelFolder(string path)
 {
+    public const int MaxPathLength = 200;
+
+    /// <summary>Arquivos já conferidos nesta sessão: o SHA-256 de 1,5 GB leva alguns segundos.</summary>
+    private static readonly ConcurrentDictionary<string, (long Length, DateTime WrittenUtc)> Verified = new(StringComparer.OrdinalIgnoreCase);
+
     public string Path { get; } = path;
 
     public string PathOf(ModelFile file) => System.IO.Path.Combine(Path, file.FileName);
 
-    /// <summary>Instalado = existe com o tamanho certo; o SHA-256 é conferido ao baixar.</summary>
+    /// <summary>Instalado = existe com o tamanho certo; o SHA-256 é conferido ao baixar e ao carregar.</summary>
     public bool IsInstalled(ModelFile file)
     {
         var info = new FileInfo(PathOf(file));
@@ -79,11 +92,69 @@ public sealed class ModelFolder(string path)
 
     public bool IsInstalled(WhisperModel model) => LocalModels.Required(model).All(IsInstalled);
 
+    /// <summary>
+    /// Confere o SHA-256 antes de carregar: a pasta pode ficar fora da área protegida do
+    /// usuário, e um modelo trocado não pode chegar ao motor.
+    /// </summary>
+    public void Verify(ModelFile file)
+    {
+        var info = new FileInfo(PathOf(file));
+        if (!info.Exists || info.Length != file.Size)
+        {
+            throw new ModelDownloadException($"{file.FileName} não está na pasta dos modelos. Baixe de novo nas configurações.");
+        }
+        if (Verified.TryGetValue(info.FullName, out var known) && known == (info.Length, info.LastWriteTimeUtc))
+        {
+            return;
+        }
+
+        using var stream = new FileStream(info.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024);
+        var actual = Convert.ToHexStringLower(SHA256.HashData(stream));
+        if (actual != file.Sha256)
+        {
+            throw new ModelDownloadException($"{file.FileName} foi alterado e não será usado. Baixe de novo nas configurações.");
+        }
+        Verified[info.FullName] = (info.Length, info.LastWriteTimeUtc);
+    }
+
+    /// <summary>Apaga só os arquivos do catálogo; a pasta só some se ficar vazia.</summary>
     public void Remove()
     {
-        if (Directory.Exists(Path))
+        if (!Directory.Exists(Path))
         {
-            Directory.Delete(Path, recursive: true);
+            return;
         }
+        foreach (var file in LocalModels.All)
+        {
+            File.Delete(PathOf(file));
+            File.Delete(PathOf(file) + ".part");
+        }
+        if (!Directory.EnumerateFileSystemEntries(Path).Any())
+        {
+            Directory.Delete(Path);
+        }
+    }
+
+    /// <summary>Espaço livre no disco da pasta, ou <c>null</c> se não der para saber.</summary>
+    public long? FreeSpace()
+    {
+        var root = System.IO.Path.GetPathRoot(Path);
+        return root is not null && new DriveInfo(root) is { IsReady: true } drive ? drive.AvailableFreeSpace : null;
+    }
+
+    /// <summary>Pasta aceita: caminho completo num disco fixo deste computador, sem pasta de rede.</summary>
+    public static string? ValidatePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path.Length > MaxPathLength
+            || !System.IO.Path.IsPathFullyQualified(path) || path.StartsWith(@"\\", StringComparison.Ordinal))
+        {
+            return "Escolha uma pasta num disco deste computador.";
+        }
+        var root = System.IO.Path.GetPathRoot(path);
+        if (root is null || new DriveInfo(root) is not { IsReady: true, DriveType: DriveType.Fixed })
+        {
+            return "Escolha uma pasta num disco fixo deste computador (não de rede nem removível).";
+        }
+        return null;
     }
 }

@@ -32,6 +32,11 @@ public sealed partial class LocalSpeechRuntime : IDisposable
 
     public static LocalSpeechRuntime Load(ModelFolder folder, WhisperModel model)
     {
+        foreach (var file in LocalModels.Required(model))
+        {
+            folder.Verify(file);
+        }
+
         RuntimeOptions.RuntimeLibraryOrder = [RuntimeLibrary.Vulkan, RuntimeLibrary.Cpu];
         var whisper = WhisperFactory.FromPath(folder.PathOf(LocalModels.Whisper(model)), new WhisperFactoryOptions { UseGpu = true });
         try
