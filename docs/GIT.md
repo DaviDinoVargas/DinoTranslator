@@ -11,12 +11,12 @@ Repositório: <https://github.com/DaviDinoVargas/DinoTranslator>
 |--------------|-----------------------------------------------------------------|
 | `docs`       | `docs/planejamento`                                             |
 | `base`       | `base/estrutura`                                                |
-| `servidor`   | `servidor/autenticacao`, `servidor/sinalizacao`, `servidor/traducao` |
-| `cliente`    | `cliente/shell`, `cliente/design`, `cliente/chamada`, `cliente/tela`, `cliente/legendas` |
+| `servidor`   | `servidor/autenticacao`, `servidor/sinalizacao` (modo servidor, opcional) |
+| `cliente`    | `cliente/shell`, `cliente/perfil`, `cliente/codigo-chamada`, `cliente/chamada`, `cliente/tela`, `cliente/traducao`, `cliente/legendas`, `cliente/design` |
+| `shared`     | `shared/idiomas`                                                |
 | `chat`       | `chat/texto`, `chat/falas`                                      |
 | `instalador` | `instalador/wix`                                                |
 | `infra`      | `infra/deploy`                                                  |
-| `tools`      | `tools/bench`                                                   |
 
 ## Commits
 
