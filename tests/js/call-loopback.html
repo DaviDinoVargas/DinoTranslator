@@ -117,6 +117,13 @@
       await waitFor(() => b.state.errors.some((e) => e.includes("certificado")), "recusa de certificado trocado");
       checks.certificado_trocado_recusado = true;
 
+      // ---- Fala para a tradução: blocos de 100 ms em 16 kHz dos dois lados ----
+      const speech = { local: [], remote: [] };
+      await a.instance.enableSpeechCapture((who, bytes) => speech[who].push(bytes.length));
+      await waitFor(() => speech.local.length >= 5 && speech.remote.length >= 5, "fala capturada dos dois lados");
+      checks.fala_blocos_de_100ms = speech.local.slice(0, 5).every((n) => n === 3200) && speech.remote.slice(0, 5).every((n) => n === 3200);
+      a.instance.disableSpeechCapture();
+
       // ---- Tela 2K ----
       await a.instance.startScreenShare({ mode: "detail", stream: syntheticStream("#e0662f", 2560, 1440, false) });
       await waitFor(() => b.state.remoteScreen, "tela chegando em B");
