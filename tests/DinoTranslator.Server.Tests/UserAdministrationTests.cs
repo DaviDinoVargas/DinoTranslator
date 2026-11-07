@@ -51,7 +51,7 @@ public sealed class UserAdministrationTests : IDisposable
     [Fact]
     public async Task Idioma_nao_suportado_e_recusado()
     {
-        await Assert.ThrowsAsync<UserAdministrationException>(() => _factory.CreateUserAsync("dino", language: "en-US"));
+        await Assert.ThrowsAsync<UserAdministrationException>(() => _factory.CreateUserAsync("dino", language: "fr-FR"));
     }
 
     [Fact]

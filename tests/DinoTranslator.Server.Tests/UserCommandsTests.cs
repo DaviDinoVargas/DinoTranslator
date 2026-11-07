@@ -64,7 +64,7 @@ public sealed class UserCommandsTests : IDisposable
     public async Task Erro_de_validacao_e_mostrado_sem_excecao()
     {
         var (exitCode, output) = await RunAsync(
-            ["add", "dino", "--nome", "Dino", "--idioma", "en-US"],
+            ["add", "dino", "--nome", "Dino", "--idioma", "fr-FR"],
             interactive: false, "senha-de-teste-forte");
 
         Assert.Equal(1, exitCode);
