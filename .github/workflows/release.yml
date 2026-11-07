@@ -1,0 +1,66 @@
+# Release automática: cada push na main testa, gera o instalador e publica uma versão nova
+# (0.2.N, N = número da execução) com o instalador e o SHA-256.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Versão
+        id: versao
+        shell: pwsh
+        run: |
+          $base = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.DinoVersionBase | Where-Object { $_ } | Select-Object -First 1
+          "versao=$base.${{ github.run_number }}" >> $env:GITHUB_OUTPUT
+
+      - name: Testes
+        run: dotnet test DinoTranslator.sln -c Release -p:Version=${{ steps.versao.outputs.versao }} --filter "FullyQualifiedName!~LocalModelsIntegration" -nologo
+
+      - name: Instalador
+        shell: pwsh
+        run: ./tools/criar-instalador.ps1 -Versao ${{ steps.versao.outputs.versao }}
+
+      - name: Publicar a release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSAO: ${{ steps.versao.outputs.versao }}
+        run: |
+          $anterior = git describe --tags --abbrev=0 HEAD^ 2>$null
+          $intervalo = if ($anterior) { "$anterior..HEAD" } else { "HEAD" }
+          $mudancas = git log $intervalo --no-merges --pretty="- %s" | Select-Object -First 60
+          $hash = (Get-Content "artifacts/DinoTranslatorSetup-$env:VERSAO.exe.sha256").Split(" ")[0]
+          $notas = @(
+            "Instalador para Windows 10/11 (64 bits). Não exige .NET nem administrador."
+            ""
+            "O instalador ainda não é assinado: se o Windows mostrar ""O Windows protegeu o computador"", clique em Mais informações › Executar assim mesmo."
+            ""
+            "## Mudanças"
+            $mudancas
+            ""
+            "SHA-256 do instalador: ``$hash``"
+          ) -join "`n"
+          Set-Content -Path notas.md -Value $notas -Encoding utf8
+          gh release create "v$env:VERSAO" "artifacts/DinoTranslatorSetup-$env:VERSAO.exe" "artifacts/DinoTranslatorSetup-$env:VERSAO.exe.sha256" `
+            --target "${{ github.sha }}" --title "DinoTranslator $env:VERSAO" --notes-file notas.md
