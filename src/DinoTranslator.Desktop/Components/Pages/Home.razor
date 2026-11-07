@@ -1,6 +1,7 @@
 @page "/"
 @inject DesktopSettings Settings
 @inject ProfileStore Profiles
+@inject DinoTranslator.Desktop.Services.Translation.TranslationSettingsStore Translation
 @inject NavigationManager Navigation
 
 @if (Settings.Mode == ConnectionMode.Code)
@@ -27,6 +28,12 @@
           </p>
           <button type="button" class="button button--quiet" @onclick="() => _editing = true">Editar perfil</button>
         </div>
+        <button type="button" class="setting-row" @onclick="@(() => Navigation.NavigateTo("/configuracoes/traducao"))">
+          <span class="setting-row__label">Tradução</span>
+          <span class="setting-row__value">
+            @(Translation.Current.IsConfigured ? TranslationSettingsPage.Describe(Translation.Current) : "configurar")
+          </span>
+        </button>
         <div class="home__actions">
           <button type="button" class="button button--primary" @onclick="@(() => Navigation.NavigateTo("/chamada/convite"))">Nova chamada</button>
           <button type="button" class="button" @onclick="@(() => Navigation.NavigateTo("/chamada/entrar"))">Entrar com código</button>

@@ -1,0 +1,47 @@
+@using DinoTranslator.Shared.Call
+@implements IDisposable
+@inject CallSession Call
+
+@* Legenda de cada pessoa: a da outra traduzida em destaque, com o original menor em cima;
+   a sua em destaque como foi reconhecida, com o que a outra pessoa está lendo embaixo. *@
+<section class="captions" aria-live="polite" aria-label="Legendas">
+  @{ var visible = Call.Captions.Visible(); }
+  @if (visible.Count == 0 && Call.TranslationNotice is { } notice)
+  {
+    <p class="captions__notice">@notice</p>
+  }
+  @foreach (var caption in visible)
+  {
+    var ending = caption.Final ? "" : "…";
+    <article class="caption caption--@(caption.Owner == CaptionOwner.Me ? "me" : "other") @(caption.Final ? "" : "caption--partial")">
+      @if (caption.Owner == CaptionOwner.Other)
+      {
+        @if (caption.TranslatedText is not null)
+        {
+          <p class="caption__secondary" lang="@caption.SourceLanguage">@caption.SourceText@ending</p>
+        }
+        <p class="caption__main" lang="@(caption.TranslatedText is null ? caption.SourceLanguage : caption.TargetLanguage)">
+          @(caption.TranslatedText ?? caption.SourceText)@ending
+        </p>
+      }
+      else
+      {
+        <p class="caption__main caption__main--mine" lang="@caption.SourceLanguage">@caption.SourceText@ending</p>
+        @if (caption.TranslatedText is { } translated)
+        {
+          <p class="caption__secondary" lang="@caption.TargetLanguage">@translated@ending</p>
+        }
+      }
+    </article>
+  }
+</section>
+
+@code {
+    // Sem parâmetros, o componente não é redesenhado junto com a tela da chamada:
+    // acompanha as mudanças da sessão por conta própria.
+    protected override void OnInitialized() => Call.Changed += OnCallChanged;
+
+    private void OnCallChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Call.Changed -= OnCallChanged;
+}
