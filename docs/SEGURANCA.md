@@ -44,11 +44,13 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 - O app não abre portas de entrada nem fica escutando conexões fora de uma chamada.
 - Renegociação de mídia só é aceita pelo canal de sinal e com o mesmo certificado DTLS do início da chamada.
 
-### 3.3 Chaves dos motores (`cliente/traducao`)
+### 3.3 Motores de tradução (`cliente/traducao`)
 
-- Configuradas só no computador do anfitrião, cifradas com DPAPI (usuário atual + entropia própria).
-- Nunca enviadas pela chamada, nunca em log.
-- Áudio enviado aos motores só pelo tempo da chamada; preferência por provedores com opção de não reter dados.
+- Região e chave configuradas só no computador que traduz, cifradas com DPAPI (usuário atual + entropia própria) em `motores.dat`; a chave não volta a ser exibida na tela.
+- Nunca enviadas pela chamada, nunca em log; erros do serviço viram frases sem detalhes internos.
+- Áudio enviado ao motor só durante a chamada, a partir da captura do próprio app (blocos de até 64 KB).
+- Legendas recebidas são aceitas só de quem foi escolhido para traduzir e passam pela mesma validação das mensagens do canal.
+- O motor simulado e a variável que o liga existem só no build Debug.
 
 ### 3.4 Dados locais
 
