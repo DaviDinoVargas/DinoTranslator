@@ -1,10 +1,14 @@
 # Teste de ponta a ponta da chamada por código, no próprio computador.
 # Abre dois apps (build Debug) com perfis separados — Dino (pt-BR) e Anna (ru-RU) —,
 # troca convite e resposta pela interface e confere conexão, código de segurança,
-# mídia e encerramento. Câmera e microfone são simulados pelo WebView2.
+# mídia, tela compartilhada em 2K e encerramento. Câmera e microfone são simulados pelo
+# WebView2; a captura de tela real escolhe sozinha a janela do próprio app.
 #
 # Uso (na raiz do repositório, depois de "dotnet build"):
 #   powershell -File tests/e2e/chamada.ps1
+#   powershell -File tests/e2e/chamada.ps1 -Shots C:\caminho\prefixo   (salva imagens da interface)
+
+param([string]$Shots)
 
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path "$PSScriptRoot\..\.."
@@ -25,15 +29,17 @@ try {
         [IO.File]::WriteAllText("$($person.Folder)\perfil.json", $person.Profile)
         # Variáveis lidas só pelo build Debug; a versão final as ignora.
         $env:DINOTRANSLATOR_DATA = $person.Folder
-        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$($person.Port) --use-fake-ui-for-media-stream --use-fake-device-for-media-stream"
+        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$($person.Port) --use-fake-device-for-media-stream --auto-select-desktop-capture-source=DinoTranslator"
         $processes += Start-Process -FilePath $exe.FullName -PassThru
     }
     Remove-Item Env:DINOTRANSLATOR_DATA, Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
 
+    if ($Shots) { $env:E2E_SHOTS = $Shots }
     node "$PSScriptRoot\chamada.mjs" 9301 9302
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 finally {
+    Remove-Item Env:E2E_SHOTS -ErrorAction SilentlyContinue
     foreach ($process in $processes) {
         if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force -Confirm:$false }
     }

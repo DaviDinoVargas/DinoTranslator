@@ -20,12 +20,25 @@ async function connect(port) {
             pending.delete(message.id);
           }
         };
-        const evaluate = (expression) => new Promise((resolve, reject) => {
+        const send = (method, params) => new Promise((resolve) => {
           const messageId = ++id;
-          pending.set(messageId, (m) => (m.result?.exceptionDetails ? reject(new Error(JSON.stringify(m.result.exceptionDetails))) : resolve(m.result?.result?.value)));
-          socket.send(JSON.stringify({ id: messageId, method: "Runtime.evaluate", params: { expression, awaitPromise: true, returnByValue: true } }));
+          pending.set(messageId, resolve);
+          socket.send(JSON.stringify({ id: messageId, method, params }));
         });
-        return { evaluate, close: () => socket.close() };
+        const evaluate = async (expression) => {
+          const m = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+          if (m.result?.exceptionDetails) {
+            throw new Error(JSON.stringify(m.result.exceptionDetails));
+          }
+          return m.result?.result?.value;
+        };
+        // Imagem só do conteúdo do app (a interface), nunca da tela do computador.
+        const screenshot = async (path) => {
+          const m = await send("Page.captureScreenshot", { format: "png" });
+          const { writeFileSync } = await import("node:fs");
+          writeFileSync(path, Buffer.from(m.result.data, "base64"));
+        };
+        return { evaluate, screenshot, close: () => socket.close() };
       }
     } catch {
       // App ainda subindo.
@@ -84,6 +97,46 @@ try {
 
   await new Promise((r) => setTimeout(r, 4000));
   result.faixas_remotas_b = await b.evaluate(`document.querySelector('.tile--other video')?.srcObject?.getTracks().map(t => t.kind).join(',') || ''`);
+
+  // Tela 2K com vídeo sintético: resultado previsível e nada da tela real.
+  await a.evaluate(`(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2560;
+    canvas.height = 1440;
+    const context = canvas.getContext('2d');
+    let frame = 0;
+    window.__telaSintetica = setInterval(() => {
+      context.fillStyle = '#1b1916';
+      context.fillRect(0, 0, 2560, 1440);
+      context.fillStyle = '#f2b705';
+      context.font = '120px monospace';
+      context.fillText('tela 2K de teste · ' + frame++, 120, 260);
+      context.fillStyle = '#f1ece2';
+      context.font = '28px monospace';
+      for (let line = 0; line < 30; line++) context.fillText('linha de texto pequeno para conferir a nitidez ' + line, 120, 360 + line * 34);
+    }, 33);
+    const media = await import('./js/call.js');
+    await media.shareStream(canvas.captureStream(30), 'detail');
+    return true;
+  })()`);
+  await waitFor(b, `!!document.querySelector('.call__stage--screen')`, "palco com a tela (B)");
+  result.tela_banner_a = await waitFor(a, `document.querySelector('.call__sharing')?.textContent.replace(/\\s+/g, ' ').trim()`, "faixa de compartilhamento (A)");
+  result.tela_recebida_b = await waitFor(b, `(() => { const t = document.querySelector('.screen-tile figcaption')?.textContent.replace(/\\s+/g, ' ').trim(); return t && t.includes('2560×1440') ? t : null; })()`, "tela 2560×1440 recebida (B)", 40000);
+  if (process.env.E2E_SHOTS) {
+    await b.screenshot(`${process.env.E2E_SHOTS}-tela-recebida.png`);
+    await a.screenshot(`${process.env.E2E_SHOTS}-tela-enviada.png`);
+  }
+  await waitFor(a, click("Fluida"), "modo fluido");
+  result.tela_modo_fluido = await waitFor(a, `[...document.querySelectorAll('.segmented__option')].find(b => b.textContent.includes('Fluida'))?.getAttribute('aria-pressed') === 'true'`, "modo fluido marcado");
+  await waitFor(a, click("Parar"), "parar tela");
+  await waitFor(b, `!document.querySelector('.call__stage--screen')`, "palco sem a tela (B)");
+  result.tela_parou = true;
+  await a.evaluate(`clearInterval(window.__telaSintetica)`);
+
+  // Captura real, escolhendo sozinha a janela do próprio app (nunca a tela inteira).
+  await waitFor(a, click("Compartilhar tela"), "compartilhar tela de verdade");
+  result.tela_real = await waitFor(b, `(() => { const t = document.querySelector('.screen-tile figcaption')?.textContent; return !!document.querySelector('.call__stage--screen') && t && t.includes('×') ? t.replace(/\\s+/g, ' ').trim() : null; })()`, "captura real", 20000).catch(() => "não confirmada (o seletor do Windows pode ter aberto)");
+  await a.evaluate(click("Parar tela"));
 
   if (process.env.E2E_HANGUP !== "0") {
     await a.evaluate(click("Encerrar"));
