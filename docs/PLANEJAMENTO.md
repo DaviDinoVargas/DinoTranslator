@@ -1,35 +1,37 @@
 # DinoTranslator — Planejamento
 
-> Chamada de vídeo com tradução simultânea português ⇄ russo para dois usuários: um no Brasil e outro na Rússia.
-> Versão 1 · 03/11/2026
+> Chamada de vídeo com tradução simultânea em texto entre duas pessoas. No modo padrão não há servidor: a conexão é feita por um código de chamada e vai direto de um computador ao outro.
+> Versão 2 · 07/11/2026
 
 ---
 
 ## 1. Requisitos
 
-| #   | Requisito                                         | Como o plano atende                                                                 |
-|-----|---------------------------------------------------|-------------------------------------------------------------------------------------|
+| #   | Requisito                                          | Como o plano atende                                                                 |
+|-----|----------------------------------------------------|-------------------------------------------------------------------------------------|
 | R1  | Tradução ao vivo, em texto, enquanto a pessoa fala | Legenda provisória palavra a palavra e legenda final na tela, sem voz sintetizada (seção 4) |
-| R2  | Tradução assertiva                                | Tradução com contexto da conversa, glossário, gênero e tratamento; motores escolhidos por teste com a fala real (4.3 e 4.4) |
-| R3  | Ping baixo                                        | Mídia P2P direta (WebRTC), TURN só como reserva, buffer de jitter mínimo (5.1)      |
-| R4  | Câmera dos dois na tela                           | Dois quadros sempre visíveis, inclusive durante o compartilhamento de tela (6)      |
-| R5  | Áudio da mais alta qualidade                      | Opus 48 kHz até 128 kb/s, FEC, modo alta fidelidade com fones (5.2)                  |
-| R6  | Compartilhamento de tela até 2K                   | 2560×1440 a até 30 fps, AV1/VP9/H.264, prioridade à nitidez (5.4)                    |
-| R7  | Chat de texto com tradutor                        | Mensagens traduzidas automaticamente, com o original disponível (6.3)               |
-| R8  | Segundo chat com as falas em forma de mensagem    | Painel "Falas": cada trecho falado vira uma mensagem com original e tradução (6.3)  |
-| R9  | Layout próprio, não genérico                      | Identidade visual própria, definida em [DESIGN.md](DESIGN.md)                        |
-| R10 | Login e senha, só esses dois usuários             | Sem cadastro público; as duas contas são criadas no servidor; limite rígido de 2 (3.3) |
+| R2  | Tradução assertiva                                 | Tradução com contexto da conversa, glossário, gênero e tratamento (4.3)             |
+| R3  | Ping baixo                                         | Mídia P2P direta (WebRTC), buffer de jitter mínimo (5.1)                            |
+| R4  | Câmera dos dois na tela                            | Dois quadros sempre visíveis, inclusive durante o compartilhamento de tela (6)      |
+| R5  | Áudio da mais alta qualidade                       | Opus 48 kHz até 128 kb/s, FEC, modo alta fidelidade com fones (5.2)                  |
+| R6  | Compartilhamento de tela até 2K                    | 2560×1440 a até 30 fps, AV1/VP9/H.264, prioridade à nitidez (5.4)                    |
+| R7  | Chat de texto com tradutor                         | Mensagens traduzidas automaticamente, com o original disponível (6.3)               |
+| R8  | Segundo chat com as falas em forma de mensagem     | Painel "Falas": cada trecho falado vira uma mensagem com original e tradução (6.3)  |
+| R9  | Layout próprio, não genérico                       | Identidade visual própria, definida em [DESIGN.md](DESIGN.md)                        |
+| R10 | Só quem recebe o código entra na chamada           | Código de uso único, com validade, que carrega a chave da chamada (3.2)             |
 | R11 | Executável com instalador e desinstalador próprios | WiX (Burn) com interface própria em WPF, no visual do app (7)                       |
-| R12 | Desenvolvido em C#                                | Cliente, servidor e instalador em C#/.NET                                           |
-| R13 | App seguro                                        | Mídia cifrada ponta a ponta, login reforçado, cliente e servidor endurecidos (8 e [SEGURANCA.md](SEGURANCA.md)) |
+| R12 | Desenvolvido em C#                                 | App e instalador em C#/.NET                                                         |
+| R13 | App seguro                                         | Mídia cifrada ponta a ponta, nenhum servidor, app travado (8 e [SEGURANCA.md](SEGURANCA.md)) |
+| R14 | Sem servidor e sem login (servidor opcional)       | Conexão por código de convite e de resposta (3.2); servidor com login mantido como modo opcional (3.4) |
+| R15 | Idiomas: português (Brasil), inglês, ucraniano, russo e espanhol | Cada pessoa escolhe o próprio idioma; qualquer par é traduzido (4)    |
 
-## 2. Premissas (confirmar — ver seção 12)
+## 2. Premissas
 
-- Os dois usam **Windows 10 ou 11** — o executável é para Windows.
-- Uso **pessoal**, só entre os dois.
-- Cada usuário tem **idioma fixo**: Brasil = `pt-BR`, Rússia = `ru-RU`. Sem detecção automática de idioma, o reconhecimento fica mais preciso.
-- Tradução **direta** PT ⇄ RU, sem passar pelo inglês.
-- Haverá um **servidor** próprio (VPS), necessário para login, chat, tradução e como reserva de conexão.
+- Os dois usam **Windows 10 (versão 2004 ou mais nova) ou 11**.
+- Uso **pessoal**, entre duas pessoas por chamada.
+- Cada pessoa fala **um idioma por chamada**, escolhido no perfil: `pt-BR`, `en-US`, `uk-UA`, `ru-RU` ou `es-ES`.
+- Os códigos da chamada são trocados por um mensageiro que vocês já usam (Telegram, WhatsApp etc.).
+- A conexão direta entre as redes dos dois funciona. Se não funcionar em algum caso, o ajuste fica para depois (ver riscos).
 
 ---
 
@@ -37,106 +39,127 @@
 
 ```
 ┌───────────────────────────┐                      ┌───────────────────────────┐
-│ App Windows · Brasil      │   mídia P2P direta   │ App Windows · Rússia      │
+│ App Windows · anfitrião   │   mídia P2P direta   │ App Windows · convidado   │
 │ WPF + Blazor Hybrid (C#)  │◄════════════════════►│ WPF + Blazor Hybrid (C#)  │
-│ WebRTC do WebView2        │  câmera · áudio · 2K │ WebRTC do WebView2        │
-└─────────────┬─────────────┘                      └─────────────┬─────────────┘
-              │ HTTPS · SignalR · WebSocket de áudio             │
-              ▼                                                  ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ Servidor DinoTranslator · ASP.NET Core (C#) · VPS na Europa                  │
-│ login e JWT · sinalização WebRTC · chat · tradução (STT → texto traduzido)   │
-│ SQLite · coturn (TURN de reserva em TLS/443) · Caddy (HTTPS)                 │
-└──────────────────────────────────────────────────────────────────────────────┘
+│ WebRTC do WebView2        │ câmera · áudio · 2K  │ WebRTC do WebView2        │
+│ tradução dos dois lados   │ legendas · chat      │                           │
+└─────────────┬─────────────┘                      └───────────────────────────┘
+              │ HTTPS, só a partir do anfitrião
+              ▼
+   serviços de reconhecimento de fala e tradução
 ```
 
-A **mídia** (câmera, áudio, tela) vai direto de um computador ao outro — é o caminho de menor ping. O **servidor** cuida do que precisa de um ponto central: login, troca de mensagens de conexão, chats e tradução.
+No modo padrão não há servidor do DinoTranslator. Tudo o que a chamada transporta — câmera, áudio, tela, legendas e chat — vai direto de um computador ao outro, cifrado de ponta a ponta. Cada lado só consulta um servidor STUN público para descobrir o próprio endereço na internet; nenhum dado da chamada passa por ele.
 
-### 3.1 Cliente desktop (Windows)
+### 3.1 App desktop (Windows)
 
-| Peça                      | Tecnologia                               | Papel                                                                 |
-|---------------------------|------------------------------------------|-----------------------------------------------------------------------|
-| Janela e serviços nativos | .NET + WPF                               | Janela com barra de título própria, login guardado com DPAPI, integração com o instalador |
-| Interface                 | Blazor Hybrid (BlazorWebView) + CSS próprio | Todas as telas em componentes Razor (C#); liberdade total de visual   |
-| Mídia                     | WebRTC do Chromium via WebView2 + módulo TypeScript | Câmera, áudio, tela, conexão P2P, estatísticas de ping           |
+| Peça                      | Tecnologia                                           | Papel                                                                 |
+|---------------------------|------------------------------------------------------|-----------------------------------------------------------------------|
+| Janela e serviços nativos | .NET 10 + WPF                                        | Janela com barra de título própria, dados locais cifrados com DPAPI, integração com o instalador |
+| Interface                 | Blazor Hybrid (BlazorWebView) + CSS próprio          | Todas as telas em componentes Razor (C#); liberdade total de visual   |
+| Mídia                     | WebRTC do Chromium via WebView2 + módulo JavaScript  | Câmera, áudio, tela, conexão P2P, canal de dados, estatísticas de ping |
+| Código da chamada         | C#                                                   | Monta, valida e lê os códigos de convite e de resposta                |
 
-**Por que o WebRTC do WebView2 e não uma biblioteca 100% C#:** o WebView2 traz o mesmo motor de chamadas do Chrome/Edge — codificação por hardware, AV1/VP9/H.264, cancelamento de eco, captura de tela. As bibliotecas WebRTC em .NET (ex.: SIPSorcery) não têm cancelamento de eco nem codificação por hardware, e não sustentariam tela 2K com boa qualidade. A lógica do app continua em C#; o TypeScript fica restrito à camada de mídia.
+**Por que o WebRTC do WebView2 e não uma biblioteca 100% C#:** o WebView2 traz o mesmo motor de chamadas do Chrome/Edge — codificação por hardware, AV1/VP9/H.264, cancelamento de eco, captura de tela. As bibliotecas WebRTC em .NET não têm cancelamento de eco nem codificação por hardware. A lógica do app continua em C#; o JavaScript fica restrito à camada de mídia.
 
-### 3.2 Servidor
+### 3.2 Código da chamada
 
-Um único serviço ASP.NET Core:
+Sem servidor, os dois apps precisam trocar os dados de conexão por vocês:
 
-- **Autenticação**: usuário e senha → JWT de acesso (15 min) + refresh token rotativo (guardado como hash).
-- **SignalR** `/hubs/sala`: presença, sinalização WebRTC (offer/answer/ICE), chat, legendas e falas.
-- **WebSocket** `/ws/audio`: recebe o áudio do microfone (16 kHz) só para reconhecimento de fala.
-- **Pipeline de tradução** com interfaces plugáveis (`ISpeechRecognizer`, `ITranslator`).
-- **EF Core + SQLite**: usuários, tokens, mensagens do chat, falas.
-- **coturn**: STUN/TURN com credenciais temporárias (HMAC) emitidas pelo servidor.
-- **Caddy**: HTTPS automático. Implantação com Docker Compose.
+1. **Anfitrião** clica em "Nova chamada"; o app gera um **código de convite**.
+2. O anfitrião envia o código pelo mensageiro.
+3. **Convidado** cola o convite no app, que gera um **código de resposta**.
+4. O convidado envia a resposta pelo mensageiro.
+5. O anfitrião cola a resposta e a chamada conecta direto entre os dois.
 
-### 3.3 Login — somente dois usuários
+O código:
 
-- **Não existe tela de cadastro.** As contas são criadas no servidor por comando (`users add`), com limite rígido de 2 (configurável). Uma terceira conta é recusada.
-- Senha com hash PBKDF2 (`PasswordHasher` do ASP.NET Core Identity), mínimo de 10 caracteres.
-- Bloqueio de 15 min após 5 tentativas erradas; mensagem de erro sempre genérica.
-- JWT curto + refresh token rotativo; sair revoga o refresh token; o app guarda o refresh token cifrado com DPAPI (só o usuário do Windows consegue ler).
-- Tudo via HTTPS/WSS. Segundo fator (TOTP) opcional na fase de robustez.
+- Tem o formato `DT1.` seguido de texto em base64url — algumas centenas de caracteres, para copiar e colar.
+- Leva: versão, tipo (convite ou resposta), identificador da chamada, horário de criação, perfil (nome, idioma, gênero, tratamento) e os dados de conexão WebRTC (credenciais ICE, impressão digital DTLS e candidatos de rede).
+- É comprimido e tem tamanho máximo; qualquer campo fora do esperado faz o código ser recusado.
+- **Vale uma vez e por 30 minutos.** Um convite aceita uma única resposta.
+- Carrega a impressão digital da criptografia da chamada: se chegar intacto, ninguém consegue se pôr no meio. Para conferir, os dois veem um **código de segurança** de 12 dígitos e comparam em voz alta.
+
+### 3.3 Quem traduz
+
+O **anfitrião** processa as duas falas: a dele pelo próprio microfone e a do convidado pelo áudio que já chega pela chamada. Ele envia as legendas e as traduções do chat ao convidado pelo canal de dados da chamada.
+
+- Só o computador do anfitrião fala com os serviços de reconhecimento e tradução; as chaves ficam só nele, cifradas com DPAPI, e nunca trafegam pela chamada.
+- Isso também evita os provedores que não atendem a Rússia: as requisições saem do computador do anfitrião.
+- O convidado não precisa configurar nada.
+
+### 3.4 Modo servidor (opcional, desligado)
+
+O servidor ASP.NET Core com login, presença e credenciais de TURN continua no repositório (`DinoTranslator.Server`), com seus testes, para ser reativado se precisar — por exemplo, um relay TURN se a conexão direta falhar em alguma rede.
+
+- O app escolhe o modo em `appsettings.json`: `"Conexao": { "Modo": "codigo" }` (padrão) ou `"servidor"`.
+- No modo servidor, valem as telas de login e de sala com presença e os controles da seção "Modo servidor" de [SEGURANCA.md](SEGURANCA.md).
 
 ---
 
 ## 4. Tradução simultânea
 
-### 4.1 O que esperar
+### 4.1 Idiomas
 
-Latência zero não existe: português e russo têm ordem de palavras diferente, e o sistema precisa ouvir parte da frase antes de traduzir com segurança. Intérpretes humanos costumam ficar de 2 a 5 segundos atrás. Metas:
+| Código  | Idioma               |
+|---------|----------------------|
+| `pt-BR` | Português (Brasil)   |
+| `en-US` | English              |
+| `uk-UA` | Українська           |
+| `ru-RU` | Русский              |
+| `es-ES` | Español              |
 
-| O que o ouvinte recebe                         | Atraso alvo                 |
-|------------------------------------------------|-----------------------------|
-| Texto original, palavra a palavra              | < 1 s                       |
-| Legenda traduzida **provisória** (vai se ajustando) | ~1 s                   |
-| Legenda traduzida **final**                    | ≤ 1,5 s depois da pausa     |
+A fala de cada pessoa é traduzida para o idioma da outra — qualquer combinação entre os cinco. Se os dois escolherem o mesmo idioma, a legenda mostra só a transcrição.
+
+### 4.2 O que esperar
+
+Latência zero não existe: os idiomas têm ordem de palavras diferente, e o sistema precisa ouvir parte da frase antes de traduzir com segurança. Intérpretes humanos costumam ficar de 2 a 5 segundos atrás. Metas:
+
+| O que o ouvinte recebe                              | Atraso alvo                 |
+|-----------------------------------------------------|-----------------------------|
+| Texto original, palavra a palavra                   | < 1 s                       |
+| Legenda traduzida **provisória** (vai se ajustando) | ~1 s                        |
+| Legenda traduzida **final**                         | ≤ 1,5 s depois da pausa     |
 
 A tradução é **só em texto na tela**: cada um ouve a voz original do outro, com toda a qualidade, e lê a tradução.
 
-### 4.2 Fluxo, para cada pessoa que fala
+### 4.3 Fluxo, para cada pessoa que fala
 
 ```
-microfone ─► 16 kHz ─► VAD ─► STT streaming ─┬─ parcial ─► tradução rápida ─► legenda provisória
-                                             │
-                                             └─ final ───► tradução com contexto ─┬─► legenda final
-                                                                                  └─► painel Falas
+áudio ─► 16 kHz ─► VAD ─► STT streaming ─┬─ parcial ─► tradução rápida ─► legenda provisória
+                                         │
+                                         └─ final ───► tradução com contexto ─┬─► legenda final
+                                                                              └─► painel Falas
 ```
 
 1. **Provisória** — o STT envia hipóteses parciais; o trecho ainda instável é retraduzido a cada ~300–500 ms e aparece esmaecido.
-2. **Final** — quando o STT fecha o trecho (pausa ou fim de frase), a tradução definitiva substitui a provisória e o trecho entra no painel Falas. Um modo opcional fecha trechos em orações/vírgulas para frases longas aparecerem antes.
+2. **Final** — quando o STT fecha o trecho (pausa ou fim de frase), a tradução definitiva substitui a provisória e o trecho entra no painel Falas.
 
-### 4.3 Assertividade
+### 4.4 Assertividade
 
-- Idioma fixo por usuário (sem detecção automática).
+- Idioma fixo por pessoa durante a chamada (sem detecção automática).
 - Glossário da conversa (nomes, apelidos, lugares, termos) enviado ao STT como palavras-chave e ao tradutor.
-- Tradução final feita por um motor de tradução contextual, recebendo: as últimas ~10 falas dos dois, o glossário, o **gênero de quem fala** (no russo o verbo no passado concorda: "я пошёл" / "я пошла"; no português os adjetivos: "cansado" / "cansada") e o **tratamento** (ты informal / вы formal).
-- Duas passadas: tradução rápida para o provisório e tradução contextual para o final.
-- Números, moedas (R$, ₽) e datas mantidos sem conversão.
-- Cada um vê a própria transcrição e percebe na hora se foi mal reconhecido; um botão "corrigir" reenvia o texto corrigido para tradução.
+- Tradução final com contexto: as últimas ~10 falas dos dois, o glossário, o **gênero de quem fala** (russo e ucraniano: verbo no passado concorda — "я пошёл" / "я пошла"; português e espanhol: adjetivos — "cansado" / "cansada") e o **tratamento** (informal ou formal: ты/вы, ти/ви, tú/usted, você/o senhor).
+- Números, moedas e datas mantidos sem conversão.
+- Cada um vê a própria transcrição e percebe na hora se foi mal reconhecido.
 
-### 4.4 Motores de reconhecimento, tradução e voz
+### 4.5 Motores
 
-O servidor terá adaptadores por provedor; a escolha final sai da **Fase 0**, com gravações reais da fala dos dois.
+O app terá adaptadores por provedor; a escolha final sai de testes com a fala real de vocês.
 
-| Etapa           | Serviços em nuvem (candidatos)                                             | Auto-hospedado no servidor                             |
-|-----------------|----------------------------------------------------------------------------|--------------------------------------------------------|
-| VAD             | —                                                                          | Silero VAD (ONNX, CPU)                                 |
-| STT streaming   | Azure Speech (SDK C# nativo), Deepgram, Soniox, Speechmatics, Yandex SpeechKit | Whisper large-v3-turbo via Whisper.net (C#, CUDA); sherpa-onnx (C#) |
-| Tradução        | DeepL (biblioteca .NET, glossário e formalidade), Azure Translator, Yandex Translate | NLLB-200, MADLAD-400                        |
+| Etapa         | Serviços em nuvem (candidatos)                                      | No próprio computador                         |
+|---------------|---------------------------------------------------------------------|-----------------------------------------------|
+| VAD           | —                                                                   | Silero VAD (ONNX, CPU)                        |
+| STT streaming | Azure Speech (SDK C#), Deepgram, Soniox, Speechmatics               | Whisper large-v3-turbo via Whisper.net (GPU)  |
+| Tradução      | DeepL (biblioteca .NET, glossário e formalidade), Azure Translator, Yandex Translate | NLLB-200, MADLAD-400       |
 
+Todos os candidatos de tradução cobrem os cinco idiomas.
 
-> **Atenção — Rússia.** Vários provedores de nuvem dos EUA e da Europa não atendem a Rússia ou restringem o uso por quem está lá, mesmo com as chamadas saindo do seu servidor. Os termos de cada candidato serão lidos na Fase 0. Se for um impedimento, os caminhos são os modelos auto-hospedados no próprio servidor (exige GPU) ou provedores que atendem a Rússia (ex.: Yandex).
+### 4.6 Legibilidade
 
-### 4.5 Legibilidade
-
-- Legenda de no máximo 2 linhas por pessoa, com o trecho mais antigo saindo por cima; o histórico completo fica no painel Falas.
+- Legenda de no máximo 2 linhas por pessoa; o histórico completo fica no painel Falas.
 - Tamanho e posição da legenda ajustáveis; contraste alto sobre o vídeo.
-- Se a pessoa fala muito sem pausa, o trecho é fechado à força a cada ~12 s para a legenda não "correr" demais.
+- Se a pessoa fala muito sem pausa, o trecho é fechado a cada ~12 s.
 
 ---
 
@@ -144,38 +167,43 @@ O servidor terá adaptadores por provedor; a escolha final sai da **Fase 0**, co
 
 ### 5.1 Ping baixo
 
-- Conexão **P2P direta** entre os dois computadores; TURN só se a direta falhar.
-- Limite físico: São Paulo ⇄ Moscou são ~12 mil km; na prática a rede fica em **~200–260 ms de ida e volta**. O objetivo é chegar perto disso, com atraso boca-ouvido de ~150–250 ms.
-- Buffer de jitter mínimo no receptor (`jitterBufferTarget`), prioridade alta para o áudio, FEC do Opus para perdas.
+- Conexão **P2P direta** entre os dois computadores, sem servidor no meio.
+- Limite físico: entre Brasil e Rússia (~12 mil km), a rede fica em **~200–260 ms de ida e volta**. O objetivo é chegar perto disso, com atraso boca-ouvido de ~150–250 ms.
+- Buffer de jitter mínimo no receptor, prioridade alta para o áudio, FEC do Opus para perdas.
 - Indicador de ping, perda e taxa na barra de título (`getStats` a cada 1 s).
+- STUN públicos (Google e Cloudflare) só para descobrir o endereço de cada lado.
 
 ### 5.2 Áudio
 
-- Opus 48 kHz, quadros de 20 ms, FEC embutido, DTX desligado, até 128 kb/s (estéreo opcional).
+- Opus 48 kHz, quadros de 20 ms, FEC embutido, DTX desligado, até 128 kb/s.
 - **Modo normal**: cancelamento de eco, supressão de ruído e ganho automático.
-- **Modo alta fidelidade** (com fones): sem processamento — voz natural, como em estúdio.
+- **Modo alta fidelidade** (com fones): sem processamento — voz natural.
 - Escolha de microfone e saída de áudio nas configurações.
 
 ### 5.3 Câmera
 
-- Até 1080p a 30 fps, caindo para 720p automaticamente se a banda apertar; H.264 por hardware ou VP9.
-- As duas câmeras ficam sempre visíveis: lado a lado na conversa normal; numa coluna lateral durante o compartilhamento de tela.
+- Até 1080p a 30 fps, caindo para 720p automaticamente se a banda apertar.
+- As duas câmeras ficam sempre visíveis: lado a lado na conversa; numa coluna lateral durante o compartilhamento de tela.
 
 ### 5.4 Tela até 2K
 
 - 2560×1440 a até 30 fps.
-- Modo **texto** (código, documentos): nitidez máxima, mantém a resolução e reduz fps se preciso.
+- Modo **texto** (código, documentos): nitidez máxima, mantém a resolução.
 - Modo **movimento** (vídeo, jogos): mantém fps e reduz resolução se preciso.
 - Codec preferido: AV1 → VP9 → H.264, conforme o suporte dos dois lados.
 
 ### 5.5 Banda necessária
 
-| Fluxo                | Upload por pessoa |
-|----------------------|-------------------|
-| Áudio                | 0,13 Mb/s         |
-| Câmera 1080p         | 2–3 Mb/s          |
-| Tela 2K              | 4–8 Mb/s          |
-| **Tudo ligado**      | **~6–11 Mb/s de upload e o mesmo de download** |
+| Fluxo           | Upload por pessoa |
+|-----------------|-------------------|
+| Áudio           | 0,13 Mb/s         |
+| Câmera 1080p    | 2–3 Mb/s          |
+| Tela 2K         | 4–8 Mb/s          |
+| **Tudo ligado** | **~6–11 Mb/s de upload e o mesmo de download** |
+
+### 5.6 Canal de dados
+
+Um canal de dados WebRTC confiável e ordenado, dentro da mesma conexão cifrada, leva: apresentação dos perfis, mensagens do chat, legendas, falas e o aviso de encerramento. Cada mensagem é JSON com tipo e tamanho máximo; o que não for reconhecido é descartado.
 
 ---
 
@@ -183,11 +211,13 @@ O servidor terá adaptadores por provedor; a escolha final sai da **Fase 0**, co
 
 ### 6.1 Telas
 
-1. **Login** — usuário e senha; "manter conectado".
-2. **Sala** — tela principal (abaixo).
-3. **Configurações** — dispositivos, modo de áudio, glossário, perfil (nome, gênero, tratamento), tamanho da legenda.
+1. **Início** — perfil (nome, idioma, gênero, tratamento), botões "Nova chamada" e "Entrar com código".
+2. **Convite** — anfitrião: mostra o código de convite para copiar e o campo para colar a resposta.
+3. **Resposta** — convidado: campo para colar o convite; mostra o código de resposta para copiar.
+4. **Chamada** — tela principal.
+5. **Configurações** — dispositivos, modo de áudio, glossário, tamanho da legenda, motores de tradução (anfitrião).
 
-### 6.2 Sala
+### 6.2 Chamada
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -195,9 +225,9 @@ O servidor terá adaptadores por provedor; a escolha final sai da **Fase 0**, co
 ├────────────────────────────────────────────────────┬─────────────────────────┤
 │ ┌──────────────────────┐  ┌──────────────────────┐ │ [Chat]  [Falas]         │
 │ │                      │  │                      │ │ ─────────────────────── │
-│ │     câmera RU        │  │     sua câmera       │ │ RU · 15:39              │
+│ │   câmera do outro    │  │     sua câmera       │ │ ANNA · 15:39            │
 │ │                      │  │                      │ │ Привет! Как прошёл      │
-│ │ RU · ru-RU           │  │ Você · pt-BR         │ │ твой день?              │
+│ │ Anna · ru-RU         │  │ Você · pt-BR         │ │ твой день?              │
 │ └──────────────────────┘  └──────────────────────┘ │ › Oi! Como foi o seu    │
 │                                                    │   dia?                  │
 │  Правда? А какая у вас пого…                       │                         │
@@ -212,16 +242,15 @@ O servidor terá adaptadores por provedor; a escolha final sai da **Fase 0**, co
 ```
 
 - Legenda abaixo das câmeras: linha de cima no idioma original (menor), linha de baixo traduzida (maior). Trecho terminado em "…" é provisório e aparece esmaecido.
-- Ao compartilhar a tela, ela ocupa o palco e as duas câmeras vão para uma coluna à direita do palco.
-- Barra de título própria com os dois relógios (6 h de diferença entre Brasília e Moscou) e o ping.
+- Ao compartilhar a tela, ela ocupa o palco e as duas câmeras vão para uma coluna à direita.
+- Os relógios mostram o horário de cada pessoa, conforme o fuso informado no perfil.
 
 ### 6.3 Os dois chats
 
-- **Chat** — cada um escreve no seu idioma; o outro recebe traduzido, com "ver original". Histórico salvo no servidor.
-- **Falas** — cada trecho falado vira uma mensagem: quem falou, hora, texto original e tradução. O trecho em andamento aparece como "falando…". Busca e exportação (.txt / .md).
-- Os painéis abrem e fecham de forma independente; os dois podem ficar abertos, um acima do outro.
-
-O visual (cores, tipografia, componentes) está em [DESIGN.md](DESIGN.md).
+- **Chat** — cada um escreve no seu idioma; o outro recebe traduzido, com "ver original".
+- **Falas** — cada trecho falado vira uma mensagem: quem falou, hora, texto original e tradução. Busca e exportação (.txt / .md).
+- Os painéis abrem e fecham de forma independente; os dois podem ficar abertos.
+- O histórico fica só no computador de cada um, cifrado com DPAPI, e pode ser apagado.
 
 ---
 
@@ -233,7 +262,6 @@ O visual (cores, tipografia, componentes) está em [DESIGN.md](DESIGN.md).
   - Verifica e instala o WebView2 Runtime se faltar.
 - App publicado **self-contained**: não exige .NET instalado.
 - **Assinatura de código** recomendada; sem ela, o SmartScreen mostra "editor desconhecido".
-- **Atualização**: o app consulta a versão no servidor e oferece baixar o novo instalador (Fase 5).
 
 ---
 
@@ -241,12 +269,12 @@ O visual (cores, tipografia, componentes) está em [DESIGN.md](DESIGN.md).
 
 Resumo — o modelo de ameaças e a lista completa de controles estão em [SEGURANCA.md](SEGURANCA.md).
 
-- **Mídia cifrada ponta a ponta**: na conexão P2P, câmera, áudio e tela são cifrados (DTLS-SRTP) com chaves negociadas entre os dois computadores; nem o servidor nem o TURN conseguem decifrar. Um **código de segurança da chamada** (derivado das impressões digitais DTLS dos dois lados) aparece na tela para os dois conferirem em voz alta.
-- **Áudio enviado para tradução**: trafega só por WSS, é processado em memória e **nunca é gravado**.
-- **Login**: só duas contas, senha com hash forte, bloqueio por tentativas, limite de requisições, tokens curtos e rotativos com detecção de reuso.
-- **Servidor**: só as portas necessárias, contêineres sem root, segredos fora do repositório, TURN sem acesso à rede interna, logs sem senhas, tokens ou conteúdo das conversas.
-- **Cliente**: WebView2 travado (sem navegação externa, sem scripts remotos, CSP estrita, DevTools desligado na versão final), câmera/microfone/tela liberados só para o próprio app, login guardado com DPAPI.
-- **Distribuição**: instalador e atualizações assinados e verificados por hash.
+- **Sem servidor no modo padrão**: não existe conta, senha ou serviço exposto para ser atacado. O modo servidor, opcional, mantém login reforçado e limites de requisição.
+- **Mídia e dados cifrados ponta a ponta** (DTLS-SRTP e DTLS/SCTP): só os dois computadores têm as chaves.
+- **Código de chamada** de uso único, com validade de 30 min, validado com limites rígidos; código de segurança para conferir em voz alta.
+- **Chaves dos serviços de tradução** só no computador do anfitrião, cifradas com DPAPI.
+- **App travado**: WebView2 sem navegação externa, sem scripts remotos, CSP estrita; câmera, microfone e tela só para a própria interface.
+- **Distribuição**: instalador assinado e verificado por hash.
 
 ---
 
@@ -255,15 +283,13 @@ Resumo — o modelo de ameaças e a lista completa de controles estão em [SEGUR
 ```
 DinoTranslator/
 ├── src/
-│   ├── DinoTranslator.Shared/       contratos usados por cliente e servidor (DTOs, mensagens)
-│   ├── DinoTranslator.Server/       ASP.NET Core: login, SignalR, tradução, EF Core
-│   ├── DinoTranslator.Desktop/      WPF + Blazor Hybrid (interface) + mídia WebRTC (TypeScript)
+│   ├── DinoTranslator.Shared/       idiomas, perfil, código da chamada, mensagens do canal de dados
+│   ├── DinoTranslator.Desktop/      WPF + Blazor Hybrid (interface) + mídia WebRTC (JavaScript)
+│   ├── DinoTranslator.Server/       modo servidor opcional: login, presença, credenciais TURN
 │   └── Installer/                   WiX: MSI, bundle e interface própria do instalador
 ├── tests/
-│   ├── DinoTranslator.Server.Tests/
-│   └── DinoTranslator.Desktop.Tests/
-├── tools/bench/                     testes da Fase 0 (STT, tradução, rede)
-├── deploy/                          Docker Compose, coturn, Caddy
+│   ├── DinoTranslator.Desktop.Tests/
+│   └── DinoTranslator.Server.Tests/
 └── docs/                            planejamento, design, segurança, fluxo git
 ```
 
@@ -273,46 +299,37 @@ DinoTranslator/
 
 Cada módulo é uma branch (fluxo em [GIT.md](GIT.md)).
 
-### Fase 0 — Validação técnica
-
-- [ ] Testar a partir da Rússia, com o usuário real: acesso ao servidor/domínio, P2P direto, TURN em UDP e TLS/443.
-- [ ] Medir ping e banda reais entre os dois.
-- [ ] Gravar ~10 min de fala de cada um e comparar 2–3 motores de STT (taxa de erro e latência).
-- [ ] Comparar tradução PT ⇄ RU em ~50 frases reais, avaliadas pelos dois.
-- [ ] Ler os termos de uso dos provedores quanto a usuários na Rússia.
-- **Entrega**: escolha dos motores e números medidos.
-
 ### Fase 1 — Base
 
-| Branch                  | Conteúdo                                                        |
-|-------------------------|-----------------------------------------------------------------|
-| `docs/planejamento`     | este plano, design, fluxo git                                   |
-| `base/estrutura`        | solução, projetos, configurações compartilhadas                 |
-| `servidor/autenticacao` | usuários, senha, JWT, refresh, bloqueio, comando de usuários    |
-| `servidor/sinalizacao`  | SignalR: presença, offer/answer/ICE, credenciais TURN           |
-| `cliente/shell`         | janela WPF, Blazor Hybrid, tela de login, login guardado        |
-| `cliente/design`        | tokens visuais, fontes, componentes base                        |
-| `infra/deploy`          | Docker Compose, coturn, Caddy                                   |
-
-**Pronto quando**: os dois fazem login no app e se veem "online" um para o outro.
+| Branch                 | Conteúdo                                                   | Situação |
+|------------------------|------------------------------------------------------------|----------|
+| `base/estrutura`       | solução, projetos, configurações compartilhadas            | feito    |
+| `cliente/shell`        | janela WPF, Blazor Hybrid, WebView2 travado                | feito    |
+| `base/dotnet10`        | migração para o .NET 10                                    | feito    |
+| `servidor/autenticacao`, `servidor/sinalizacao` | login, presença, TURN (modo opcional) | feito |
+| `base/modo-codigo`     | modo código como padrão; servidor e login opcionais        |          |
+| `shared/idiomas`       | os cinco idiomas                                           |          |
+| `cliente/perfil`       | perfil local e tela inicial                                |          |
+| `cliente/design`       | tokens visuais, fontes, componentes base                   |          |
 
 ### Fase 2 — Chamada
 
-| Branch             | Conteúdo                                                             |
-|--------------------|----------------------------------------------------------------------|
-| `cliente/chamada`  | WebRTC P2P, câmera, áudio alta qualidade, reconexão, indicador de ping |
-| `cliente/tela`     | compartilhamento de tela até 2K, modos texto/movimento               |
+| Branch                   | Conteúdo                                                        |
+|--------------------------|-----------------------------------------------------------------|
+| `cliente/codigo-chamada` | código de convite e de resposta, código de segurança            |
+| `cliente/chamada`        | WebRTC P2P, câmera, áudio alta qualidade, canal de dados, ping  |
+| `cliente/tela`           | compartilhamento de tela até 2K, modos texto/movimento          |
 
 **Pronto quando**: chamada de 30 min Brasil ⇄ Rússia com câmera e tela 2K, sem quedas, com o ping exibido.
 
 ### Fase 3 — Tradução e chats
 
-| Branch               | Conteúdo                                                        |
-|----------------------|-----------------------------------------------------------------|
-| `servidor/traducao`  | pipeline STT → tradução, adaptadores dos motores escolhidos     |
-| `cliente/legendas`   | legendas provisória/final, tamanho e posição ajustáveis         |
-| `chat/texto`         | chat com tradução automática                                    |
-| `chat/falas`         | painel de falas, busca e exportação                             |
+| Branch              | Conteúdo                                                        |
+|---------------------|-----------------------------------------------------------------|
+| `cliente/traducao`  | pipeline STT → tradução no anfitrião, adaptadores dos motores   |
+| `cliente/legendas`  | legendas provisória/final, tamanho e posição ajustáveis         |
+| `chat/texto`        | chat com tradução automática                                    |
+| `chat/falas`        | painel de falas, busca e exportação                             |
 
 **Pronto quando**: conversa de 15 min com legenda final ≤ 1,5 s após a pausa e tradução aprovada pelos dois.
 
@@ -320,36 +337,34 @@ Cada módulo é uma branch (fluxo em [GIT.md](GIT.md)).
 
 | Branch            | Conteúdo                                                   |
 |-------------------|------------------------------------------------------------|
-| `cliente/design`  | acabamento visual de todas as telas, aprovado pelos dois   |
+| `cliente/design`  | acabamento visual de todas as telas                        |
 | `instalador/wix`  | MSI, bundle, interface própria de instalar e desinstalar   |
 
-**Pronto quando**: o usuário russo instala sozinho pelo instalador, usa e desinstala sem resíduos.
+**Pronto quando**: o convidado instala sozinho pelo instalador, usa e desinstala sem resíduos.
 
 ### Fase 5 — Robustez (contínuo)
 
-Reconexão transparente, métricas de latência por etapa, atualização automática, TOTP, backups, glossário editável na interface.
+Reconexão transparente quando a rede oscila, métricas de latência por etapa, atualização, glossário editável na interface.
 
 ---
 
 ## 11. Riscos
 
-| Risco                                                                                       | Impacto | Mitigação |
-|---------------------------------------------------------------------------------------------|---------|-----------|
-| Bloqueios de rede na Rússia (serviços estrangeiros, VPNs, faixas de IP de hospedagem e restrições a chamadas em apps estrangeiros já ocorreram) | Alto — a chamada não conecta | Testar na Fase 0 com o usuário real; TURN em TLS/443; plano B de hospedagem em outro país |
-| Desligamentos de internet móvel em regiões da Rússia                                        | Médio   | Usar Wi-Fi ou cabo do lado russo |
-| Termos dos provedores de fala e tradução excluírem usuários na Rússia                       | Alto    | Adaptadores plugáveis; caminho auto-hospedado pronto como alternativa |
-| Invasão do servidor ou roubo de credenciais                                                 | Alto    | Controles de [SEGURANCA.md](SEGURANCA.md); mídia P2P não passa pelo servidor |
-| Latência de tradução acima do aceitável                                                     | Médio   | Legenda provisória como base; corte por orações; métricas por etapa |
-| Erros de reconhecimento (sotaque, ruído, nomes)                                              | Médio   | Fone com microfone decente; glossário; transcrição própria visível; botão "corrigir" |
-| Banda insuficiente para câmera + tela 2K                                                     | Médio   | Adaptação automática de resolução; medir na Fase 0 |
+| Risco                                                                                        | Impacto | Mitigação |
+|----------------------------------------------------------------------------------------------|---------|-----------|
+| Conexão direta não fechar entre as redes dos dois (internet móvel, IP compartilhado pelo provedor) | Alto — a chamada não conecta | Preferir Wi-Fi ou cabo; se acontecer, adicionar um relay TURN depois |
+| Bloqueios de rede na Rússia (restrições a chamadas em apps estrangeiros já ocorreram)        | Alto    | App próprio fora das listas de bloqueio; relay como plano B |
+| Desligamentos de internet móvel em regiões da Rússia                                         | Médio   | Usar Wi-Fi ou cabo do lado russo |
+| Queda da conexão no meio da chamada                                                          | Médio   | Reconexão pelo canal de dados enquanto ele existir; senão, novos códigos |
+| Termos dos provedores de fala e tradução                                                     | Médio   | As requisições saem só do computador do anfitrião; adaptadores plugáveis |
+| Latência de tradução acima do aceitável                                                      | Médio   | Legenda provisória como base; corte por orações; métricas por etapa |
+| Erros de reconhecimento (sotaque, ruído, nomes)                                              | Médio   | Fone com microfone decente; glossário; transcrição própria visível |
+| Banda insuficiente para câmera + tela 2K                                                     | Médio   | Adaptação automática de resolução |
 | SmartScreen bloquear o instalador                                                            | Baixo   | Assinatura de código ou instrução de "executar assim mesmo" |
 
 ---
 
 ## 12. Decisões em aberto
 
-1. **Sistema dos dois**: ambos usam Windows? Se o usuário russo usar Mac ou Linux, o cliente muda de WPF para Avalonia.
-2. **Motores**: serviços em nuvem ou modelos próprios rodando no servidor (exige GPU)?
-3. **Servidor**: já existe VPS e domínio? Onde hospedar (sugestão: Europa — Alemanha, Holanda ou Finlândia)?
-4. **Histórico**: guardar chat e falas no servidor? Por quanto tempo?
-5. **.NET 10**: instalar o SDK do .NET 10 (LTS). Hoje a máquina tem só o .NET 9, cujo suporte termina em 10/11/2026; o projeto centraliza a versão em `Directory.Build.props` para a troca ser de uma linha.
+1. **Motores**: quais serviços de reconhecimento e tradução usar, ou modelos no próprio computador (exige GPU)?
+2. **Histórico**: guardar chat e falas no computador de cada um? Por quanto tempo?
