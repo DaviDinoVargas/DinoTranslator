@@ -46,6 +46,12 @@ export class CallPeer {
     this.remoteScreen = new MediaStream();
     this.remoteScreenReceiver = null;
 
+    // Captura da fala para a tradução (só no computador que traduz).
+    this.audioContext = null;
+    this.silentSink = null;
+    this.captures = new Map();
+    this.onSpeechAudio = null;
+
     this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" });
     // Canais com id fixo: existem dos dois lados sem troca extra de sinais.
     this.app = this.pc.createDataChannel("app", { negotiated: true, id: 0, ordered: true });
@@ -84,6 +90,9 @@ export class CallPeer {
       }
       this.remoteStream.addTrack(track);
       track.onended = () => this.remoteStream.removeTrack(track);
+      if (track.kind === "audio") {
+        this.attachSpeechCapture("remote", track);
+      }
       this.events.onRemoteStream?.(this.remoteStream, receiver);
     };
     this.pc.onconnectionstatechange = () => {
@@ -270,6 +279,9 @@ export class CallPeer {
         track.contentHint = "motion";
       }
       this.pc.addTrack(track, stream);
+      if (track.kind === "audio") {
+        this.attachSpeechCapture("local", track);
+      }
     }
   }
 
@@ -279,6 +291,46 @@ export class CallPeer {
         track.enabled = enabled;
       }
     }
+  }
+
+  // ---- Fala para a tradução ------------------------------------------------------------
+
+  /** Liga a captura das duas falas em 16 kHz; onAudio(who, Uint8Array), who = "local" ou "remote". */
+  async enableSpeechCapture(onAudio) {
+    this.onSpeechAudio = onAudio;
+    if (!this.audioContext) {
+      this.audioContext = new AudioContext();
+      await this.audioContext.audioWorklet.addModule(new URL("./pcm-capture.js", import.meta.url));
+      // Mantém o grafo de áudio ativo sem tocar nada de novo: saída com volume zero.
+      this.silentSink = this.audioContext.createGain();
+      this.silentSink.gain.value = 0;
+      this.silentSink.connect(this.audioContext.destination);
+    }
+    await this.audioContext.resume();
+    this.attachSpeechCapture("local", this.localStream?.getAudioTracks()[0]);
+    this.attachSpeechCapture("remote", this.remoteStream.getAudioTracks()[0]);
+  }
+
+  attachSpeechCapture(who, track) {
+    if (!this.audioContext || !this.silentSink || !this.onSpeechAudio || !track || this.captures.has(who)) {
+      return;
+    }
+    const source = this.audioContext.createMediaStreamSource(new MediaStream([track]));
+    const node = new AudioWorkletNode(this.audioContext, "pcm-capture");
+    node.port.onmessage = ({ data }) => this.onSpeechAudio?.(who, new Uint8Array(data));
+    source.connect(node);
+    node.connect(this.silentSink);
+    this.captures.set(who, { source, node });
+  }
+
+  disableSpeechCapture() {
+    for (const { source, node } of this.captures.values()) {
+      node.port.onmessage = null;
+      source.disconnect();
+      node.disconnect();
+    }
+    this.captures.clear();
+    this.onSpeechAudio = null;
   }
 
   // ---- Tela até 2K -------------------------------------------------------------------
@@ -470,6 +522,8 @@ export class CallPeer {
 
   close() {
     this.stopStats();
+    this.disableSpeechCapture();
+    this.audioContext?.close();
     this.screenTrack?.stop();
     for (const track of this.localStream?.getTracks() ?? []) {
       track.stop();
@@ -532,6 +586,12 @@ export const localSdp = () => current?.localSdp() ?? null;
 export const sendApp = (text) => current?.sendApp(text) ?? false;
 export const setTrackEnabled = (kind, enabled) => current?.setTrackEnabled(kind, enabled);
 export const startScreenShare = (mode) => current.startScreenShare({ mode });
+
+export async function enableSpeechCapture(dotnet) {
+  await current.enableSpeechCapture((who, bytes) => dotnet.invokeMethodAsync("OnSpeechAudio", who, bytes));
+}
+
+export const disableSpeechCapture = () => current?.disableSpeechCapture();
 export const stopScreenShare = () => current?.stopScreenShare();
 export const setScreenMode = (mode) => current?.setScreenMode(mode);
 
