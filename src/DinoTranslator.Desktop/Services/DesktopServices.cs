@@ -28,6 +28,10 @@ public static class DesktopServices
         if (settings.Mode == ConnectionMode.Code)
         {
             services.AddSingleton<IUiDispatcher, WpfUiDispatcher>();
+            // Fluxo aberto enquanto se espera a resposta: sem o limite de tempo padrão do HttpClient.
+            var relayHttp = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            relayHttp.DefaultRequestHeaders.UserAgent.ParseAdd("DinoTranslator");
+            services.AddSingleton(new RendezvousRelay(relayHttp, settings.RendezvousUri));
             // Escopo do BlazorWebView: uma sessão de chamada por janela.
             services.AddScoped<CallSession>();
         }
