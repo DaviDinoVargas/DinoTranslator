@@ -29,6 +29,7 @@ public sealed class LocalSpeechTranslationEngine(Func<LocalSpeechRuntime> runtim
         private readonly bool _translate;
         private int _segment = -1;
         private int _revision;
+        private int _pending;
 
         public Stream(LocalSpeechRuntime runtime, SpeechStreamOptions options)
         {
@@ -45,9 +46,9 @@ public sealed class LocalSpeechTranslationEngine(Func<LocalSpeechRuntime> runtim
 
         public void Write(byte[] pcm)
         {
-            if (_segmenter.Append(pcm) is { } segment)
+            if (_segmenter.Append(pcm) is { } segment && _segments.Writer.TryWrite(segment))
             {
-                _segments.Writer.TryWrite(segment);
+                Interlocked.Increment(ref _pending);
             }
         }
 
@@ -74,7 +75,7 @@ public sealed class LocalSpeechTranslationEngine(Func<LocalSpeechRuntime> runtim
                 await foreach (var segment in _segments.Reader.ReadAllAsync(_stop.Token))
                 {
                     // Provisória atrasada: se já chegou coisa mais nova, ela fica para trás.
-                    if (!segment.Final && _segments.Reader.Count > 0)
+                    if (Interlocked.Decrement(ref _pending) > 0 && !segment.Final)
                     {
                         continue;
                     }
@@ -99,7 +100,9 @@ public sealed class LocalSpeechTranslationEngine(Func<LocalSpeechRuntime> runtim
                 return;
             }
 
-            var translated = _translate
+            // A tradução local leva de 1 a 4 s por frase no processador: só o trecho final é
+            // traduzido; a provisória mostra o texto reconhecido enquanto a pessoa fala.
+            var translated = _translate && segment.Final
                 ? await Task.Run(() => _runtime.Translator.Translate(text, _options.SourceLanguage, _options.TargetLanguage), _stop.Token)
                 : null;
 
