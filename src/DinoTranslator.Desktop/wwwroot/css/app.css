@@ -535,83 +535,153 @@ select.field__input option {
   border-left: 2px solid var(--urucum);
 }
 
-.call__stage {
-  display: grid;
+/* Corpo da chamada: palco à esquerda, conversa à direita. */
+
+.call__body {
+  display: flex;
+  position: relative;
   flex: 1;
   min-height: 0;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  padding: 16px;
 }
 
-.video-tile {
+/* Palco: a outra pessoa ocupa tudo (imagem inteira, sem corte) e você fica num canto.
+   Tudo é medido pelo tamanho do palco, então acompanha a janela ao redimensionar. */
+
+.call__stage {
+  --margem: 12px;
+  --miniatura: clamp(120px, 22cqw, 300px);
   position: relative;
+  flex: 1;
+  min-width: 0;
   min-height: 0;
-  margin: 0;
-  border-top: 2px solid var(--papel-2);
+  overflow: hidden;
   background: #000;
+  container-type: size;
 }
 
-.video-tile video {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.video-tile.tile--me video {
-  transform: scaleX(-1);
-}
-
-.video-tile figcaption {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  padding: 4px 10px;
-  background: rgba(18, 17, 15, .82);
-  font: 12px Consolas, monospace;
-}
-
-/* Tela compartilhada: ocupa o palco e as duas câmeras vão para uma coluna à direita. */
-
+.video-tile,
 .screen-tile {
-  display: none;
-  position: relative;
-  min-height: 0;
+  position: absolute;
   margin: 0;
-  border-top: 2px solid var(--gzhel);
   background: #000;
 }
 
+.video-tile video,
 .screen-tile video {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.tile--other {
+  inset: 0;
+}
+
+.tile--other video {
   object-fit: contain;
 }
 
+.tile--me {
+  z-index: 2;
+  top: var(--margem);
+  right: var(--margem);
+  width: var(--miniatura);
+  aspect-ratio: 16 / 9;
+  border-top: 2px solid var(--ipe);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .5);
+}
+
+.tile--me video {
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.video-tile--off video {
+  visibility: hidden;
+}
+
+.video-tile--off::after {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--papel-2);
+  content: "câmera desligada";
+  font: 12px Consolas, monospace;
+}
+
+.video-tile figcaption,
 .screen-tile figcaption {
   position: absolute;
   left: 0;
-  bottom: 0;
+  top: 0;
   padding: 4px 10px;
   background: rgba(18, 17, 15, .82);
   font: 12px Consolas, monospace;
 }
 
-.call__stage--screen {
-  grid-template-columns: minmax(0, 1fr) 300px;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+/* Tela compartilhada: ocupa o palco; as duas câmeras viram miniaturas empilhadas. */
+
+.screen-tile {
+  display: none;
+  inset: 0;
+}
+
+.screen-tile video {
+  object-fit: contain;
 }
 
 .call__stage--screen .screen-tile {
   display: block;
-  grid-row: 1 / span 2;
-  grid-column: 1;
 }
 
-.call__stage--screen .video-tile {
-  grid-column: 2;
+.call__stage--screen .tile--other {
+  z-index: 2;
+  inset: auto;
+  top: var(--margem);
+  right: var(--margem);
+  width: var(--miniatura);
+  aspect-ratio: 16 / 9;
+  border-top: 2px solid var(--gzhel);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .5);
+}
+
+.call__stage--screen .tile--other video {
+  object-fit: cover;
+}
+
+.call__stage--screen .tile--me {
+  top: calc(var(--margem) * 2 + var(--miniatura) * 9 / 16);
+}
+
+.call__floating-note {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  padding: 8px 14px;
+  transform: translate(-50%, -50%);
+  background: rgba(18, 17, 15, .82);
+  color: var(--papel-2);
+  font-size: 13px;
+}
+
+.call__quality {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--papel-2);
+  font-size: 12px;
+}
+
+.call__quality select {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--superficie);
+  color: var(--papel);
+  font: inherit;
 }
 
 .call__sharing {
@@ -663,14 +733,25 @@ select.field__input option {
   color: var(--tinta);
 }
 
-/* Legendas */
+/* Legendas: sobre o vídeo, na parte de baixo do palco. */
 
 .captions {
+  position: absolute;
+  z-index: 3;
+  right: 0;
+  bottom: 0;
+  left: 0;
   display: grid;
-  min-height: 112px;
+  justify-items: center;
   align-content: end;
-  gap: 10px;
-  padding: 4px 16px 12px;
+  gap: 8px;
+  padding: 32px clamp(12px, 4cqw, 48px) 14px;
+  background: linear-gradient(transparent, rgba(18, 17, 15, .88) 45%);
+  pointer-events: none;
+}
+
+.captions:empty {
+  display: none;
 }
 
 .captions__notice {
@@ -679,6 +760,7 @@ select.field__input option {
 }
 
 .caption {
+  width: min(100%, 980px);
   padding-left: 12px;
   border-left: 2px solid var(--gzhel);
   transition: opacity 150ms var(--curva);
@@ -694,17 +776,17 @@ select.field__input option {
 
 .caption__secondary {
   color: var(--papel-2);
-  font-size: 15px;
+  font-size: clamp(12px, 1.6cqw, 16px);
 }
 
 .caption__main {
-  font-size: 24px;
+  font-size: clamp(16px, 2.6cqw, 28px);
   font-weight: 500;
   line-height: 1.25;
 }
 
 .caption__main--mine {
-  font-size: 18px;
+  font-size: clamp(14px, 2cqw, 20px);
 }
 
 .call__translation {
@@ -714,15 +796,17 @@ select.field__input option {
 
 .call__dock {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 12px;
-  padding: 12px;
+  gap: 8px;
+  padding: 10px 12px;
   border-top: 1px solid var(--linha);
 }
 
 .dock-button {
-  min-width: 150px;
-  height: 44px;
+  min-width: 112px;
+  height: 40px;
+  padding: 0 14px;
   border: 1px solid var(--linha);
   border-radius: var(--raio);
   background: transparent;
@@ -741,6 +825,11 @@ select.field__input option {
   color: var(--papel);
 }
 
+.dock-button--muted {
+  border-color: var(--erro);
+  color: var(--papel);
+}
+
 .dock-button--end {
   border-color: var(--erro);
   background: var(--erro);
@@ -754,6 +843,135 @@ select.field__input option {
 .dock-button:disabled {
   opacity: .5;
   cursor: default;
+}
+
+/* Conversa traduzida (painel lateral) */
+
+.conversation {
+  display: flex;
+  width: clamp(280px, 30vw, 400px);
+  flex-direction: column;
+  border-left: 1px solid var(--linha);
+  background: var(--superficie);
+}
+
+.conversation__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--linha);
+}
+
+.conversation__title {
+  font-weight: 600;
+}
+
+.conversation__where {
+  flex: 1;
+  color: var(--papel-2);
+  font: 11px Consolas, monospace;
+}
+
+.conversation__copy {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.conversation__close {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--papel-2);
+  cursor: pointer;
+}
+
+.conversation__close:hover {
+  color: var(--papel);
+}
+
+.conversation__notice {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--linha);
+  border-left: 2px solid var(--urucum);
+  color: var(--papel-2);
+  font-size: 13px;
+}
+
+.conversation__list {
+  display: flex;
+  flex: 1;
+  flex-direction: column-reverse;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  overflow-y: auto;
+  list-style: none;
+  user-select: text;
+}
+
+.conversation__empty {
+  margin: auto 0;
+  color: var(--papel-2);
+  font-size: 13px;
+  text-align: center;
+}
+
+.bubble {
+  display: grid;
+  max-width: 88%;
+  gap: 4px;
+  padding: 8px 12px;
+  border-left: 2px solid var(--gzhel);
+  background: var(--superficie-2);
+}
+
+.bubble--me {
+  align-self: flex-end;
+  border-left: 0;
+  border-right: 2px solid var(--ipe);
+  background: var(--ipe-fundo);
+}
+
+.bubble--partial {
+  opacity: .65;
+}
+
+.bubble__main {
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.bubble__secondary {
+  color: var(--papel-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.bubble__time {
+  justify-self: end;
+  color: var(--papel-2);
+  font: 10px Consolas, monospace;
+}
+
+/* Janela estreita: a conversa passa por cima do palco em vez de espremê-lo. */
+@media (max-width: 900px) {
+  .conversation {
+    position: absolute;
+    z-index: 5;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(360px, 85vw);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, .5);
+  }
+
+  .call__security {
+    display: none;
+  }
 }
 
 /* Sala */
