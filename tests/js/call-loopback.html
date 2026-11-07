@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Teste de laço da camada de mídia</title>
+  <style>
+    body { margin: 0; padding: 16px; background: #12110f; color: #f1ece2; font: 14px Consolas, monospace; }
+    video { width: 240px; height: 135px; background: #000; margin-right: 8px; }
+    pre { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <!-- Dois CallPeer na mesma página, ligados pelo mesmo caminho do app:
+       convite → resposta → canais abertos → mídia negociada por dentro do canal de sinal. -->
+  <video id="remote-a" autoplay muted playsinline></video>
+  <video id="remote-b" autoplay muted playsinline></video>
+  <pre id="log">rodando…</pre>
+  <pre id="result"></pre>
+  <script type="module">
+    import { CallPeer, fingerprintOf, tuneOpus } from "../../src/DinoTranslator.Desktop/wwwroot/js/call.js";
+
+    const log = (line) => (document.getElementById("log").textContent += "\n" + line);
+    const timeout = (ms, what) => new Promise((_, reject) => setTimeout(() => reject(new Error("tempo esgotado: " + what)), ms));
+    const waitFor = (predicate, what, ms = 15000) => Promise.race([
+      new Promise((resolve) => {
+        const check = () => (predicate() ? resolve() : setTimeout(check, 50));
+        check();
+      }),
+      timeout(ms, what),
+    ]);
+
+    function syntheticStream(color) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 180;
+      const context = canvas.getContext("2d");
+      let frame = 0;
+      setInterval(() => {
+        context.fillStyle = color;
+        context.fillRect(0, 0, 320, 180);
+        context.fillStyle = "#fff";
+        context.fillText(String(frame++), 10, 20);
+      }, 66);
+      const audio = new AudioContext();
+      const oscillator = audio.createOscillator();
+      const destination = audio.createMediaStreamDestination();
+      oscillator.connect(destination);
+      oscillator.start();
+      return new MediaStream([...canvas.captureStream(15).getVideoTracks(), ...destination.stream.getAudioTracks()]);
+    }
+
+    function peer(name, polite) {
+      const state = { open: false, messages: [], connection: "new", stats: [], errors: [], tracks: 0 };
+      const instance = new CallPeer({
+        onState: (s) => { state.connection = s; log(`${name}: conexão ${s}`); },
+        onStats: (rtt, path) => state.stats.push({ rtt, path }),
+        onAppMessage: (text) => state.messages.push(text),
+        onChannelOpen: () => { state.open = true; log(`${name}: canal aberto`); },
+        onRemoteStream: (stream) => {
+          state.tracks = stream.getTracks().length;
+          document.getElementById(`remote-${name.toLowerCase()}`).srcObject = stream;
+        },
+        onError: (message) => { state.errors.push(message); log(`${name}: ERRO ${message}`); },
+      }, { polite });
+      return { instance, state };
+    }
+
+    const checks = {};
+    try {
+      const a = peer("A", false);
+      const b = peer("B", true);
+
+      const invite = await a.instance.createInvite();
+      checks.convite_sem_midia = !/^m=(audio|video)/m.test(invite) && /^m=application/m.test(invite);
+      checks.convite_tamanho = invite.length;
+      const answer = await b.instance.acceptInvite(invite);
+      await a.instance.acceptAnswer(answer);
+      await waitFor(() => a.state.open && b.state.open, "canais abertos");
+      checks.canais_abertos = true;
+
+      a.instance.sendApp(JSON.stringify({ type: "ola" }));
+      await waitFor(() => b.state.messages.length === 1, "mensagem do app");
+      checks.mensagem_do_app = b.state.messages[0];
+
+      checks.mensagem_grande_recusada = a.instance.sendApp("x".repeat(20000)) === false;
+
+      // Os dois ligam a mídia ao mesmo tempo: testa a colisão de renegociação.
+      a.instance.addStream(syntheticStream("#f2b705"));
+      b.instance.addStream(syntheticStream("#3d6fe0"));
+      await waitFor(() => a.state.tracks === 2 && b.state.tracks === 2, "faixas de mídia nos dois lados");
+      checks.midia_nos_dois_lados = true;
+
+      await waitFor(() => a.instance.pc.signalingState === "stable" && b.instance.pc.signalingState === "stable", "estável");
+      checks.opus_alta_qualidade = /maxaveragebitrate=128000/.test(b.instance.pc.remoteDescription.sdp)
+        && /maxaveragebitrate=128000/.test(a.instance.pc.remoteDescription.sdp);
+      checks.mesmo_certificado = fingerprintOf(a.instance.pc.remoteDescription.sdp) === fingerprintOf(answer);
+
+      await waitFor(() => a.state.stats.length > 0, "estatísticas");
+      checks.estatisticas = a.state.stats.at(-1);
+
+      // Uma renegociação com outro certificado (tentativa de troca de chave) é recusada.
+      const forged = { description: { type: "offer", sdp: a.instance.pc.localDescription.sdp.replace(/a=fingerprint:sha-256 [0-9A-F:]+/, "a=fingerprint:sha-256 " + "AA:".repeat(31) + "AA") } };
+      a.instance.signal.send(JSON.stringify(forged));
+      await waitFor(() => b.state.errors.some((e) => e.includes("certificado")), "recusa de certificado trocado");
+      checks.certificado_trocado_recusado = true;
+
+      checks.tune_opus_sem_fmtp = tuneOpus("a=rtpmap:111 opus/48000/2\r\n").includes("a=fmtp:111 maxaveragebitrate=128000");
+      checks.erros = [...a.state.errors, ...b.state.errors].filter((e) => !e.includes("certificado"));
+
+      a.instance.close();
+      b.instance.close();
+      checks.ok = checks.erros.length === 0;
+    } catch (error) {
+      checks.ok = false;
+      checks.falha = String(error);
+    }
+    document.getElementById("result").textContent = JSON.stringify(checks, null, 2);
+    window.__resultado = checks;
+  </script>
+</body>
+</html>
