@@ -374,6 +374,52 @@ select.field__input option {
   margin-top: 8px;
 }
 
+/* Reticências animadas enquanto os computadores se procuram. */
+.connecting::after {
+  display: inline-block;
+  width: 1.5em;
+  content: "";
+  text-align: left;
+  animation: reticencias 1.2s steps(4, end) infinite;
+}
+
+@keyframes reticencias {
+  0% { content: ""; }
+  25% { content: "."; }
+  50% { content: ".."; }
+  75% { content: "..."; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connecting::after { content: "…"; animation: none; }
+}
+
+.handshake__manual {
+  display: grid;
+  gap: 12px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--linha);
+}
+
+.handshake__manual[open] {
+  gap: 12px;
+}
+
+.handshake__manual summary {
+  color: var(--papel-2);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.handshake__manual summary:hover,
+.handshake__manual[open] summary {
+  color: var(--papel);
+}
+
+.handshake__manual > * + * {
+  margin-top: 12px;
+}
+
 .code-box {
   width: 100%;
   padding: 12px;

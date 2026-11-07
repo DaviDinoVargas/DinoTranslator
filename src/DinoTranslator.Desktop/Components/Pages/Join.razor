@@ -8,7 +8,15 @@
   <section class="handshake__panel">
     <p class="handshake__kicker">Entrar com código</p>
 
-    @if (_answerCode is null)
+    @if (_answerCode is not null && Call.Stage == CallStage.Ended)
+    {
+      <h1 class="handshake__step">A chamada não conectou</h1>
+      <p class="login__error" role="alert">@Call.Problem</p>
+      <div class="form__actions">
+        <button type="button" class="button button--primary" @onclick="StartOver">Colar outro convite</button>
+      </div>
+    }
+    else if (_answerCode is null)
     {
       <h1 class="handshake__step">1 · Cole o convite</h1>
       <p class="handshake__hint">Cole o código de convite que você recebeu pelo mensageiro.</p>
@@ -18,21 +26,23 @@
         <button type="button" class="button" @onclick="PasteInvite" disabled="@_busy">Colar</button>
         <button type="button" class="button button--primary" @onclick="AnswerAsync"
                 disabled="@(_busy || string.IsNullOrWhiteSpace(_invite))">
-          @(_busy ? "Preparando…" : "Gerar resposta")
+          @(_busy ? "Preparando…" : "Entrar na chamada")
         </button>
       </div>
     }
     else
     {
-      <h1 class="handshake__step">2 · Envie a resposta</h1>
-      <p class="handshake__hint">
-        Convite de <strong>@Call.Peer?.Name</strong>. Copie a resposta e mande pelo mensageiro.
-      </p>
-      <textarea class="code-box" readonly rows="4" aria-label="Código de resposta">@_answerCode</textarea>
-      <button type="button" class="button button--primary" @onclick="CopyAnswer">
-        @(_copied ? "Resposta copiada" : "Copiar resposta")
-      </button>
-      <p class="handshake__waiting">Aguardando @Call.Peer?.Name colar a resposta…</p>
+      <h1 class="handshake__step">Conectando com @Call.Peer?.Name<span class="connecting" aria-hidden="true"></span></h1>
+      <p class="handshake__hint">@AutoConnectHint</p>
+
+      <details class="handshake__manual" open="@ManualOpen">
+        <summary>@(ManualOpen ? "Mande a resposta pelo mensageiro" : "Não conectou em um minuto? Mande a resposta")</summary>
+        <p class="handshake__hint">Copie e mande para <strong>@Call.Peer?.Name</strong>, que cola no convite que criou.</p>
+        <textarea class="code-box" readonly rows="4" aria-label="Código de resposta">@_answerCode</textarea>
+        <button type="button" class="button button--primary" @onclick="CopyAnswer">
+          @(_copied ? "Resposta copiada" : "Copiar resposta")
+        </button>
+      </details>
     }
 
     @if (_error is not null)
@@ -40,7 +50,9 @@
       <p class="login__error" role="alert">@_error</p>
     }
 
-    <button type="button" class="button button--quiet handshake__cancel" @onclick="CancelAsync">Cancelar</button>
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="CancelAsync">
+      @(Call.Stage == CallStage.Ended ? "Voltar ao início" : "Cancelar")
+    </button>
   </section>
 </main>
 
@@ -50,6 +62,16 @@
     private string? _error;
     private bool _busy;
     private bool _copied;
+
+    private bool ManualOpen => Call.AutoConnect is AutoConnect.Off or AutoConnect.Unavailable;
+
+    private string AutoConnectHint => Call.AutoConnect switch
+    {
+        AutoConnect.Sending => "Enviando a resposta automaticamente…",
+        AutoConnect.Sent => $"Resposta enviada. Com o convite aberto no computador de {Call.Peer?.Name}, a chamada conecta sozinha.",
+        AutoConnect.Unavailable => "Não deu para enviar a resposta automaticamente. Mande-a pelo mensageiro.",
+        _ => "Mande a resposta pelo mensageiro.",
+    };
 
     protected override void OnInitialized() => Call.Changed += OnCallChanged;
 
@@ -75,6 +97,14 @@
         {
             _busy = false;
         }
+    }
+
+    private void StartOver()
+    {
+        _answerCode = null;
+        _invite = string.Empty;
+        _copied = false;
+        _error = null;
     }
 
     private void CopyAnswer()
