@@ -28,3 +28,7 @@ dotnet_naming_symbols.private_fields.applicable_kinds = field
 dotnet_naming_symbols.private_fields.applicable_accessibilities = private
 dotnet_naming_style.underscore_camel.capitalization = camel_case
 dotnet_naming_style.underscore_camel.required_prefix = _
+
+# O PowerShell 5 só lê acentos em scripts salvos com BOM.
+[*.ps1]
+charset = utf-8-bom
