@@ -307,17 +307,17 @@ Cada módulo é uma branch (fluxo em [GIT.md](GIT.md)).
 | `cliente/shell`        | janela WPF, Blazor Hybrid, WebView2 travado                | feito    |
 | `base/dotnet10`        | migração para o .NET 10                                    | feito    |
 | `servidor/autenticacao`, `servidor/sinalizacao` | login, presença, TURN (modo opcional) | feito |
-| `base/modo-codigo`     | modo código como padrão; servidor e login opcionais        |          |
-| `shared/idiomas`       | os cinco idiomas                                           |          |
-| `cliente/perfil`       | perfil local e tela inicial                                |          |
+| `base/modo-codigo`     | modo código como padrão; servidor e login opcionais        | feito    |
+| `shared/idiomas`       | os cinco idiomas                                           | feito    |
+| `cliente/perfil`       | perfil local e tela inicial                                | feito    |
 | `cliente/design`       | tokens visuais, fontes, componentes base                   |          |
 
 ### Fase 2 — Chamada
 
 | Branch                   | Conteúdo                                                        |
 |--------------------------|-----------------------------------------------------------------|
-| `cliente/codigo-chamada` | código de convite e de resposta, código de segurança            |
-| `cliente/chamada`        | WebRTC P2P, câmera, áudio alta qualidade, canal de dados, ping  |
+| `cliente/codigo-chamada` | código de convite e de resposta, código de segurança — feito    |
+| `cliente/chamada`        | WebRTC P2P, câmera, áudio alta qualidade, canal de dados, ping — feito; teste de ponta a ponta em `tests/e2e/chamada.ps1` |
 | `cliente/tela`           | compartilhamento de tela até 2K, modos texto/movimento          |
 
 **Pronto quando**: chamada de 30 min Brasil ⇄ Rússia com câmera e tela 2K, sem quedas, com o ping exibido.
