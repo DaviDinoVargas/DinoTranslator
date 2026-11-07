@@ -21,6 +21,25 @@ public enum CallRole
     Guest,
 }
 
+/// <summary>Andamento do encontro automático (a resposta que volta sem o mensageiro).</summary>
+public enum AutoConnect
+{
+    /// <summary>Desligado no appsettings.json, ou ainda não começou.</summary>
+    Off,
+
+    /// <summary>Anfitrião: esperando a resposta chegar sozinha.</summary>
+    Listening,
+
+    /// <summary>Convidado: enviando a resposta.</summary>
+    Sending,
+
+    /// <summary>Convidado: resposta entregue ao serviço.</summary>
+    Sent,
+
+    /// <summary>O serviço não respondeu: a resposta vai pelo mensageiro.</summary>
+    Unavailable,
+}
+
 public enum ScreenMode
 {
     /// <summary>Texto e código: mantém a resolução e reduz os quadros por segundo se preciso.</summary>
@@ -40,11 +59,15 @@ public sealed class CallSession(
     TitleBarState titleBar,
     TranslationSettingsStore translationSettings,
     SpeechEngineFactory engines,
+    RendezvousRelay relay,
     IUiDispatcher ui,
     TimeProvider time) : IAsyncDisposable
 {
     /// <summary>Intervalo mínimo entre legendas provisórias enviadas ao outro lado; finais vão sempre.</summary>
     private static readonly TimeSpan PartialCaptionInterval = TimeSpan.FromMilliseconds(150);
+
+    /// <summary>Depois que o anfitrião tem a resposta, os dois se procuram por até este tempo.</summary>
+    public static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(45);
 
     private const int MaxSpeechChunkBytes = 64 * 1024;
 
@@ -56,6 +79,9 @@ public sealed class CallSession(
     private bool _mediaStarted;
     private LiveTranslation? _translation;
     private readonly Dictionary<CaptionOwner, DateTimeOffset> _lastPartialSent = [];
+    private CancellationTokenSource? _rendezvous;
+    private ITimer? _openingDeadline;
+    private int _attempt;
 
     public event Action? Changed;
 
@@ -75,6 +101,8 @@ public sealed class CallSession(
     public string? Route { get; private set; }
 
     public string? Problem { get; private set; }
+
+    public AutoConnect AutoConnect { get; private set; }
 
     public bool SharingScreen { get; private set; }
 
@@ -107,6 +135,7 @@ public sealed class CallSession(
         Role = CallRole.Host;
         Stage = CallStage.WaitingAnswer;
         InviteExpiresAt = now + CallCodes.Validity;
+        ListenForAnswer(new CallRendezvous(_pendingInvite.CallId), now);
         Notify();
         return text;
     }
@@ -114,9 +143,13 @@ public sealed class CallSession(
     /// <summary>Anfitrião: lê a resposta do convidado e conecta.</summary>
     public async Task AcceptAnswerAsync(string text)
     {
+        if (Stage is CallStage.Connecting or CallStage.Connected)
+        {
+            throw new CallCodeException($"A resposta de {Peer?.Name ?? "a outra pessoa"} já chegou. Conectando…");
+        }
         if (Stage != CallStage.WaitingAnswer || _pendingInvite is not { } invite || _module is null)
         {
-            throw new CallCodeException("Crie um convite antes de colar a resposta.");
+            throw new CallCodeException("Este convite não vale mais. Crie um novo convite.");
         }
 
         var now = time.GetUtcNow();
@@ -131,9 +164,14 @@ public sealed class CallSession(
         }
 
         _pendingInvite = null;
+        StopRendezvous();
         Peer = answer.Profile;
         _remoteSdp = answer.Sdp;
         Stage = CallStage.Connecting;
+        Problem = null;
+        StartOpeningDeadline(ConnectTimeout,
+            $"Não foi possível conectar com {answer.Profile.Name}: as redes de vocês não deixaram a ligação direta passar. "
+            + "Criem um novo convite; se continuar, um de vocês pode tentar outra rede ou configurar uma retransmissão.");
         Notify();
         await _module.InvokeVoidAsync("acceptAnswer", answer.Sdp);
     }
@@ -154,6 +192,11 @@ public sealed class CallSession(
         Peer = invite.Profile;
         _remoteSdp = invite.Sdp;
         Stage = CallStage.Connecting;
+        // O convidado espera o anfitrião enquanto o convite valer; quem decide desistir é ele.
+        var remaining = invite.CreatedAt + CallCodes.Validity - now;
+        StartOpeningDeadline(remaining > ConnectTimeout ? remaining : ConnectTimeout,
+            $"O convite de {invite.Profile.Name} expirou sem a chamada conectar. Peçam um novo convite.");
+        PublishAnswer(new CallRendezvous(invite.CallId), answer);
         Notify();
         return answer;
     }
@@ -252,6 +295,8 @@ public sealed class CallSession(
             : null;
         Stage = CallStage.Connected;
         Problem = null;
+        StopOpeningDeadline();
+        StopRendezvous();
         titleBar.SetPeer(Peer?.Name, Peer?.TimeZone);
         Notify();
         await SendAppAsync(new HelloMessage(engines.IsReady(translationSettings.Current)));
@@ -268,8 +313,12 @@ public sealed class CallSession(
             case "disconnected":
                 Problem = "Conexão instável. Tentando recuperar…";
                 break;
-            case "failed":
+            case "failed" when Stage == CallStage.Connected:
                 End("A conexão caiu. Para voltar, criem um novo convite.");
+                break;
+            case "failed":
+                // Ainda abrindo: o outro lado pode chegar depois e a conexão se recupera
+                // sozinha. Quem encerra é o prazo de abertura.
                 break;
         }
         Notify();
@@ -380,6 +429,8 @@ public sealed class CallSession(
                 // A janela já fechou.
             }
         }
+        StopRendezvous();
+        StopOpeningDeadline();
         _self?.Dispose();
     }
 
@@ -459,6 +510,111 @@ public sealed class CallSession(
         }
     }
 
+    /// <summary>Anfitrião: espera a resposta chegar pelo encontro automático.</summary>
+    private void ListenForAnswer(CallRendezvous rendezvous, DateTimeOffset createdAt)
+    {
+        StopRendezvous();
+        if (!relay.Enabled)
+        {
+            AutoConnect = AutoConnect.Off;
+            return;
+        }
+        var stop = new CancellationTokenSource();
+        _rendezvous = stop;
+        AutoConnect = AutoConnect.Listening;
+        var attempt = _attempt;
+        // Tolerância para relógios fora de sincronia: mensagens um pouco "antigas" também valem.
+        _ = relay.ListenAsync(rendezvous.Topic, createdAt - CallCodes.ClockTolerance, body =>
+            rendezvous.Open(body) is { Type: RendezvousMessage.Answer } message
+                ? ui.InvokeAsync(() => _ = AcceptRelayedAnswerAsync(message.Code, attempt))
+                : Task.CompletedTask,
+            stop.Token);
+    }
+
+    private async Task AcceptRelayedAnswerAsync(string code, int attempt)
+    {
+        if (attempt != _attempt || Stage != CallStage.WaitingAnswer)
+        {
+            return;
+        }
+        try
+        {
+            await AcceptAnswerAsync(code);
+        }
+        catch (CallCodeException)
+        {
+            // Resposta velha, de outro convite ou adulterada: o convite continua esperando.
+        }
+        catch (JSException)
+        {
+            End("Não foi possível preparar a conexão neste computador.");
+            Notify();
+        }
+    }
+
+    /// <summary>Convidado: manda a resposta pelo encontro automático; o código fica de reserva.</summary>
+    private void PublishAnswer(CallRendezvous rendezvous, string answer)
+    {
+        StopRendezvous();
+        if (!relay.Enabled)
+        {
+            AutoConnect = AutoConnect.Off;
+            return;
+        }
+        var stop = new CancellationTokenSource();
+        _rendezvous = stop;
+        AutoConnect = AutoConnect.Sending;
+        var attempt = _attempt;
+        var message = rendezvous.Seal(new RendezvousMessage(RendezvousMessage.Answer, answer));
+        _ = Task.Run(async () =>
+        {
+            bool sent;
+            try
+            {
+                sent = await relay.PublishAsync(rendezvous.Topic, message, stop.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            await ui.InvokeAsync(() =>
+            {
+                if (attempt == _attempt && Stage == CallStage.Connecting)
+                {
+                    AutoConnect = sent ? AutoConnect.Sent : AutoConnect.Unavailable;
+                    Notify();
+                }
+            });
+        });
+    }
+
+    private void StopRendezvous()
+    {
+        _rendezvous?.Cancel();
+        _rendezvous?.Dispose();
+        _rendezvous = null;
+    }
+
+    private void StartOpeningDeadline(TimeSpan timeout, string reason)
+    {
+        StopOpeningDeadline();
+        var attempt = _attempt;
+        _openingDeadline = time.CreateTimer(_ => _ = ui.InvokeAsync(() =>
+        {
+            if (attempt == _attempt && Stage == CallStage.Connecting)
+            {
+                End(reason);
+                Notify();
+            }
+        }), null, timeout, Timeout.InfiniteTimeSpan);
+    }
+
+    private void StopOpeningDeadline()
+    {
+        _openingDeadline?.Dispose();
+        _openingDeadline = null;
+    }
+
     private async Task StopTranslationAsync()
     {
         if (_translation is { } translation)
@@ -470,6 +626,10 @@ public sealed class CallSession(
 
     private async Task ResetAsync()
     {
+        _attempt++;
+        StopRendezvous();
+        StopOpeningDeadline();
+        AutoConnect = AutoConnect.Off;
         await StopTranslationAsync();
         if (_module is not null)
         {
@@ -500,6 +660,9 @@ public sealed class CallSession(
 
     private void End(string reason)
     {
+        _attempt++;
+        StopRendezvous();
+        StopOpeningDeadline();
         _ = StopTranslationAsync();
         Stage = CallStage.Ended;
         Problem = reason;
