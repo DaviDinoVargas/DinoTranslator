@@ -133,9 +133,10 @@ h1 {
   accent-color: var(--ipe);
 }
 
-/* Login */
+/* Login e início */
 
-.login {
+.login,
+.home {
   display: grid;
   height: 100%;
   place-items: center;
@@ -144,7 +145,8 @@ h1 {
     var(--tinta);
 }
 
-.login__panel {
+.login__panel,
+.home__panel {
   display: grid;
   width: 360px;
   gap: 8px;
@@ -248,8 +250,8 @@ h1 {
   background: var(--superficie);
 }
 
-.tile--br { border-top-color: var(--ipe); }
-.tile--ru { border-top-color: var(--gzhel); }
+.tile--me { border-top-color: var(--ipe); }
+.tile--other { border-top-color: var(--gzhel); }
 
 .tile__name {
   font-size: 20px;

@@ -1,0 +1,23 @@
+@page "/"
+@inject DesktopSettings Settings
+@inject NavigationManager Navigation
+
+@if (Settings.Mode == ConnectionMode.Code)
+{
+  <main class="home">
+    <section class="home__panel">
+      <p class="login__mark" aria-hidden="true">DT</p>
+      <h1 class="login__title">DinoTranslator</h1>
+    </section>
+  </main>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        if (Settings.Mode == ConnectionMode.Server)
+        {
+            Navigation.NavigateTo("/login", replace: true);
+        }
+    }
+}
