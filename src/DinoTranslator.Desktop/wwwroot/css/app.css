@@ -374,6 +374,37 @@ select.field__input option {
   margin-top: 8px;
 }
 
+/* Lista de verificação (teste de rede e de dispositivos) */
+
+.checklist {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checklist__item {
+  position: relative;
+  padding-left: 20px;
+  color: var(--papel-2);
+  font-size: 13px;
+}
+
+.checklist__item::before {
+  position: absolute;
+  top: .45em;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  content: "";
+}
+
+.checklist__item--ok::before { background: var(--ok); }
+.checklist__item--warn::before { background: var(--urucum); }
+.checklist__item--off::before { background: var(--erro); }
+
 /* Reticências animadas enquanto os computadores se procuram. */
 .connecting::after {
   display: inline-block;

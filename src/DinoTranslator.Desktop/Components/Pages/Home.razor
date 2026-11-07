@@ -2,6 +2,7 @@
 @inject DesktopSettings Settings
 @inject ProfileStore Profiles
 @inject DinoTranslator.Desktop.Services.Translation.TranslationSettingsStore Translation
+@inject ConnectionSettingsStore Connection
 @inject NavigationManager Navigation
 
 @if (Settings.Mode == ConnectionMode.Code)
@@ -33,6 +34,10 @@
           <span class="setting-row__value">
             @(Translation.Current.IsConfigured ? TranslationSettingsPage.Describe(Translation.Current) : "configurar")
           </span>
+        </button>
+        <button type="button" class="setting-row" @onclick="@(() => Navigation.NavigateTo("/configuracoes/conexao"))">
+          <span class="setting-row__label">Conexão</span>
+          <span class="setting-row__value">@(Connection.Current.HasRelay ? "direta ou retransmitida" : "direta · testar rede")</span>
         </button>
         <div class="home__actions">
           <button type="button" class="button button--primary" @onclick="@(() => Navigation.NavigateTo("/chamada/convite"))">Nova chamada</button>

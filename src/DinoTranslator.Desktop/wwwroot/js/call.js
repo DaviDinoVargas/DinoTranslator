@@ -23,9 +23,10 @@ export class CallPeer {
   /**
    * @param {object} events callbacks: onState, onStats, onAppMessage, onChannelOpen, onRemoteStream,
    *   onRemoteScreen, onLocalScreen, onScreenStats, onError
-   * @param {{polite: boolean}} options o lado "educado" cede quando os dois renegociam ao mesmo tempo
+   * @param {{polite: boolean, relay: RTCIceServer | null}} options o lado "educado" cede quando os dois
+   *   renegociam ao mesmo tempo; relay é a retransmissão (TURN) opcional
    */
-  constructor(events, { polite }) {
+  constructor(events, { polite, relay = null }) {
     this.events = events;
     this.polite = polite;
     this.makingOffer = false;
@@ -52,7 +53,8 @@ export class CallPeer {
     this.captures = new Map();
     this.onSpeechAudio = null;
 
-    this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" });
+    const iceServers = relay ? [...ICE_SERVERS, relay] : ICE_SERVERS;
+    this.pc = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" });
     // Canais com id fixo: existem dos dois lados sem troca extra de sinais.
     this.app = this.pc.createDataChannel("app", { negotiated: true, id: 0, ordered: true });
     this.signal = this.pc.createDataChannel("sinal", { negotiated: true, id: 1, ordered: true });
@@ -564,7 +566,7 @@ export function tuneOpus(sdp) {
 
 let current = null;
 
-export function create(dotnet, polite) {
+export function create(dotnet, polite, relay) {
   current?.close();
   current = new CallPeer({
     onState: (state) => dotnet.invokeMethodAsync("OnConnectionState", state),
@@ -576,7 +578,49 @@ export function create(dotnet, polite) {
     onRemoteScreen: (active) => dotnet.invokeMethodAsync("OnRemoteScreen", active),
     onLocalScreen: (active) => dotnet.invokeMethodAsync("OnLocalScreen", active),
     onScreenStats: (sending, width, height, fps, codec) => dotnet.invokeMethodAsync("OnScreenStats", sending, width, height, fps, codec),
-  }, { polite });
+  }, { polite, relay: relay ?? null });
+}
+
+/**
+ * Diagnóstico da rede deste computador: IPv6 público, comportamento do NAT no IPv4 (um
+ * endereço para todos os destinos = "direta"; um por destino = "restrita", típico do CGNAT
+ * das operadoras) e, se configurada, se a retransmissão responde.
+ */
+export async function diagnoseNetwork(relay) {
+  const gather = async (iceServers, iceTransportPolicy) => {
+    const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy });
+    pc.createDataChannel("diagnostico");
+    const found = [];
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate?.candidate) {
+        found.push(candidate);
+      }
+    };
+    await pc.setLocalDescription(await pc.createOffer());
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 6000);
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === "complete") {
+          clearTimeout(timer);
+          resolve();
+        }
+      };
+    });
+    pc.close();
+    return found;
+  };
+  const direct = await gather(ICE_SERVERS, "all");
+  const reflexive = direct.filter((c) => c.type === "srflx" && c.protocol === "udp" && c.address);
+  const ipv4 = new Set(reflexive.filter((c) => !c.address.includes(":")).map((c) => `${c.address}:${c.port}`));
+  const result = {
+    ipv6: reflexive.some((c) => c.address.includes(":")),
+    ipv4: ipv4.size === 0 ? "sem" : ipv4.size === 1 ? "direta" : "restrita",
+    relay: null,
+  };
+  if (relay) {
+    result.relay = (await gather([relay], "relay")).some((c) => c.type === "relay");
+  }
+  return result;
 }
 
 export const createInvite = () => current.createInvite();

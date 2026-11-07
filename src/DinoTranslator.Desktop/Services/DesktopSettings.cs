@@ -32,6 +32,8 @@ public sealed record DesktopSettings(ConnectionMode Mode, Uri? ServerUri, string
 
     public string TranslationFile => Path.Combine(DataFolder, "motores.dat");
 
+    public string ConnectionFile => Path.Combine(DataFolder, "conexao.dat");
+
     public string ModelsFolder => Path.Combine(DataFolder, "modelos");
 
     public static DesktopSettings Load()

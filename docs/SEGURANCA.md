@@ -42,6 +42,7 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 
 - DTLS-SRTP obrigatório (padrão do WebRTC): só os dois computadores têm as chaves.
 - STUN público usado só para descobrir o endereço de cada lado; nenhum dado da chamada passa por ele.
+- Retransmissão (TURN) opcional, configurada pela pessoa para redes que não deixam a ligação direta passar: só repassa pacotes já cifrados (DTLS-SRTP). Endereço validado (`turn:`/`turns:`), usuário e senha guardados com DPAPI em `conexao.dat`, nunca enviados pela chamada.
 - Canal de dados: JSON de até 16 KB por mensagem, tipos conhecidos, limite de mensagens por segundo; o que não for reconhecido é descartado.
 - O app não abre portas de entrada nem fica escutando conexões fora de uma chamada.
 - Renegociação de mídia só é aceita pelo canal de sinal e com o mesmo certificado DTLS do início da chamada.

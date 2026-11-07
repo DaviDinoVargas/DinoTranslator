@@ -58,6 +58,7 @@ public sealed class CallSession(
     ProfileStore profiles,
     TitleBarState titleBar,
     TranslationSettingsStore translationSettings,
+    ConnectionSettingsStore connectionSettings,
     SpeechEngineFactory engines,
     RendezvousRelay relay,
     IUiDispatcher ui,
@@ -441,7 +442,7 @@ public sealed class CallSession(
     {
         _module ??= await js.InvokeAsync<IJSObjectReference>("import", "./js/call.js");
         _self ??= DotNetObjectReference.Create(this);
-        await _module.InvokeVoidAsync("create", _self, polite);
+        await _module.InvokeVoidAsync("create", _self, polite, RelayFor(connectionSettings.Current));
         return _module;
     }
 
@@ -670,6 +671,11 @@ public sealed class CallSession(
         titleBar.SetStatus(null);
         _ = _module?.InvokeVoidAsync("hangup");
     }
+
+    /// <summary>Retransmissão no formato do RTCIceServer do WebRTC, ou <c>null</c>.</summary>
+    public static object? RelayFor(ConnectionSettings settings) => settings.HasRelay
+        ? new { urls = settings.TurnUrl, username = settings.TurnUser, credential = settings.TurnPassword }
+        : null;
 
     private static string ModeName(ScreenMode mode) => mode == ScreenMode.Motion ? "motion" : "detail";
 
