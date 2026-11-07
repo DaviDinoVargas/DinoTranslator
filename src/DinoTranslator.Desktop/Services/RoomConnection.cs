@@ -14,8 +14,10 @@ public sealed class RoomConnection : IAsyncDisposable
 
     public RoomConnection(DesktopSettings settings, AuthClient auth)
     {
+        var serverUri = settings.ServerUri
+            ?? throw new InvalidOperationException("A sala só existe no modo servidor.");
         _hub = new HubConnectionBuilder()
-            .WithUrl(new Uri(settings.ServerUri, RoomRoutes.Hub), options =>
+            .WithUrl(new Uri(serverUri, RoomRoutes.Hub), options =>
             {
                 options.Transports = HttpTransportType.WebSockets;
                 options.AccessTokenProvider = () => auth.GetAccessTokenAsync();

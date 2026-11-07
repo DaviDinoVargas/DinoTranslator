@@ -9,10 +9,15 @@ public static class DesktopServices
     {
         services.AddSingleton(settings);
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<ISessionStore>(new DpapiSessionStore(settings.SessionFile));
-        services.AddSingleton(new HttpClient { BaseAddress = settings.ServerUri, Timeout = TimeSpan.FromSeconds(15) });
-        services.AddSingleton<AuthClient>();
-        services.AddSingleton<RoomConnection>();
+
+        if (settings.Mode == ConnectionMode.Server)
+        {
+            services.AddSingleton<ISessionStore>(new DpapiSessionStore(settings.SessionFile));
+            services.AddSingleton(new HttpClient { BaseAddress = settings.ServerUri, Timeout = TimeSpan.FromSeconds(15) });
+            services.AddSingleton<AuthClient>();
+            services.AddSingleton<RoomConnection>();
+        }
+
         return services;
     }
 }

@@ -27,7 +27,7 @@
     @foreach (var participant in OrderedParticipants)
     {
       var isMe = participant.Profile.Id == Auth.CurrentUser?.Id;
-      <article class="tile tile--@LanguageClass(participant.Profile.Language)">
+      <article class="tile tile--@(isMe ? "me" : "other")">
         <p class="tile__name">@(isMe ? "Você" : participant.Profile.DisplayName)</p>
         <p class="tile__meta">
           @participant.Profile.Language ·
@@ -67,7 +67,7 @@
     {
         if (Auth.CurrentUser is null)
         {
-            Navigation.NavigateTo("/");
+            Navigation.NavigateTo("/login");
             return;
         }
 
@@ -98,7 +98,7 @@
     {
         await Connection.StopAsync();
         await Auth.LogoutAsync();
-        Navigation.NavigateTo("/");
+        Navigation.NavigateTo("/login");
     }
 
     private void OnPresenceChanged(Participant changed) => InvokeAsync(() =>
@@ -129,11 +129,9 @@
     {
         if (Auth.CurrentUser is null)
         {
-            Navigation.NavigateTo("/");
+            Navigation.NavigateTo("/login");
         }
     });
-
-    private static string LanguageClass(string language) => language == Languages.Russian ? "ru" : "br";
 
     public ValueTask DisposeAsync()
     {

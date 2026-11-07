@@ -3,11 +3,20 @@ using System.Text.Json;
 
 namespace DinoTranslator.Desktop.Services;
 
+public enum ConnectionMode
+{
+    /// <summary>Padrão: sem servidor, a chamada é aberta por códigos de convite e de resposta.</summary>
+    Code,
+
+    /// <summary>Opcional: login e presença pelo DinoTranslator.Server.</summary>
+    Server,
+}
+
 /// <summary>
-/// Configuração do app: endereço do servidor (em <c>appsettings.json</c>, ao lado do executável)
-/// e pastas de dados do usuário em %LOCALAPPDATA%\DinoTranslator.
+/// Configuração do app (em <c>appsettings.json</c>, ao lado do executável) e pastas de
+/// dados do usuário em %LOCALAPPDATA%\DinoTranslator.
 /// </summary>
-public sealed record DesktopSettings(Uri ServerUri, string DataFolder)
+public sealed record DesktopSettings(ConnectionMode Mode, Uri? ServerUri, string DataFolder)
 {
     public const string FileName = "appsettings.json";
 
@@ -15,16 +24,28 @@ public sealed record DesktopSettings(Uri ServerUri, string DataFolder)
 
     public string SessionFile => Path.Combine(DataFolder, "session.dat");
 
+    public string ProfileFile => Path.Combine(DataFolder, "perfil.json");
+
     public static DesktopSettings Load()
     {
         var dataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DinoTranslator");
-        var serverUrl = ReadServerUrl(Path.Combine(AppContext.BaseDirectory, FileName));
+        var (mode, serverUrl) = ReadFile(Path.Combine(AppContext.BaseDirectory, FileName));
 #if DEBUG
+        mode = Environment.GetEnvironmentVariable("DINOTRANSLATOR_MODE") ?? mode;
         serverUrl = Environment.GetEnvironmentVariable("DINOTRANSLATOR_SERVER") ?? serverUrl;
 #endif
-        return new DesktopSettings(ParseServerUri(serverUrl), dataFolder);
+        var connectionMode = ParseMode(mode);
+        var serverUri = connectionMode == ConnectionMode.Server ? ParseServerUri(serverUrl) : null;
+        return new DesktopSettings(connectionMode, serverUri, dataFolder);
     }
+
+    public static ConnectionMode ParseMode(string? value) => value switch
+    {
+        null or "" or "codigo" => ConnectionMode.Code,
+        "servidor" => ConnectionMode.Server,
+        _ => throw new InvalidOperationException("Modo de conexão inválido: use \"codigo\" ou \"servidor\"."),
+    };
 
     /// <summary>Só HTTPS; HTTP apenas para o próprio computador, em desenvolvimento.</summary>
     public static Uri ParseServerUri(string? value)
@@ -45,16 +66,20 @@ public sealed record DesktopSettings(Uri ServerUri, string DataFolder)
         return uri;
     }
 
-    private static string? ReadServerUrl(string path)
+    private static (string? Mode, string? ServerUrl) ReadFile(string path)
     {
         if (!File.Exists(path))
         {
-            return null;
+            return (null, null);
         }
         using var json = JsonDocument.Parse(File.ReadAllText(path));
-        return json.RootElement.TryGetProperty("Server", out var server)
-            && server.TryGetProperty("BaseUrl", out var baseUrl)
-                ? baseUrl.GetString()
-                : null;
+        var root = json.RootElement;
+        var mode = root.TryGetProperty("Conexao", out var connection) && connection.TryGetProperty("Modo", out var modeValue)
+            ? modeValue.GetString()
+            : null;
+        var serverUrl = root.TryGetProperty("Server", out var server) && server.TryGetProperty("BaseUrl", out var baseUrl)
+            ? baseUrl.GetString()
+            : null;
+        return (mode, serverUrl);
     }
 }
