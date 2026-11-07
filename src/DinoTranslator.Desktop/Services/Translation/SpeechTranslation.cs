@@ -1,3 +1,5 @@
+using DinoTranslator.Desktop.Services.Translation.Local;
+
 namespace DinoTranslator.Desktop.Services.Translation;
 
 /// <param name="Phrases">Glossário: nomes e termos que o reconhecimento deve preferir.</param>
@@ -23,14 +25,64 @@ public interface ISpeechTranslationEngine
     Task<ISpeechTranslationStream> StartAsync(SpeechStreamOptions options, CancellationToken cancellationToken);
 }
 
-public static class SpeechTranslationEngines
+/// <summary>
+/// Cria o motor configurado. Os modelos locais ficam carregados entre uma chamada e outra:
+/// carregá-los leva alguns segundos.
+/// </summary>
+public sealed class SpeechEngineFactory(ModelFolder models) : IDisposable
 {
-    public static ISpeechTranslationEngine? Create(TranslationSettings settings, TimeProvider time) => settings.Provider switch
+    private readonly Lock _gate = new();
+    private LocalSpeechRuntime? _local;
+
+    public ModelFolder Models { get; } = models;
+
+    /// <summary>O motor configurado pode ser usado agora (no local: modelos baixados).</summary>
+    public bool IsReady(TranslationSettings settings) => settings.Provider switch
     {
-        TranslationProvider.AzureSpeech => new AzureSpeechTranslationEngine(settings.Region!, settings.Key!),
-#if DEBUG
-        TranslationProvider.Simulated => new SimulatedSpeechTranslationEngine(),
-#endif
-        _ => null,
+        TranslationProvider.Local => settings.LocalModel is { } model && Models.IsInstalled(model),
+        TranslationProvider.None => false,
+        _ => true,
     };
+
+    public ISpeechTranslationEngine? Create(TranslationSettings settings)
+    {
+        if (!IsReady(settings))
+        {
+            return null;
+        }
+        return settings.Provider switch
+        {
+            TranslationProvider.AzureSpeech => new AzureSpeechTranslationEngine(settings.Region!, settings.Key!),
+            TranslationProvider.Local => new LocalSpeechTranslationEngine(() => LocalRuntime(settings.LocalModel!.Value)),
+#if DEBUG
+            TranslationProvider.Simulated => new SimulatedSpeechTranslationEngine(),
+#endif
+            _ => null,
+        };
+    }
+
+    /// <summary>Libera os modelos locais (ex.: antes de apagá-los do disco).</summary>
+    public void ReleaseLocal()
+    {
+        lock (_gate)
+        {
+            _local?.Dispose();
+            _local = null;
+        }
+    }
+
+    public void Dispose() => ReleaseLocal();
+
+    private LocalSpeechRuntime LocalRuntime(WhisperModel model)
+    {
+        lock (_gate)
+        {
+            if (_local?.Model != model)
+            {
+                _local?.Dispose();
+                _local = LocalSpeechRuntime.Load(Models, model);
+            }
+            return _local;
+        }
+    }
 }

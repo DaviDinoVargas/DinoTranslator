@@ -1,5 +1,6 @@
 using System.Net.Http;
 using DinoTranslator.Desktop.Services.Translation;
+using DinoTranslator.Desktop.Services.Translation.Local;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DinoTranslator.Desktop.Services;
@@ -22,6 +23,7 @@ public static class DesktopServices
         services.AddSingleton(titleBar);
 
         services.AddSingleton(new TranslationSettingsStore(settings.TranslationFile));
+        services.AddSingleton(new SpeechEngineFactory(new ModelFolder(settings.ModelsFolder)));
 
         if (settings.Mode == ConnectionMode.Code)
         {
