@@ -8,6 +8,7 @@
   --ipe: #f2b705;
   --gzhel: #3d6fe0;
   --gzhel-texto: #86a6f2;
+  --ipe-fundo: #3a2e0b;
   --urucum: #e0662f;
   --ok: #4fa36c;
   --erro: #d9534f;
@@ -411,6 +412,97 @@ select.field__input option {
   padding: 4px 10px;
   background: rgba(18, 17, 15, .82);
   font: 12px Consolas, monospace;
+}
+
+/* Tela compartilhada: ocupa o palco e as duas câmeras vão para uma coluna à direita. */
+
+.screen-tile {
+  display: none;
+  position: relative;
+  min-height: 0;
+  margin: 0;
+  border-top: 2px solid var(--gzhel);
+  background: #000;
+}
+
+.screen-tile video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.screen-tile figcaption {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  padding: 4px 10px;
+  background: rgba(18, 17, 15, .82);
+  font: 12px Consolas, monospace;
+}
+
+.call__stage--screen {
+  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.call__stage--screen .screen-tile {
+  display: block;
+  grid-row: 1 / span 2;
+  grid-column: 1;
+}
+
+.call__stage--screen .video-tile {
+  grid-column: 2;
+}
+
+.call__sharing {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--linha);
+  border-left: 2px solid var(--ipe);
+  background: var(--ipe-fundo);
+}
+
+.call__sharing-label {
+  font-weight: 600;
+}
+
+.call__sharing-stats {
+  color: var(--papel-2);
+  font: 12px Consolas, monospace;
+}
+
+.call__sharing .button--quiet {
+  margin-left: auto;
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+}
+
+.segmented__option {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--papel-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.segmented__option + .segmented__option {
+  border-left: 1px solid var(--linha);
+}
+
+.segmented__option--on {
+  background: var(--ipe);
+  color: var(--tinta);
 }
 
 .call__dock {

@@ -42,7 +42,39 @@
     </p>
   }
 
-  <section class="call__stage">
+  @if (Call.SharingScreen)
+  {
+    <div class="call__sharing" role="status">
+      <span class="call__sharing-label">Você está compartilhando a tela</span>
+      @if (Call.ScreenStats is { } sent)
+      {
+        <span class="call__sharing-stats">enviando @sent</span>
+      }
+      <div class="segmented" role="group" aria-label="Qualidade da tela">
+        <button type="button" class="segmented__option @(Call.ScreenMode == ScreenMode.Detail ? "segmented__option--on" : "")"
+                aria-pressed="@(Call.ScreenMode == ScreenMode.Detail ? "true" : "false")" @onclick="() => Call.SetScreenModeAsync(ScreenMode.Detail)">
+          Nítida · texto
+        </button>
+        <button type="button" class="segmented__option @(Call.ScreenMode == ScreenMode.Motion ? "segmented__option--on" : "")"
+                aria-pressed="@(Call.ScreenMode == ScreenMode.Motion ? "true" : "false")" @onclick="() => Call.SetScreenModeAsync(ScreenMode.Motion)">
+          Fluida · vídeo
+        </button>
+      </div>
+      <button type="button" class="button button--quiet" @onclick="Call.StopScreenShareAsync">Parar</button>
+    </div>
+  }
+
+  <section class="call__stage @(Call.RemoteScreen ? "call__stage--screen" : "")">
+    <figure class="screen-tile">
+      <video @ref="_remoteScreen" autoplay playsinline muted></video>
+      <figcaption>
+        Tela de @Call.Peer?.Name
+        @if (!Call.SharingScreen && Call.ScreenStats is { } received)
+        {
+          <span> · @received</span>
+        }
+      </figcaption>
+    </figure>
     <figure class="video-tile tile--other">
       <video @ref="_remoteVideo" autoplay playsinline></video>
       <figcaption>@Call.Peer?.Name</figcaption>
@@ -55,12 +87,16 @@
 
   <footer class="call__dock">
     <button type="button" class="dock-button @(_microphone ? "dock-button--on" : "")" @onclick="ToggleMicrophoneAsync"
-            disabled="@(!Live)" aria-pressed="@_microphone">
+            disabled="@(!Live)" aria-pressed="@(_microphone ? "true" : "false")">
       @(_microphone ? "Microfone" : "Microfone mudo")
     </button>
     <button type="button" class="dock-button @(_camera ? "dock-button--on" : "")" @onclick="ToggleCameraAsync"
-            disabled="@(!Live)" aria-pressed="@_camera">
+            disabled="@(!Live)" aria-pressed="@(_camera ? "true" : "false")">
       @(_camera ? "Câmera" : "Câmera desligada")
+    </button>
+    <button type="button" class="dock-button @(Call.SharingScreen ? "dock-button--on" : "")" @onclick="ToggleScreenAsync"
+            disabled="@(!Live)" aria-pressed="@(Call.SharingScreen ? "true" : "false")">
+      @(Call.SharingScreen ? "Parar tela" : "Compartilhar tela")
     </button>
     <button type="button" class="dock-button dock-button--end" @onclick="HangUpAsync">Encerrar</button>
   </footer>
@@ -69,6 +105,7 @@
 @code {
     private ElementReference _localVideo;
     private ElementReference _remoteVideo;
+    private ElementReference _remoteScreen;
     private bool _microphone = true;
     private bool _camera = true;
     private bool _mediaStarted;
@@ -92,6 +129,7 @@
             return;
         }
         _mediaStarted = true;
+        await Call.BindRemoteScreenAsync(_remoteScreen);
         try
         {
             await Call.StartMediaAsync(_localVideo, _remoteVideo, highFidelity: false);
@@ -115,6 +153,9 @@
         _camera = !_camera;
         await Call.SetCameraAsync(_camera);
     }
+
+    private Task ToggleScreenAsync() =>
+        Call.SharingScreen ? Call.StopScreenShareAsync() : Call.StartScreenShareAsync();
 
     private async Task HangUpAsync()
     {
