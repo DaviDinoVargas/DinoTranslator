@@ -1,0 +1,100 @@
+@inject ProfileStore Profiles
+
+<EditForm Model="_form" OnSubmit="Save" class="login__form">
+  <label class="field">
+    <span class="field__label">Seu nome</span>
+    <InputText @bind-Value="_form.Name" class="field__input" maxlength="@Profile.MaxNameLength" spellcheck="false" />
+  </label>
+
+  <label class="field">
+    <span class="field__label">Idioma em que você fala</span>
+    <InputSelect @bind-Value="_form.Language" class="field__input">
+      @foreach (var language in Languages.All)
+      {
+        <option value="@language.Code">@language.NativeName</option>
+      }
+    </InputSelect>
+  </label>
+
+  <label class="field">
+    <span class="field__label">Gênero, para a concordância na tradução</span>
+    <InputSelect @bind-Value="_form.Gender" class="field__input">
+      <option value="@Gender.Unspecified">Prefiro não informar</option>
+      <option value="@Gender.Female">Feminino</option>
+      <option value="@Gender.Male">Masculino</option>
+    </InputSelect>
+  </label>
+
+  <label class="field">
+    <span class="field__label">Como tratar a outra pessoa</span>
+    <InputSelect @bind-Value="_form.Formality" class="field__input">
+      <option value="@Formality.Informal">Informal · você, ты, ти, tú</option>
+      <option value="@Formality.Formal">Formal · o senhor, вы, ви, usted</option>
+    </InputSelect>
+  </label>
+
+  @if (_error is not null)
+  {
+    <p class="login__error" role="alert">@_error</p>
+  }
+
+  <div class="form__actions">
+    <button type="submit" class="button button--primary">Salvar perfil</button>
+    @if (OnCancel.HasDelegate)
+    {
+      <button type="button" class="button" @onclick="OnCancel">Cancelar</button>
+    }
+  </div>
+</EditForm>
+
+@code {
+    private readonly ProfileForm.Fields _form = new();
+    private string? _error;
+
+    [Parameter]
+    public EventCallback OnSaved { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Profiles.Current is { } current)
+        {
+            _form.Name = current.Name;
+            _form.Language = current.Language;
+            _form.Gender = current.Gender;
+            _form.Formality = current.Formality;
+        }
+    }
+
+    private async Task Save()
+    {
+        var profile = new Profile(
+            (_form.Name ?? string.Empty).Trim(),
+            _form.Language,
+            _form.Gender,
+            _form.Formality,
+            ProfileStore.LocalTimeZone());
+
+        _error = Profile.Validate(profile);
+        if (_error is not null)
+        {
+            return;
+        }
+
+        Profiles.Save(profile);
+        await OnSaved.InvokeAsync();
+    }
+
+    private sealed class Fields
+    {
+        public string? Name { get; set; }
+
+        public string Language { get; set; } = Languages.PortugueseBrazil;
+
+        public Gender Gender { get; set; }
+
+        public Formality Formality { get; set; }
+    }
+}

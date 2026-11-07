@@ -1,5 +1,6 @@
 @page "/"
 @inject DesktopSettings Settings
+@inject ProfileStore Profiles
 @inject NavigationManager Navigation
 
 @if (Settings.Mode == ConnectionMode.Code)
@@ -8,11 +9,32 @@
     <section class="home__panel">
       <p class="login__mark" aria-hidden="true">DT</p>
       <h1 class="login__title">DinoTranslator</h1>
+
+      @if (Profiles.Current is not { } profile || _editing)
+      {
+        <p class="home__lead">
+          @(Profiles.Current is null ? "Antes da primeira chamada, conte quem você é." : "Editar perfil")
+        </p>
+        <ProfileForm OnSaved="() => _editing = false"
+                     OnCancel="@(Profiles.Current is null ? default(EventCallback) : EventCallback.Factory.Create(this, () => _editing = false))" />
+      }
+      else
+      {
+        <div class="profile-card">
+          <p class="profile-card__name">@profile.Name</p>
+          <p class="profile-card__meta">
+            @Languages.Get(profile.Language).NativeName · @(profile.Formality == Formality.Formal ? "formal" : "informal")
+          </p>
+          <button type="button" class="button button--quiet" @onclick="() => _editing = true">Editar perfil</button>
+        </div>
+      }
     </section>
   </main>
 }
 
 @code {
+    private bool _editing;
+
     protected override void OnInitialized()
     {
         if (Settings.Mode == ConnectionMode.Server)

@@ -10,6 +10,16 @@ public static class DesktopServices
         services.AddSingleton(settings);
         services.AddSingleton(TimeProvider.System);
 
+        var profiles = new ProfileStore(settings.ProfileFile);
+        var titleBar = new TitleBarState();
+        if (profiles.Current is { } profile)
+        {
+            titleBar.SetLocal(profile.TimeZone);
+        }
+        profiles.Changed += changed => titleBar.SetLocal(changed.TimeZone);
+        services.AddSingleton(profiles);
+        services.AddSingleton(titleBar);
+
         if (settings.Mode == ConnectionMode.Server)
         {
             services.AddSingleton<ISessionStore>(new DpapiSessionStore(settings.SessionFile));
