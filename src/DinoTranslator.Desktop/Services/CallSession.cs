@@ -20,6 +20,15 @@ public enum CallRole
     Guest,
 }
 
+public enum ScreenMode
+{
+    /// <summary>Texto e código: mantém a resolução e reduz os quadros por segundo se preciso.</summary>
+    Detail,
+
+    /// <summary>Vídeo e jogos: mantém os quadros por segundo e reduz a resolução se preciso.</summary>
+    Motion,
+}
+
 /// <summary>
 /// Uma chamada por vez: monta os códigos, conduz a camada de mídia (call.js) e guarda o
 /// estado que as telas mostram. Vive enquanto a janela do app estiver aberta.
@@ -49,6 +58,15 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
     public string? Route { get; private set; }
 
     public string? Problem { get; private set; }
+
+    public bool SharingScreen { get; private set; }
+
+    public bool RemoteScreen { get; private set; }
+
+    public ScreenMode ScreenMode { get; private set; } = ScreenMode.Detail;
+
+    /// <summary>Ex.: "2560×1440 · 30 fps · AV1".</summary>
+    public string? ScreenStats { get; private set; }
 
     /// <summary>Anfitrião: gera o convite. Cada convite aceita uma única resposta.</summary>
     public async Task<string> CreateInviteAsync()
@@ -140,6 +158,55 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
         }
     }
 
+    /// <summary>Abre o seletor de tela ou janela do Windows; cancelar o seletor não é erro.</summary>
+    public async Task StartScreenShareAsync()
+    {
+        if (_module is null || Stage != CallStage.Connected || SharingScreen)
+        {
+            return;
+        }
+        try
+        {
+            await _module.InvokeVoidAsync("startScreenShare", ModeName(ScreenMode));
+        }
+        catch (JSException ex) when (ex.Message.Contains("NotAllowedError", StringComparison.Ordinal)
+            || ex.Message.Contains("AbortError", StringComparison.Ordinal))
+        {
+            // A pessoa fechou o seletor sem escolher nada.
+        }
+        catch (JSException)
+        {
+            Problem = "Não foi possível compartilhar a tela.";
+            Notify();
+        }
+    }
+
+    public async Task StopScreenShareAsync()
+    {
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("stopScreenShare");
+        }
+    }
+
+    public async Task SetScreenModeAsync(ScreenMode mode)
+    {
+        ScreenMode = mode;
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("setScreenMode", ModeName(mode));
+        }
+        Notify();
+    }
+
+    public async Task BindRemoteScreenAsync(ElementReference video)
+    {
+        if (_module is not null && Stage == CallStage.Connected)
+        {
+            await _module.InvokeVoidAsync("bindRemoteScreen", video);
+        }
+    }
+
     public async Task HangUpAsync()
     {
         if (_module is not null && Stage == CallStage.Connected)
@@ -207,6 +274,37 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
     }
 
     [JSInvokable]
+    public void OnLocalScreen(bool active)
+    {
+        SharingScreen = active;
+        ScreenStats = null;
+        Notify();
+    }
+
+    [JSInvokable]
+    public void OnRemoteScreen(bool active)
+    {
+        RemoteScreen = active;
+        if (!SharingScreen)
+        {
+            ScreenStats = null;
+        }
+        Notify();
+    }
+
+    [JSInvokable]
+    public void OnScreenStats(bool sending, int width, int height, int framesPerSecond, string codec)
+    {
+        if (sending != SharingScreen || width <= 0 || height <= 0)
+        {
+            return;
+        }
+        var codecName = codec.Length is > 0 and <= 16 ? $" · {codec}" : string.Empty;
+        ScreenStats = $"{width}×{height} · {framesPerSecond} fps{codecName}";
+        Notify();
+    }
+
+    [JSInvokable]
     public void OnMediaError(string message)
     {
         Problem = "Não foi possível ajustar o áudio ou o vídeo da chamada.";
@@ -256,6 +354,9 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
         RoundTripMs = null;
         Route = null;
         Problem = null;
+        SharingScreen = false;
+        RemoteScreen = false;
+        ScreenStats = null;
         Stage = CallStage.Idle;
         titleBar.SetPeer(null, null);
         titleBar.SetStatus(null);
@@ -269,6 +370,8 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
         titleBar.SetStatus(null);
         _ = _module?.InvokeVoidAsync("hangup");
     }
+
+    private static string ModeName(ScreenMode mode) => mode == ScreenMode.Motion ? "motion" : "detail";
 
     private void Notify() => Changed?.Invoke();
 }
