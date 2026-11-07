@@ -29,18 +29,22 @@
       timeout(ms, what),
     ]);
 
-    function syntheticStream(color) {
+    function syntheticStream(color, width = 320, height = 180, withAudio = true) {
       const canvas = document.createElement("canvas");
-      canvas.width = 320;
-      canvas.height = 180;
+      canvas.width = width;
+      canvas.height = height;
       const context = canvas.getContext("2d");
       let frame = 0;
       setInterval(() => {
         context.fillStyle = color;
-        context.fillRect(0, 0, 320, 180);
+        context.fillRect(0, 0, width, height);
         context.fillStyle = "#fff";
-        context.fillText(String(frame++), 10, 20);
+        context.font = "48px monospace";
+        context.fillText(String(frame++), 40, 80);
       }, 66);
+      if (!withAudio) {
+        return canvas.captureStream(15);
+      }
       const audio = new AudioContext();
       const oscillator = audio.createOscillator();
       const destination = audio.createMediaStreamDestination();
@@ -50,7 +54,8 @@
     }
 
     function peer(name, polite) {
-      const state = { open: false, messages: [], connection: "new", stats: [], errors: [], tracks: 0 };
+      const state = { open: false, messages: [], connection: "new", stats: [], errors: [], tracks: 0,
+        remoteScreen: false, remoteScreenStarts: 0, sentScreen: null, receivedScreen: null };
       const instance = new CallPeer({
         onState: (s) => { state.connection = s; log(`${name}: conexão ${s}`); },
         onStats: (rtt, path) => state.stats.push({ rtt, path }),
@@ -61,6 +66,14 @@
           document.getElementById(`remote-${name.toLowerCase()}`).srcObject = stream;
         },
         onError: (message) => { state.errors.push(message); log(`${name}: ERRO ${message}`); },
+        onRemoteScreen: (active) => {
+          state.remoteScreen = active;
+          state.remoteScreenStarts += active ? 1 : 0;
+          log(`${name}: tela remota ${active ? "ligada" : "desligada"}`);
+        },
+        onScreenStats: (sending, width, height, fps, codec) => {
+          state[sending ? "sentScreen" : "receivedScreen"] = { width, height, fps, codec };
+        },
       }, { polite });
       return { instance, state };
     }
@@ -103,6 +116,30 @@
       a.instance.signal.send(JSON.stringify(forged));
       await waitFor(() => b.state.errors.some((e) => e.includes("certificado")), "recusa de certificado trocado");
       checks.certificado_trocado_recusado = true;
+
+      // ---- Tela 2K ----
+      await a.instance.startScreenShare({ mode: "detail", stream: syntheticStream("#e0662f", 2560, 1440, false) });
+      await waitFor(() => b.state.remoteScreen, "tela chegando em B");
+      checks.tela_separada_da_camera = b.instance.remoteStream.getVideoTracks().length === 1
+        && b.instance.remoteScreen.getVideoTracks().length === 1;
+      checks.tela_dica_nitida = a.instance.screenTrack.contentHint === "detail"
+        && a.instance.screenTransceiver.sender.getParameters().degradationPreference === "maintain-resolution";
+      await waitFor(() => b.state.receivedScreen?.width === 2560, "tela recebida com 2560 de largura", 30000);
+      checks.tela_recebida = b.state.receivedScreen;
+      checks.tela_enviada = a.state.sentScreen;
+
+      a.instance.setScreenMode("motion");
+      await waitFor(() => a.instance.screenTransceiver.sender.getParameters().degradationPreference === "maintain-framerate", "modo fluido");
+      checks.tela_modo_fluido = a.instance.screenTrack.contentHint === "motion";
+
+      const transceivers = a.instance.pc.getTransceivers().length;
+      await a.instance.stopScreenShare();
+      await waitFor(() => !b.state.remoteScreen, "fim da tela em B");
+      checks.tela_parou = true;
+
+      await a.instance.startScreenShare({ mode: "detail", stream: syntheticStream("#e0662f", 2560, 1440, false) });
+      await waitFor(() => b.state.remoteScreen && b.state.remoteScreenStarts === 2, "tela de novo em B");
+      checks.tela_de_novo_sem_novo_transceptor = a.instance.pc.getTransceivers().length === transceivers;
 
       checks.tune_opus_sem_fmtp = tuneOpus("a=rtpmap:111 opus/48000/2\r\n").includes("a=fmtp:111 maxaveragebitrate=128000");
       checks.erros = [...a.state.errors, ...b.state.errors].filter((e) => !e.includes("certificado"));
