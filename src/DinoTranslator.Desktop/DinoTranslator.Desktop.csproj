@@ -2,7 +2,9 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>$(DinoTargetFramework)-windows</TargetFramework>
+    <!-- O BlazorWebView 10 usa o controle de composição do WebView2, que exige as projeções do SDK do Windows. -->
+    <TargetFramework>$(DinoTargetFramework)-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
     <RootNamespace>DinoTranslator.Desktop</RootNamespace>
     <AssemblyName>DinoTranslator</AssemblyName>
@@ -12,7 +14,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
   </ItemGroup>
 
   <ItemGroup>

@@ -16,12 +16,11 @@ public static class ReverseProxy
         {
             options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
             options.ForwardLimit = 1;
-            options.KnownNetworks.Clear();
+            options.KnownIPNetworks.Clear();
             options.KnownProxies.Clear();
             foreach (var cidr in configuration.GetSection("ReverseProxy:KnownNetworks").Get<string[]>() ?? [])
             {
-                var network = System.Net.IPNetwork.Parse(cidr);
-                options.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(network.BaseAddress, network.PrefixLength));
+                options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(cidr));
             }
             options.KnownProxies.Add(IPAddress.Loopback);
             options.KnownProxies.Add(IPAddress.IPv6Loopback);
