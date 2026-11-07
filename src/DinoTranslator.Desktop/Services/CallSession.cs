@@ -211,7 +211,7 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
     {
         if (_module is not null && Stage == CallStage.Connected)
         {
-            await _module.InvokeAsync<bool>("sendApp", AppMessages.Serialize(new AppMessage(AppMessageTypes.Bye)));
+            await _module.InvokeAsync<bool>("sendApp", AppMessages.Serialize(new ByeMessage()));
         }
         await ResetAsync();
         Notify();
@@ -266,7 +266,7 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
     [JSInvokable]
     public void OnAppMessage(string text)
     {
-        if (AppMessages.TryParse(text) is { Type: AppMessageTypes.Bye })
+        if (AppMessages.TryParse(text) is ByeMessage)
         {
             End($"{Peer?.Name ?? "A outra pessoa"} encerrou a chamada.");
             Notify();
