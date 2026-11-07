@@ -2,33 +2,80 @@
 
 Segurança é requisito, não acabamento: cada módulo só é integrado à `main` com os controles desta lista que lhe cabem.
 
+O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor; o **modo servidor** (opcional, desligado) mantém login e presença. As seções 2 a 4 valem para os dois modos; a seção 5, só para o modo servidor.
+
 ## 1. O que proteger
 
 - **Conteúdo das conversas**: vídeo, áudio, tela, chat e falas.
-- **Credenciais** dos dois usuários.
-- **O servidor**: não pode virar porta de entrada nem relay aberto para terceiros.
+- **Chaves dos serviços de reconhecimento e tradução**, no computador do anfitrião.
+- **Os computadores dos dois**: o app não pode virar porta de entrada.
 
 ## 2. Ameaças consideradas
 
-| Ameaça                                   | Exemplo                                                     | Controles |
-|------------------------------------------|-------------------------------------------------------------|-----------|
-| Acesso de terceiros                      | Alguém descobre o endereço do servidor e tenta entrar       | Sem cadastro; limite de 2 contas; senha forte; bloqueio por tentativas |
-| Força bruta e senhas vazadas             | Robô testando milhares de senhas                            | Bloqueio 5 falhas/15 min; limite de requisições por IP; hash lento |
-| Roubo de token                           | Programa malicioso lê arquivos do usuário                   | Refresh token cifrado com DPAPI; JWT de 15 min; rotação com detecção de reuso; revogação |
-| Interceptação de rede                    | Wi-Fi público, provedor de internet                         | TLS 1.2+ (1.3 preferido), HSTS, WSS, DTLS-SRTP |
-| Servidor comprometido alterando a chamada | Troca das impressões digitais DTLS na sinalização (MITM)    | Código de segurança da chamada conferido em voz alta |
-| Abuso do TURN                            | Relay aberto; acesso à rede interna do servidor (SSRF)      | Credenciais temporárias HMAC; bloqueio de faixas privadas; cotas |
-| Conteúdo malicioso no chat               | Mensagem com HTML ou script                                 | Todo texto renderizado como texto; CSP estrita |
-| Navegação maliciosa no WebView2          | Link no chat abre página que tenta usar a câmera            | Navegação externa bloqueada; permissões só para a origem do app |
-| Vazamento por logs                       | Transcrições ou tokens gravados em log                      | Logs sem conteúdo das conversas, senhas ou tokens |
-| Segredos no repositório                  | Chave de provedor em `appsettings.json`                     | Segredos só em user-secrets/variáveis de ambiente; varredura antes do push |
-| Dependência vulnerável                   | Pacote NuGet/npm com CVE                                    | `dotnet list package --vulnerable` e `npm audit` no CI |
-| Instalador adulterado                    | Arquivo trocado no caminho                                  | Assinatura de código; SHA-256 publicado; atualização verifica assinatura |
-| Uso abusivo do servidor                  | Envio contínuo de áudio para sobrecarregar a tradução       | Só autenticados; limite diário de minutos; tamanho de quadro limitado |
+| Ameaça                                       | Exemplo                                                        | Controles |
+|----------------------------------------------|----------------------------------------------------------------|-----------|
+| Alguém entrar na chamada                     | Terceiro obtém o código de convite e responde antes do convidado | Convite de uso único com validade de 30 min; nome de quem respondeu na tela; código de segurança conferido em voz alta |
+| Código adulterado no caminho (MITM)          | Troca da impressão digital DTLS dentro do código               | Código de segurança da chamada conferido em voz alta |
+| Código malicioso                             | Texto enorme, compressão explosiva, campos inesperados         | Tamanho máximo antes e depois de descomprimir; validação estrita de cada campo; versão conhecida |
+| Interceptação de rede                        | Wi-Fi público, provedor de internet                            | DTLS-SRTP na mídia e DTLS no canal de dados |
+| Mensagem maliciosa pelo canal de dados       | HTML ou script no chat; mensagem gigante; tipo desconhecido    | Tamanho máximo; tipos conhecidos; todo texto renderizado como texto; CSP estrita |
+| Navegação maliciosa no WebView2              | Link no chat abre página que tenta usar a câmera               | Navegação externa bloqueada; permissões só para a origem do app |
+| Vazamento das chaves dos motores             | Chave lida do disco ou enviada pela chamada                    | Chaves cifradas com DPAPI; nunca trafegam pela chamada; nunca em log |
+| Vazamento do histórico                       | Outra pessoa usa o computador                                  | Histórico cifrado com DPAPI; botão para apagar |
+| Exposição do endereço de rede                | O código mostra o IP público a quem o vê                       | Códigos trocados só por mensageiro de confiança; IPs locais ocultos (mDNS do WebRTC) |
+| Segredos no repositório                      | Chave de provedor em arquivo versionado                        | Segredos só no computador do usuário; varredura antes do push |
+| Dependência vulnerável                       | Pacote NuGet com CVE                                           | Auditoria de pacotes no build (falha com vulnerabilidade) |
+| Instalador adulterado                        | Arquivo trocado no caminho                                     | Assinatura de código; SHA-256 publicado |
 
-## 3. Controles por módulo
+## 3. Controles do modo código
 
-### 3.1 Autenticação (`servidor/autenticacao`)
+### 3.1 Código da chamada (`cliente/codigo-chamada`)
+
+- Formato `DT1.` + base64url de JSON comprimido; até 8 KB de texto e 32 KB descomprimido — acima disso é recusado sem processar.
+- Campos obrigatórios e validados: versão, tipo (convite ou resposta), id da chamada (128 bits aleatórios), horário de criação, perfil (nome até 40 caracteres, idioma da lista, gênero, tratamento) e dados de conexão (credenciais ICE, impressão digital DTLS SHA-256, até 16 candidatos).
+- Convite válido por 30 min e para uma única resposta; a resposta precisa trazer o mesmo id da chamada.
+- **Código de segurança**: SHA-256 das duas impressões digitais DTLS (em ordem) → 12 dígitos exibidos para os dois.
+
+### 3.2 Mídia e canal de dados (`cliente/chamada`, `cliente/tela`)
+
+- DTLS-SRTP obrigatório (padrão do WebRTC): só os dois computadores têm as chaves.
+- STUN público usado só para descobrir o endereço de cada lado; nenhum dado da chamada passa por ele.
+- Canal de dados: JSON de até 16 KB por mensagem, tipos conhecidos, limite de mensagens por segundo; o que não for reconhecido é descartado.
+- O app não abre portas de entrada nem fica escutando conexões fora de uma chamada.
+
+### 3.3 Chaves dos motores (`cliente/traducao`)
+
+- Configuradas só no computador do anfitrião, cifradas com DPAPI (usuário atual + entropia própria).
+- Nunca enviadas pela chamada, nunca em log.
+- Áudio enviado aos motores só pelo tempo da chamada; preferência por provedores com opção de não reter dados.
+
+### 3.4 Dados locais
+
+- Perfil e preferências em `%LOCALAPPDATA%\DinoTranslator`.
+- Histórico de chat e falas cifrado com DPAPI; opção de não guardar e botão para apagar.
+
+## 4. Controles comuns aos dois modos
+
+### 4.1 App (`cliente/*`)
+
+- O BlazorWebView só carrega conteúdo local empacotado no app.
+- Toda navegação fora da origem do app é cancelada; novas janelas e downloads são bloqueados; links externos abrem no navegador padrão após confirmação.
+- CSP estrita: sem scripts, estilos ou fontes de fora do app.
+- Câmera, microfone e tela são liberados só para a origem do app; qualquer outra permissão é negada.
+- DevTools, menu de contexto padrão, atalhos do navegador e preenchimento automático desligados na versão final.
+- Texto vindo do outro usuário é sempre renderizado como texto.
+
+### 4.2 Repositório e distribuição
+
+- Nada de segredos, bancos de dados, certificados ou builds no Git (`.gitignore`).
+- Auditoria de dependências vulneráveis em todo build.
+- Instalador assinado; SHA-256 publicado com cada versão.
+
+## 5. Modo servidor (opcional, desligado)
+
+Controles do `DinoTranslator.Server`, mantidos para quando o modo servidor for reativado.
+
+### 5.1 Autenticação (`servidor/autenticacao`)
 
 - Contas criadas **apenas** pelo comando `users add`, executado no próprio servidor. Não existe endpoint de cadastro.
 - `MaxUsers = 2` conferido no banco antes de criar qualquer conta.
@@ -38,53 +85,29 @@ Segurança é requisito, não acabamento: cada módulo só é integrado à `main
 - Bloqueio: 5 falhas seguidas → 15 min; o contador zera no sucesso.
 - Tempo de resposta uniforme: usuário inexistente também passa pelo hash, para não revelar quais usuários existem.
 - Limite de requisições: login 10/min por IP; renovação de token 30/min por IP.
-- JWT: HS256, chave de no mínimo 256 bits vinda de configuração segura; valida emissor, audiência e expiração (15 min, tolerância de 30 s).
+- JWT: HS256, chave de no mínimo 256 bits vinda de configuração segura; valida emissor, audiência e expiração (15 min, tolerância de 30 s); aceito só no cabeçalho `Authorization`.
 - Refresh token: 256 bits aleatórios, guardado como SHA-256, validade de 30 dias, trocado a cada uso. Reapresentar um token já trocado revoga a sessão inteira.
 - Sair revoga a sessão; trocar a senha revoga todas as sessões.
+- No app: refresh token cifrado com DPAPI; token de acesso só em memória; validação de certificado padrão do Windows, nunca desligada.
 
-### 3.2 Tempo real (`servidor/sinalizacao`, `chat/*`, `servidor/traducao`)
+### 5.2 Tempo real (`servidor/sinalizacao`)
 
-- SignalR e WebSocket só aceitam usuários autenticados.
-- Tamanho máximo de mensagem (SignalR 64 KB; quadro de áudio 4 KB) e validação de todos os campos (chat até 4.000 caracteres).
+- SignalR só aceita usuários autenticados; uma conexão ativa por conta.
+- Tamanho máximo de mensagem (64 KB) e validação de tipo e tamanho dos sinais.
 - Mensagens só são repassadas ao outro usuário — não existem salas arbitrárias.
 - Limite de mensagens por segundo por conexão.
-- Áudio para tradução: processado em memória, **nunca gravado**; preferência por provedores com opção de não reter dados.
 
-### 3.3 TURN (`infra/deploy`)
+### 5.3 TURN
 
 - `use-auth-secret` com segredo próprio; credenciais válidas por 12 h emitidas pelo servidor.
 - Sem acesso a redes internas: `denied-peer-ip` para `0.0.0.0/8`, `10.0.0.0/8`, `100.64.0.0/10`, `127.0.0.0/8`, `169.254.0.0/16`, `172.16.0.0/12`, `192.168.0.0/16`, `::1`, `fc00::/7`, `fe80::/10`; `no-multicast-peers`.
 - `no-cli`, `fingerprint`, TLS com o certificado do domínio, cotas por usuário e banda máxima.
 
-### 3.4 Infraestrutura (`infra/deploy`)
+### 5.4 Infraestrutura
 
 - Firewall negando tudo exceto 443/TCP (HTTPS), 3478 UDP/TCP e 5349/TCP (TURN), faixa de portas de relay do TURN e SSH.
 - SSH só por chave, sem login de root.
 - Atualizações automáticas de segurança do sistema.
 - Contêineres sem root, imagens com versão fixa, sistema de arquivos somente leitura onde possível.
 - Segredos em variáveis de ambiente/arquivos de segredo do Docker com permissão restrita.
-- Backup do banco cifrado.
 - Cabeçalhos: HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`.
-
-### 3.5 Cliente (`cliente/*`)
-
-- O BlazorWebView só carrega conteúdo local empacotado no app.
-- Toda navegação fora da origem do app é cancelada; novas janelas são bloqueadas; links externos abrem no navegador padrão após confirmação.
-- CSP estrita: sem scripts inline ou remotos; conexões só com o servidor configurado.
-- Câmera, microfone e tela são liberados só para a origem do app; qualquer outra permissão é negada.
-- DevTools, menu de contexto padrão e atalhos do navegador desligados na versão final.
-- Refresh token cifrado com DPAPI (usuário atual + entropia própria); token de acesso só em memória.
-- Validação de certificado padrão do Windows, nunca desligada. Opcional: fixação da chave pública do servidor.
-- Nenhuma chave de provedor no cliente.
-- Texto vindo do outro usuário é sempre renderizado como texto.
-
-### 3.6 Mídia (`cliente/chamada`, `cliente/tela`)
-
-- DTLS-SRTP obrigatório (padrão do WebRTC): com P2P, só os dois computadores têm as chaves; o TURN apenas repassa pacotes cifrados.
-- **Código de segurança da chamada**: SHA-256 das duas impressões digitais DTLS (em ordem) → 12 dígitos exibidos para os dois. Se forem iguais, ninguém está no meio.
-
-### 3.7 Repositório e distribuição
-
-- Nada de segredos, bancos de dados, certificados ou builds no Git (`.gitignore`).
-- Varredura de segredos (gitleaks) e de dependências vulneráveis no CI.
-- Instalador assinado; SHA-256 publicado com cada versão; o app só aplica atualização com assinatura válida.
