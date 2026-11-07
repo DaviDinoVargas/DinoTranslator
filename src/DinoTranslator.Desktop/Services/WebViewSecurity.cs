@@ -8,7 +8,8 @@ namespace DinoTranslator.Desktop.Services;
 
 /// <summary>
 /// Restringe o WebView2 ao conteúdo empacotado no app: sem navegação para fora, sem novas
-/// janelas, sem downloads e com câmera e microfone liberados só para a própria interface.
+/// janelas, sem downloads e com câmera, microfone e captura de tela liberados só para a
+/// própria interface.
 /// </summary>
 internal static class WebViewSecurity
 {
@@ -89,6 +90,12 @@ internal static class WebViewSecurity
             {
                 e.Cancel = true;
             }
+        };
+        // Só a interface do próprio app pode pedir para capturar a tela.
+        core.ScreenCaptureStarting += (_, e) =>
+        {
+            e.Cancel = !IsAppOrigin(e.OriginalSourceFrameInfo?.Source ?? string.Empty);
+            e.Handled = true;
         };
         core.PermissionRequested += (_, e) =>
         {
