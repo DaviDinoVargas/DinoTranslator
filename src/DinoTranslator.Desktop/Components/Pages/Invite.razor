@@ -8,40 +8,65 @@
   <section class="handshake__panel">
     <p class="handshake__kicker">Nova chamada</p>
 
-    <h1 class="handshake__step">1 · Envie o convite</h1>
-    @if (_invite is null)
+    @if (Call.Stage == CallStage.Ended)
     {
-      <p class="handshake__hint">@(_error is null ? "Preparando o convite…" : "")</p>
+      <h1 class="handshake__step">A chamada não conectou</h1>
+      <p class="login__error" role="alert">@Call.Problem</p>
+      <div class="form__actions">
+        <button type="button" class="button button--primary" @onclick="NewInviteAsync">Criar novo convite</button>
+      </div>
+    }
+    else if (Call.Stage == CallStage.Connecting)
+    {
+      <h1 class="handshake__step">Conectando com @Call.Peer?.Name<span class="connecting" aria-hidden="true"></span></h1>
+      <p class="handshake__hint">Os dois computadores estão se procurando pela internet. Costuma levar poucos segundos.</p>
     }
     else
     {
-      <p class="handshake__hint">
-        Copie e mande pelo mensageiro. Vale até @Call.InviteExpiresAt?.ToLocalTime().ToString("HH:mm") e para uma única pessoa.
-      </p>
-      <textarea class="code-box" readonly rows="4" aria-label="Código de convite">@_invite</textarea>
-      <button type="button" class="button button--primary" @onclick="CopyInvite">
-        @(_copied ? "Convite copiado" : "Copiar convite")
-      </button>
-
-      <h2 class="handshake__step">2 · Cole a resposta</h2>
-      <p class="handshake__hint">Quando a outra pessoa mandar o código de resposta, cole aqui.</p>
-      <textarea class="code-box" rows="4" placeholder="DT1.…" spellcheck="false" aria-label="Código de resposta"
-                @bind="_answer" @bind:event="oninput" disabled="@Busy"></textarea>
-      <div class="form__actions">
-        <button type="button" class="button" @onclick="PasteAnswer" disabled="@Busy">Colar</button>
-        <button type="button" class="button button--primary" @onclick="ConnectAsync"
-                disabled="@(Busy || string.IsNullOrWhiteSpace(_answer))">
-          @(Call.Stage == CallStage.Connecting ? "Conectando…" : "Conectar")
+      <h1 class="handshake__step">1 · Envie o convite</h1>
+      @if (_invite is null)
+      {
+        <p class="handshake__hint">@(_error is null ? "Preparando o convite…" : "")</p>
+      }
+      else
+      {
+        <p class="handshake__hint">
+          Copie e mande pelo mensageiro. Vale até @Call.InviteExpiresAt?.ToLocalTime().ToString("HH:mm") e para uma única pessoa.
+        </p>
+        <textarea class="code-box" readonly rows="4" aria-label="Código de convite">@_invite</textarea>
+        <button type="button" class="button button--primary" @onclick="CopyInvite">
+          @(_copied ? "Convite copiado" : "Copiar convite")
         </button>
-      </div>
+
+        @if (Call.AutoConnect == AutoConnect.Listening)
+        {
+          <p class="handshake__waiting">
+            Aguardando<span class="connecting" aria-hidden="true"></span> Quando a outra pessoa colar o convite, a chamada conecta sozinha.
+          </p>
+        }
+
+        <details class="handshake__manual" open="@(Call.AutoConnect != AutoConnect.Listening)">
+          <summary>@(Call.AutoConnect == AutoConnect.Listening ? "Não conectou sozinho? Cole a resposta" : "2 · Cole a resposta")</summary>
+          <p class="handshake__hint">Se a outra pessoa mandar o código de resposta pelo mensageiro, cole aqui.</p>
+          <textarea class="code-box" rows="4" placeholder="DT1.…" spellcheck="false" aria-label="Código de resposta"
+                    @bind="_answer" @bind:event="oninput"></textarea>
+          <div class="form__actions">
+            <button type="button" class="button" @onclick="PasteAnswer">Colar</button>
+            <button type="button" class="button button--primary" @onclick="ConnectAsync"
+                    disabled="@string.IsNullOrWhiteSpace(_answer)">Conectar</button>
+          </div>
+        </details>
+      }
     }
 
-    @if (_error is not null)
+    @if (_error is not null && Call.Stage != CallStage.Ended)
     {
       <p class="login__error" role="alert">@_error</p>
     }
 
-    <button type="button" class="button button--quiet handshake__cancel" @onclick="CancelAsync">Cancelar</button>
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="CancelAsync">
+      @(Call.Stage == CallStage.Ended ? "Voltar ao início" : "Cancelar")
+    </button>
   </section>
 </main>
 
@@ -50,13 +75,19 @@
     private string _answer = string.Empty;
     private string? _error;
     private bool _copied;
-    private CancellationTokenSource? _connectTimeout;
-
-    private bool Busy => Call.Stage == CallStage.Connecting;
 
     protected override async Task OnInitializedAsync()
     {
         Call.Changed += OnCallChanged;
+        await CreateInviteAsync();
+    }
+
+    private async Task CreateInviteAsync()
+    {
+        _invite = null;
+        _answer = string.Empty;
+        _error = null;
+        _copied = false;
         try
         {
             _invite = await Call.CreateInviteAsync();
@@ -70,6 +101,8 @@
             _error = "Não foi possível preparar a conexão neste computador.";
         }
     }
+
+    private Task NewInviteAsync() => CreateInviteAsync();
 
     private void CopyInvite()
     {
@@ -85,27 +118,15 @@
         try
         {
             await Call.AcceptAnswerAsync(_answer);
-            WatchConnection();
         }
         catch (CallCodeException ex)
         {
             _error = ex.Message;
         }
-    }
-
-    /// <summary>Sem conexão em 30 s, as redes provavelmente não se alcançam diretamente.</summary>
-    private void WatchConnection()
-    {
-        _connectTimeout = new CancellationTokenSource();
-        var token = _connectTimeout.Token;
-        _ = Task.Delay(TimeSpan.FromSeconds(30), token).ContinueWith(_ => InvokeAsync(() =>
+        catch (JSException)
         {
-            if (Call.Stage == CallStage.Connecting)
-            {
-                _error = "Não foi possível conectar. Confiram se os dois estão na internet (de preferência Wi-Fi ou cabo) e criem um novo convite.";
-                StateHasChanged();
-            }
-        }), token, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
+            _error = "Não foi possível preparar a conexão neste computador.";
+        }
     }
 
     private async Task CancelAsync()
@@ -124,10 +145,5 @@
         StateHasChanged();
     });
 
-    public void Dispose()
-    {
-        Call.Changed -= OnCallChanged;
-        _connectTimeout?.Cancel();
-        _connectTimeout?.Dispose();
-    }
+    public void Dispose() => Call.Changed -= OnCallChanged;
 }

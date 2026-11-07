@@ -1,0 +1,174 @@
+@page "/configuracoes/conexao"
+@implements IAsyncDisposable
+@inject ConnectionSettingsStore Store
+@inject IJSRuntime Js
+@inject NavigationManager Navigation
+
+<main class="handshake">
+  <section class="handshake__panel">
+    <p class="handshake__kicker">Configurações</p>
+    <h1 class="handshake__step">Conexão</h1>
+    <p class="handshake__hint">
+      A chamada liga os dois computadores direto, sem servidor no meio. Teste se a sua rede deixa a ligação direta passar.
+    </p>
+
+    <button type="button" class="button" @onclick="DiagnoseAsync" disabled="@_testing">
+      @(_testing ? "Testando a rede…" : "Testar minha rede")
+    </button>
+
+    @if (_diagnosis is { } diagnosis)
+    {
+      <ul class="checklist" aria-label="Resultado do teste">
+        <li class="checklist__item checklist__item--@(diagnosis.Ipv6 ? "ok" : "warn")">
+          @(diagnosis.Ipv6 ? "IPv6 disponível: ligação direta com quem também tiver IPv6." : "Sem IPv6 nesta rede.")
+        </li>
+        <li class="checklist__item checklist__item--@(diagnosis.Ipv4 == "direta" ? "ok" : "warn")">
+          @(diagnosis.Ipv4 switch
+          {
+              "direta" => "IPv4 compatível com ligação direta.",
+              "restrita" => "IPv4 atrás de NAT restritivo da operadora (CGNAT): ligação direta só com ajuda do IPv6 ou de uma retransmissão.",
+              _ => "Sem resposta dos servidores públicos (STUN): a rede pode estar bloqueando a chamada.",
+          })
+        </li>
+        @if (diagnosis.Relay is { } relay)
+        {
+          <li class="checklist__item checklist__item--@(relay ? "ok" : "off")">
+            @(relay ? "Retransmissão respondeu: a chamada passa mesmo em redes fechadas." : "A retransmissão configurada não respondeu. Confira endereço, usuário e senha.")
+          </li>
+        }
+      </ul>
+    }
+    @if (_testError is not null)
+    {
+      <p class="login__error" role="alert">@_testError</p>
+    }
+
+    <h2 class="handshake__step">Retransmissão (opcional)</h2>
+    <p class="handshake__hint">
+      Só é preciso quando a ligação direta não passa — por exemplo, NAT restritivo dos dois lados sem IPv6.
+      Crie uma conta num serviço de TURN (há planos gratuitos) e copie aqui endereço, usuário e senha.
+      A chamada continua cifrada de ponta a ponta: a retransmissão só repassa pacotes. Basta um dos dois configurar.
+    </p>
+
+    <div class="login__form">
+      <label class="field">
+        <span class="field__label">Endereço</span>
+        <input class="field__input" @bind="_url" placeholder="turn:servidor.exemplo:3478" spellcheck="false" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span class="field__label">Usuário</span>
+        <input class="field__input" @bind="_user" spellcheck="false" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span class="field__label">Senha</span>
+        <input class="field__input" type="password" @bind="_password" autocomplete="off"
+               placeholder="@(Store.Current.HasRelay ? "guardada — digite para trocar" : "")" />
+      </label>
+      @if (_error is not null)
+      {
+        <p class="login__error" role="alert">@_error</p>
+      }
+      @if (_saved)
+      {
+        <p class="handshake__waiting">Retransmissão guardada. Vale a partir da próxima chamada.</p>
+      }
+      <div class="form__actions">
+        @if (Store.Current.HasRelay)
+        {
+          <button type="button" class="button button--quiet" @onclick="Remove">Remover</button>
+        }
+        <button type="button" class="button button--primary" @onclick="Save">Salvar</button>
+      </div>
+    </div>
+
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))">Voltar</button>
+  </section>
+</main>
+
+@code {
+    private IJSObjectReference? _module;
+    private NetworkDiagnosis? _diagnosis;
+    private bool _testing;
+    private string? _testError;
+    private string? _url;
+    private string? _user;
+    private string? _password;
+    private string? _error;
+    private bool _saved;
+
+    private sealed record NetworkDiagnosis(bool Ipv6, string Ipv4, bool? Relay);
+
+    protected override void OnInitialized()
+    {
+        _url = Store.Current.TurnUrl;
+        _user = Store.Current.TurnUser;
+    }
+
+    private async Task DiagnoseAsync()
+    {
+        _testing = true;
+        _testError = null;
+        _diagnosis = null;
+        try
+        {
+            _module ??= await Js.InvokeAsync<IJSObjectReference>("import", "./js/call.js");
+            _diagnosis = await _module.InvokeAsync<NetworkDiagnosis>("diagnoseNetwork", CallSession.RelayFor(Store.Current));
+        }
+        catch (JSException)
+        {
+            _testError = "Não foi possível testar a rede agora.";
+        }
+        finally
+        {
+            _testing = false;
+        }
+    }
+
+    private void Save()
+    {
+        _saved = false;
+        var url = Blank(_url);
+        var password = Blank(_password) ?? (url == Store.Current.TurnUrl ? Store.Current.TurnPassword : null);
+        var settings = new ConnectionSettings(url, Blank(_user), url is null ? null : password);
+        if (url is null && settings.TurnUser is null)
+        {
+            Remove();
+            return;
+        }
+        _error = ConnectionSettings.Validate(settings);
+        if (_error is null)
+        {
+            Store.Save(settings);
+            _password = null;
+            _saved = true;
+        }
+    }
+
+    private void Remove()
+    {
+        Store.Clear();
+        _url = null;
+        _user = null;
+        _password = null;
+        _error = null;
+        _saved = false;
+        _diagnosis = _diagnosis is null ? null : _diagnosis with { Relay = null };
+    }
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            try
+            {
+                await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // A janela já fechou.
+            }
+        }
+    }
+}

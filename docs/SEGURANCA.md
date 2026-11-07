@@ -35,11 +35,14 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 - Campos obrigatórios e validados: versão, tipo (convite ou resposta), id da chamada (128 bits aleatórios), horário de criação, perfil (nome até 40 caracteres, idioma da lista, gênero, tratamento) e dados de conexão (credenciais ICE, impressão digital DTLS SHA-256, até 16 candidatos).
 - Convite válido por 30 min e para uma única resposta; a resposta precisa trazer o mesmo id da chamada.
 - **Código de segurança**: SHA-256 das duas impressões digitais DTLS (em ordem) → 12 dígitos exibidos para os dois.
+- **Encontro automático** (a resposta volta sem o mensageiro e os dois computadores se procuram ao mesmo tempo, o que atravessa os roteadores domésticos): passa por um serviço público de mensagens (ntfy.sh por padrão; trocável ou desligável em `Encontro.Servidor` do appsettings.json, só HTTPS). Tópico e chave AES-256-GCM derivam por HKDF do id da chamada, que só existe nos códigos: o serviço vê um tópico aleatório, bytes cifrados e os endereços IP de quem conecta a ele. Mensagens de até 4 KB, linhas do fluxo de até 16 KB, tipo conhecido e o código dentro é validado como se tivesse sido colado. Sem repasse para notificações de celular.
+- Enquanto a chamada abre, nenhum dos lados desiste no primeiro erro: o convidado espera enquanto o convite valer e o anfitrião tenta por 45 s depois de ter a resposta.
 
 ### 3.2 Mídia e canal de dados (`cliente/chamada`, `cliente/tela`)
 
 - DTLS-SRTP obrigatório (padrão do WebRTC): só os dois computadores têm as chaves.
 - STUN público usado só para descobrir o endereço de cada lado; nenhum dado da chamada passa por ele.
+- Retransmissão (TURN) opcional, configurada pela pessoa para redes que não deixam a ligação direta passar: só repassa pacotes já cifrados (DTLS-SRTP). Endereço validado (`turn:`/`turns:`), usuário e senha guardados com DPAPI em `conexao.dat`, nunca enviados pela chamada.
 - Canal de dados: JSON de até 16 KB por mensagem, tipos conhecidos, limite de mensagens por segundo; o que não for reconhecido é descartado.
 - O app não abre portas de entrada nem fica escutando conexões fora de uma chamada.
 - Renegociação de mídia só é aceita pelo canal de sinal e com o mesmo certificado DTLS do início da chamada.
@@ -68,7 +71,7 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 - Câmera, microfone e tela são liberados só para a origem do app; qualquer outra permissão é negada.
 - DevTools, menu de contexto padrão, atalhos do navegador e preenchimento automático desligados na versão final.
 - Na versão final, o app apaga ao iniciar as variáveis de ambiente do WebView2 (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` e afins), que permitiriam a um atalho ou lançador malicioso ligar a depuração remota, trocar o navegador embutido ou a pasta de dados.
-- Variáveis de desenvolvimento (`DINOTRANSLATOR_DATA`, `DINOTRANSLATOR_MODE`, `DINOTRANSLATOR_SERVER`) só existem no build Debug.
+- Variáveis de desenvolvimento (`DINOTRANSLATOR_DATA`, `DINOTRANSLATOR_MODE`, `DINOTRANSLATOR_SERVER`, `DINOTRANSLATOR_RENDEZVOUS`) só existem no build Debug.
 - Texto vindo do outro usuário é sempre renderizado como texto.
 
 ### 4.2 Repositório e distribuição

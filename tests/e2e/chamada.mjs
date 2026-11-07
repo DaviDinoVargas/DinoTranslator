@@ -75,17 +75,26 @@ try {
   await waitFor(b, click("Entrar com código"), "botão Entrar com código (B)");
   await waitFor(b, `!!document.querySelector('textarea[aria-label="Código de convite"]')`, "campo do convite (B)");
   await b.evaluate(fill("Código de convite", invite));
-  await waitFor(b, click("Gerar resposta"), "Gerar resposta");
+  await waitFor(b, click("Entrar na chamada"), "Entrar na chamada");
+  const answeredAt = Date.now();
   const answer = await waitFor(b, `(${read('textarea[aria-label="Código de resposta"]')} || '').startsWith('DT1.') && ${read('textarea[aria-label="Código de resposta"]')}`, "resposta");
   result.tamanho_resposta = answer.length;
   result.b_ve_nome_do_anfitriao = await b.evaluate(`document.querySelector('.handshake__hint strong')?.textContent`);
 
-  // Resposta colada duas vezes: o convite é de uso único.
-  await a.evaluate(fill("Código de resposta", answer));
-  await waitFor(a, click("Conectar"), "Conectar");
+  if (process.env.E2E_MANUAL === "1") {
+    // Sem o encontro automático: a resposta vai "pelo mensageiro" e é colada no convite.
+    await a.evaluate(fill("Código de resposta", answer));
+    await waitFor(a, click("Conectar"), "Conectar");
+    result.modo = "resposta colada";
+  } else {
+    // Encontro automático: ninguém cola nada no anfitrião.
+    result.modo = "automático";
+    result.b_status = await b.evaluate(`document.querySelector('.handshake__hint')?.textContent.trim()`);
+  }
 
   const codeA = await waitFor(a, `document.querySelector('.call__digits')?.textContent`, "código de segurança (A)");
   const codeB = await waitFor(b, `document.querySelector('.call__digits')?.textContent`, "código de segurança (B)");
+  result.segundos_ate_conectar = ((Date.now() - answeredAt) / 1000).toFixed(1);
   result.codigo_seguranca_a = codeA;
   result.codigo_seguranca_b = codeB;
   result.codigos_iguais = codeA === codeB;

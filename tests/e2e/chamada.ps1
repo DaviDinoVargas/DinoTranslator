@@ -8,8 +8,9 @@
 # Uso (na raiz do repositório, depois de "dotnet build"):
 #   powershell -File tests/e2e/chamada.ps1
 #   powershell -File tests/e2e/chamada.ps1 -Shots C:\caminho\prefixo   (salva imagens da interface)
+#   powershell -File tests/e2e/chamada.ps1 -Manual   (sem o encontro automático: resposta colada)
 
-param([string]$Shots)
+param([string]$Shots, [switch]$Manual)
 
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path "$PSScriptRoot\..\.."
@@ -31,13 +32,15 @@ try {
         # Variáveis lidas só pelo build Debug; a versão final as ignora.
         $env:DINOTRANSLATOR_DATA = $person.Folder
         if ($person.Engine) { $env:DINOTRANSLATOR_ENGINE = $person.Engine } else { Remove-Item Env:DINOTRANSLATOR_ENGINE -ErrorAction SilentlyContinue }
+        if ($Manual) { $env:DINOTRANSLATOR_RENDEZVOUS = "desligado" } else { Remove-Item Env:DINOTRANSLATOR_RENDEZVOUS -ErrorAction SilentlyContinue }
         $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$($person.Port) --use-fake-device-for-media-stream --auto-select-desktop-capture-source=DinoTranslator"
         $processes += Start-Process -FilePath $exe.FullName -PassThru
     }
     Remove-Item Env:DINOTRANSLATOR_DATA, Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
-    Remove-Item Env:DINOTRANSLATOR_ENGINE -ErrorAction SilentlyContinue
+    Remove-Item Env:DINOTRANSLATOR_ENGINE, Env:DINOTRANSLATOR_RENDEZVOUS -ErrorAction SilentlyContinue
 
     if ($Shots) { $env:E2E_SHOTS = $Shots }
+    if ($Manual) { $env:E2E_MANUAL = "1" } else { Remove-Item Env:E2E_MANUAL -ErrorAction SilentlyContinue }
     node "$PSScriptRoot\chamada.mjs" 9301 9302
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
