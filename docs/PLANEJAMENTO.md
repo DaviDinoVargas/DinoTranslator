@@ -82,11 +82,12 @@ O código:
 
 ### 3.3 Quem traduz
 
-O **anfitrião** processa as duas falas: a dele pelo próprio microfone e a do convidado pelo áudio que já chega pela chamada. Ele envia as legendas e as traduções do chat ao convidado pelo canal de dados da chamada.
+Um único computador processa as duas falas: a da própria pessoa pelo microfone e a da outra pelo áudio que já chega pela chamada. Ele envia as legendas à outra pessoa pelo canal de dados.
 
-- Só o computador do anfitrião fala com os serviços de reconhecimento e tradução; as chaves ficam só nele, cifradas com DPAPI, e nunca trafegam pela chamada.
-- Isso também evita os provedores que não atendem a Rússia: as requisições saem do computador do anfitrião.
-- O convidado não precisa configurar nada.
+- **Regra**: o anfitrião traduz se tiver motor configurado; senão, o convidado. Ao conectar, cada lado se apresenta dizendo se tem motor, e os dois chegam à mesma escolha.
+- Só esse computador fala com os serviços de reconhecimento e tradução; as chaves ficam só nele, cifradas com DPAPI, e nunca trafegam pela chamada.
+- Isso também evita os provedores que não atendem a Rússia: basta quem está no Brasil configurar o motor.
+- Legendas só são aceitas de quem foi escolhido para traduzir.
 
 ### 3.4 Modo servidor (opcional, desligado)
 
@@ -145,7 +146,7 @@ A tradução é **só em texto na tela**: cada um ouve a voz original do outro, 
 
 ### 4.5 Motores
 
-O app terá adaptadores por provedor; a escolha final sai de testes com a fala real de vocês.
+O app tem adaptadores por provedor. **Implementado: Azure Speech**, que reconhece e traduz na mesma conexão de streaming (provisórias estáveis, trecho fechado após 600 ms de pausa, glossário). No build de desenvolvimento há também um motor simulado, que gera legendas a partir do volume do áudio, para testar sem serviço externo.
 
 | Etapa         | Serviços em nuvem (candidatos)                                      | No próprio computador                         |
 |---------------|---------------------------------------------------------------------|-----------------------------------------------|
@@ -326,8 +327,8 @@ Cada módulo é uma branch (fluxo em [GIT.md](GIT.md)).
 
 | Branch              | Conteúdo                                                        |
 |---------------------|-----------------------------------------------------------------|
-| `cliente/traducao`  | pipeline STT → tradução no anfitrião, adaptadores dos motores   |
-| `cliente/legendas`  | legendas provisória/final, tamanho e posição ajustáveis         |
+| `cliente/traducao`  | pipeline STT → tradução, adaptadores dos motores — feito (Azure Speech); falta a tradução final com contexto (gênero, tratamento) |
+| `cliente/legendas`  | legendas provisória/final — feito; falta tamanho e posição ajustáveis |
 | `chat/texto`        | chat com tradução automática                                    |
 | `chat/falas`        | painel de falas, busca e exportação                             |
 
@@ -366,5 +367,5 @@ Reconexão transparente quando a rede oscila, métricas de latência por etapa, 
 
 ## 12. Decisões em aberto
 
-1. **Motores**: quais serviços de reconhecimento e tradução usar, ou modelos no próprio computador (exige GPU)?
+1. **Tradução final com contexto**: somar um segundo motor (ex.: DeepL, com formalidade e glossário) para refinar o trecho final com gênero e tratamento?
 2. **Histórico**: guardar chat e falas no computador de cada um? Por quanto tempo?

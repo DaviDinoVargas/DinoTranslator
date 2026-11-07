@@ -1,0 +1,115 @@
+@page "/configuracoes/traducao"
+@using DinoTranslator.Desktop.Services.Translation
+@inject TranslationSettingsStore Store
+@inject NavigationManager Navigation
+
+<main class="handshake">
+  <section class="handshake__panel">
+    <p class="handshake__kicker">Configurações</p>
+    <h1 class="handshake__step">Tradução</h1>
+    <p class="handshake__hint">
+      Basta um dos dois configurar. Durante a chamada, o áudio das duas pessoas vai deste computador
+      para o serviço escolhido, e as legendas voltam pela própria chamada. A chave fica cifrada neste
+      computador e nunca é enviada à outra pessoa.
+    </p>
+
+    @if (Store.Current.IsConfigured && !_editing)
+    {
+      <div class="profile-card">
+        <p class="profile-card__name">@Describe(Store.Current)</p>
+        <p class="profile-card__meta">Chave guardada neste computador.</p>
+        <div class="form__actions">
+          <button type="button" class="button button--quiet" @onclick="() => _editing = true">Trocar</button>
+          <button type="button" class="button button--quiet" @onclick="Remove">Remover chave</button>
+        </div>
+      </div>
+    }
+    else
+    {
+      <div class="login__form">
+        <label class="field">
+          <span class="field__label">Serviço</span>
+          <select class="field__input" @bind="_provider">
+            <option value="@TranslationProvider.AzureSpeech">Azure Speech</option>
+            @if (DeveloperMode)
+            {
+              <option value="@TranslationProvider.Simulated">Simulado (só desenvolvimento)</option>
+            }
+          </select>
+        </label>
+
+        @if (_provider == TranslationProvider.AzureSpeech)
+        {
+          <label class="field">
+            <span class="field__label">Região do recurso</span>
+            <input class="field__input" @bind="_region" placeholder="brazilsouth" spellcheck="false" maxlength="32" />
+          </label>
+          <label class="field">
+            <span class="field__label">Chave</span>
+            <input class="field__input" type="password" @bind="_key" autocomplete="off" spellcheck="false" maxlength="128" />
+          </label>
+        }
+
+        @if (_error is not null)
+        {
+          <p class="login__error" role="alert">@_error</p>
+        }
+
+        <div class="form__actions">
+          <button type="button" class="button button--primary" @onclick="Save">Salvar</button>
+          @if (Store.Current.IsConfigured)
+          {
+            <button type="button" class="button" @onclick="() => _editing = false">Cancelar</button>
+          }
+        </div>
+      </div>
+    }
+
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))">Voltar</button>
+  </section>
+</main>
+
+@code {
+    private TranslationProvider _provider = TranslationProvider.AzureSpeech;
+    private string? _region;
+    private string? _key;
+    private string? _error;
+    private bool _editing;
+
+    /// <summary>O motor simulado só aparece no build Debug.</summary>
+    private static bool DeveloperMode { get; } =
+#if DEBUG
+        true;
+#else
+        false;
+#endif
+
+    private void Save()
+    {
+        var settings = _provider == TranslationProvider.AzureSpeech
+            ? new TranslationSettings(_provider, _region?.Trim().ToLowerInvariant(), _key?.Trim())
+            : new TranslationSettings(_provider, null, null);
+        _error = TranslationSettings.Validate(settings);
+        if (_error is not null)
+        {
+            return;
+        }
+        Store.Save(settings);
+        _key = null;
+        _editing = false;
+    }
+
+    private void Remove()
+    {
+        Store.Clear();
+        _region = null;
+        _key = null;
+    }
+
+    public static string Describe(TranslationSettings settings) => settings.Provider switch
+    {
+        TranslationProvider.AzureSpeech => $"Azure Speech · {settings.Region}",
+        TranslationProvider.Simulated => "Simulado (desenvolvimento)",
+        _ => "Não configurado",
+    };
+}

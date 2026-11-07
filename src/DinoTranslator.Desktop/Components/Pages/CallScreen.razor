@@ -19,6 +19,10 @@
         código de segurança <span class="call__digits">@securityCode</span>
       </p>
     }
+    @if (TranslationWhere is { } where)
+    {
+      <p class="call__translation">tradução @where</p>
+    }
     <p class="call__route">
       @if (Call.RoundTripMs is { } rtt)
       {
@@ -85,6 +89,8 @@
     </figure>
   </section>
 
+  <CaptionStrip />
+
   <footer class="call__dock">
     <button type="button" class="dock-button @(_microphone ? "dock-button--on" : "")" @onclick="ToggleMicrophoneAsync"
             disabled="@(!Live)" aria-pressed="@(_microphone ? "true" : "false")">
@@ -111,6 +117,13 @@
     private bool _mediaStarted;
 
     private bool Live => Call.Stage == CallStage.Connected;
+
+    private string? TranslationWhere => Call.Translator switch
+    {
+        DinoTranslator.Desktop.Services.Translation.TranslatorSide.Here => "neste computador",
+        DinoTranslator.Desktop.Services.Translation.TranslatorSide.There => $"no computador de {Call.Peer?.Name}",
+        _ => null,
+    };
 
     protected override void OnInitialized()
     {

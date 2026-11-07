@@ -98,6 +98,18 @@ try {
   await new Promise((r) => setTimeout(r, 4000));
   result.faixas_remotas_b = await b.evaluate(`document.querySelector('.tile--other video')?.srcObject?.getTracks().map(t => t.kind).join(',') || ''`);
 
+  // Tradução: só o Dino (anfitrião) tem motor, o simulado; a Anna recebe tudo pela chamada.
+  const captionText = (selector) => `document.querySelector('${selector}')?.textContent.replace(/\\s+/g, ' ').trim() || null`;
+  result.traducao_a = await waitFor(a, captionText(".call__translation"), "aviso de tradução (A)");
+  result.traducao_b = await waitFor(b, captionText(".call__translation"), "aviso de tradução (B)");
+  result.legenda_da_anna_em_a = await waitFor(a, captionText(".caption--other .caption__main"), "legenda da Anna em A", 20000);
+  result.legenda_do_dino_em_b = await waitFor(b, captionText(".caption--other .caption__main"), "legenda do Dino em B", 20000);
+  result.legenda_propria_em_b = await waitFor(b, captionText(".caption--me .caption__main"), "legenda da própria Anna em B", 20000);
+  if (process.env.E2E_SHOTS) {
+    await b.screenshot(`${process.env.E2E_SHOTS}-legendas-anna.png`);
+    await a.screenshot(`${process.env.E2E_SHOTS}-legendas-dino.png`);
+  }
+
   // Tela 2K com vídeo sintético: resultado previsível e nada da tela real.
   await a.evaluate(`(async () => {
     const canvas = document.createElement('canvas');
@@ -142,7 +154,10 @@ try {
     await a.evaluate(click("Encerrar"));
     result.b_aviso_encerramento = await waitFor(b, `document.querySelector('.call__problem')?.textContent.includes('encerrou') && document.querySelector('.call__problem').textContent.trim()`, "aviso de encerramento (B)");
   }
-  result.ok = result.codigos_iguais;
+  result.ok = result.codigos_iguais
+    && result.legenda_da_anna_em_a?.startsWith("[pt-BR]")
+    && result.legenda_do_dino_em_b?.startsWith("[ru-RU]")
+    && result.legenda_propria_em_b?.startsWith("[ru-RU]");
 } catch (error) {
   result.ok = false;
   result.falha = String(error);

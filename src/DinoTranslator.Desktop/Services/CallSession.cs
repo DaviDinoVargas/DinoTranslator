@@ -1,3 +1,4 @@
+using DinoTranslator.Desktop.Services.Translation;
 using DinoTranslator.Shared;
 using DinoTranslator.Shared.Call;
 using Microsoft.AspNetCore.Components;
@@ -33,12 +34,27 @@ public enum ScreenMode
 /// Uma chamada por vez: monta os códigos, conduz a camada de mídia (call.js) e guarda o
 /// estado que as telas mostram. Vive enquanto a janela do app estiver aberta.
 /// </summary>
-public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarState titleBar, TimeProvider time) : IAsyncDisposable
+public sealed class CallSession(
+    IJSRuntime js,
+    ProfileStore profiles,
+    TitleBarState titleBar,
+    TranslationSettingsStore translationSettings,
+    IUiDispatcher ui,
+    TimeProvider time) : IAsyncDisposable
 {
+    /// <summary>Intervalo mínimo entre legendas provisórias enviadas ao outro lado; finais vão sempre.</summary>
+    private static readonly TimeSpan PartialCaptionInterval = TimeSpan.FromMilliseconds(150);
+
+    private const int MaxSpeechChunkBytes = 64 * 1024;
+
     private IJSObjectReference? _module;
     private DotNetObjectReference<CallSession>? _self;
     private CallCode? _pendingInvite;
     private string? _remoteSdp;
+    private HelloMessage? _peerHello;
+    private bool _mediaStarted;
+    private LiveTranslation? _translation;
+    private readonly Dictionary<CaptionOwner, DateTimeOffset> _lastPartialSent = [];
 
     public event Action? Changed;
 
@@ -67,6 +83,13 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
 
     /// <summary>Ex.: "2560×1440 · 30 fps · AV1".</summary>
     public string? ScreenStats { get; private set; }
+
+    public CaptionBoard Captions { get; } = new(time);
+
+    public TranslatorSide Translator { get; private set; }
+
+    /// <summary>Aviso sobre a tradução para mostrar na chamada (desligada, erro do motor etc.).</summary>
+    public string? TranslationNotice { get; private set; }
 
     /// <summary>Anfitrião: gera o convite. Cada convite aceita uma única resposta.</summary>
     public async Task<string> CreateInviteAsync()
@@ -139,6 +162,8 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
         if (_module is not null && Stage == CallStage.Connected)
         {
             await _module.InvokeVoidAsync("startMedia", localVideo, remoteVideo, highFidelity);
+            _mediaStarted = true;
+            await MaybeStartTranslationAsync();
         }
     }
 
@@ -211,7 +236,7 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
     {
         if (_module is not null && Stage == CallStage.Connected)
         {
-            await _module.InvokeAsync<bool>("sendApp", AppMessages.Serialize(new AppMessage(AppMessageTypes.Bye)));
+            await _module.InvokeAsync<bool>("sendApp", AppMessages.Serialize(new ByeMessage()));
         }
         await ResetAsync();
         Notify();
@@ -228,6 +253,7 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
         Problem = null;
         titleBar.SetPeer(Peer?.Name, Peer?.TimeZone);
         Notify();
+        await SendAppAsync(new HelloMessage(translationSettings.Current.IsConfigured));
     }
 
     [JSInvokable]
@@ -264,12 +290,40 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
     }
 
     [JSInvokable]
-    public void OnAppMessage(string text)
+    public async Task OnAppMessage(string text)
     {
-        if (AppMessages.TryParse(text) is { Type: AppMessageTypes.Bye })
+        switch (AppMessages.TryParse(text))
         {
-            End($"{Peer?.Name ?? "A outra pessoa"} encerrou a chamada.");
-            Notify();
+            case HelloMessage hello when _peerHello is null && Role is { } role:
+                _peerHello = hello;
+                Translator = TranslatorChoice.Decide(role, translationSettings.Current.IsConfigured, hello.CanTranslate);
+                TranslationNotice = Translator == TranslatorSide.None
+                    ? "Tradução desligada: nenhum dos dois configurou o motor de tradução (Início › Tradução)."
+                    : null;
+                Notify();
+                await MaybeStartTranslationAsync();
+                break;
+            // Legendas só são aceitas de quem foi escolhido para traduzir.
+            case CaptionMessage caption when Translator == TranslatorSide.There:
+                if (Captions.Apply(CaptionBoard.FromMessage(caption, time.GetUtcNow())))
+                {
+                    Notify();
+                }
+                break;
+            case ByeMessage:
+                End($"{Peer?.Name ?? "A outra pessoa"} encerrou a chamada.");
+                Notify();
+                break;
+        }
+    }
+
+    /// <summary>Áudio da fala em 16 kHz, vindo da captura do WebView2.</summary>
+    [JSInvokable]
+    public void OnSpeechAudio(string source, byte[] pcm)
+    {
+        if (pcm.Length is > 0 and <= MaxSpeechChunkBytes)
+        {
+            _translation?.WriteAudio(source, pcm);
         }
     }
 
@@ -339,12 +393,93 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
         return _module;
     }
 
+    /// <summary>Liga a tradução quando este computador foi escolhido e a mídia já começou.</summary>
+    private async Task MaybeStartTranslationAsync()
+    {
+        if (Translator != TranslatorSide.Here || _translation is not null || !_mediaStarted
+            || _module is null || _self is null || Peer is not { } peer || profiles.Current is not { } me
+            || SpeechTranslationEngines.Create(translationSettings.Current, time) is not { } engine)
+        {
+            return;
+        }
+
+        var translation = new LiveTranslation(engine, me, peer, time);
+        translation.CaptionReady += caption => _ = ui.InvokeAsync(() => OnLocalCaption(caption));
+        translation.Failed += message => _ = ui.InvokeAsync(() =>
+        {
+            TranslationNotice = message;
+            Notify();
+        });
+        _translation = translation;
+        try
+        {
+            await translation.StartAsync([], CancellationToken.None);
+            await _module.InvokeVoidAsync("enableSpeechCapture", _self);
+        }
+        catch (Exception)
+        {
+            _translation = null;
+            await translation.DisposeAsync();
+            TranslationNotice = "Não foi possível ligar a tradução. A chamada continua, sem legendas.";
+            Notify();
+        }
+    }
+
+    private void OnLocalCaption(Caption caption)
+    {
+        if (_translation is null || !Captions.Apply(caption))
+        {
+            return;
+        }
+        var now = time.GetUtcNow();
+        var send = caption.Final
+            || !_lastPartialSent.TryGetValue(caption.Owner, out var last)
+            || now - last >= PartialCaptionInterval;
+        if (send)
+        {
+            _lastPartialSent[caption.Owner] = now;
+            _ = SendAppAsync(CaptionBoard.ToMessage(caption));
+        }
+        Notify();
+    }
+
+    private async Task SendAppAsync(AppMessage message)
+    {
+        if (_module is not null && Stage == CallStage.Connected)
+        {
+            try
+            {
+                await _module.InvokeAsync<bool>("sendApp", AppMessages.Serialize(message));
+            }
+            catch (JSException)
+            {
+                // Canal fechando: a mensagem se perde junto com a chamada.
+            }
+        }
+    }
+
+    private async Task StopTranslationAsync()
+    {
+        if (_translation is { } translation)
+        {
+            _translation = null;
+            await translation.DisposeAsync();
+        }
+    }
+
     private async Task ResetAsync()
     {
+        await StopTranslationAsync();
         if (_module is not null)
         {
             await _module.InvokeVoidAsync("hangup");
         }
+        _peerHello = null;
+        _mediaStarted = false;
+        _lastPartialSent.Clear();
+        Captions.Clear();
+        Translator = TranslatorSide.None;
+        TranslationNotice = null;
         _pendingInvite = null;
         _remoteSdp = null;
         Role = null;
@@ -364,6 +499,7 @@ public sealed class CallSession(IJSRuntime js, ProfileStore profiles, TitleBarSt
 
     private void End(string reason)
     {
+        _ = StopTranslationAsync();
         Stage = CallStage.Ended;
         Problem = reason;
         _pendingInvite = null;

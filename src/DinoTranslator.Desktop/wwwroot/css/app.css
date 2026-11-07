@@ -249,6 +249,36 @@ select.field__input option {
   flex: 1;
 }
 
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: transparent;
+  color: var(--papel);
+  font: inherit;
+  cursor: pointer;
+}
+
+.setting-row:hover {
+  background: var(--superficie-2);
+}
+
+.setting-row__label {
+  color: var(--papel-2);
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.setting-row__value {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+
 /* Convite e resposta */
 
 .handshake {
@@ -503,6 +533,55 @@ select.field__input option {
 .segmented__option--on {
   background: var(--ipe);
   color: var(--tinta);
+}
+
+/* Legendas */
+
+.captions {
+  display: grid;
+  min-height: 112px;
+  align-content: end;
+  gap: 10px;
+  padding: 4px 16px 12px;
+}
+
+.captions__notice {
+  color: var(--papel-2);
+  font-size: 13px;
+}
+
+.caption {
+  padding-left: 12px;
+  border-left: 2px solid var(--gzhel);
+  transition: opacity 150ms var(--curva);
+}
+
+.caption--me {
+  border-left-color: var(--ipe);
+}
+
+.caption--partial {
+  opacity: .6;
+}
+
+.caption__secondary {
+  color: var(--papel-2);
+  font-size: 15px;
+}
+
+.caption__main {
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.caption__main--mine {
+  font-size: 18px;
+}
+
+.call__translation {
+  color: var(--papel-2);
+  font: 12px Consolas, monospace;
 }
 
 .call__dock {
