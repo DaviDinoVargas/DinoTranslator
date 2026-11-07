@@ -40,6 +40,25 @@ public enum AutoConnect
     Unavailable,
 }
 
+/// <summary>Qualidade da câmera enviada (o nome é o usado pela camada de mídia).</summary>
+public enum VideoQuality
+{
+    /// <summary>1080p, até 4 Mb/s.</summary>
+    Maxima,
+
+    /// <summary>720p, até 2 Mb/s.</summary>
+    Alta,
+
+    /// <summary>480p, até 0,9 Mb/s.</summary>
+    Media,
+
+    /// <summary>360p, até 0,45 Mb/s: para redes fracas.</summary>
+    Baixa,
+}
+
+/// <summary>O que deu para ligar ao começar a chamada.</summary>
+public sealed record LocalMedia(bool Camera, bool Microphone);
+
 public enum ScreenMode
 {
     /// <summary>Texto e código: mantém a resolução e reduz os quadros por segundo se preciso.</summary>
@@ -110,6 +129,11 @@ public sealed class CallSession(
     public bool RemoteScreen { get; private set; }
 
     public ScreenMode ScreenMode { get; private set; } = ScreenMode.Detail;
+
+    public VideoQuality VideoQuality { get; private set; } = VideoQuality.Maxima;
+
+    /// <summary>Janela flutuante aberta (sempre por cima, com a imagem e a legenda da outra pessoa).</summary>
+    public bool Floating { get; private set; }
 
     /// <summary>Ex.: "2560×1440 · 30 fps · AV1".</summary>
     public string? ScreenStats { get; private set; }
@@ -202,15 +226,85 @@ public sealed class CallSession(
         return answer;
     }
 
-    public async Task StartMediaAsync(ElementReference localVideo, ElementReference remoteVideo, bool highFidelity)
+    public async Task<LocalMedia> StartMediaAsync(ElementReference localVideo, ElementReference remoteVideo, bool highFidelity)
     {
-        if (_module is not null && Stage == CallStage.Connected)
+        if (_module is null || Stage != CallStage.Connected)
         {
-            await _module.InvokeVoidAsync("startMedia", localVideo, remoteVideo, highFidelity);
-            _mediaStarted = true;
-            await MaybeStartTranslationAsync();
+            return new LocalMedia(false, false);
+        }
+        var media = await _module.InvokeAsync<LocalMedia>("startMedia", localVideo, remoteVideo, highFidelity);
+        VideoQuality = ParseQuality(await _module.InvokeAsync<string>("currentVideoQuality"));
+        _mediaStarted = true;
+        await MaybeStartTranslationAsync();
+        Notify();
+        return media;
+    }
+
+    public async Task SetVideoQualityAsync(VideoQuality quality)
+    {
+        VideoQuality = quality;
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("setVideoQuality", QualityName(quality));
+        }
+        Notify();
+    }
+
+    /// <summary>Liga ou desliga o som da outra pessoa neste computador (a tradução continua).</summary>
+    public async Task SetRemoteAudioAsync(bool enabled)
+    {
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("setRemoteAudio", enabled);
         }
     }
+
+    /// <summary>Abre a janela flutuante; <c>false</c> se este WebView2 não oferece.</summary>
+    public async Task<bool> OpenFloatingAsync()
+    {
+        if (_module is null || _self is null || Stage != CallStage.Connected || Floating)
+        {
+            return Floating;
+        }
+        if (!await _module.InvokeAsync<bool>("canFloat"))
+        {
+            return false;
+        }
+        await _module.InvokeVoidAsync("openFloating", _self, RemoteScreen);
+        Floating = true;
+        Notify();
+        return true;
+    }
+
+    public async Task CloseFloatingAsync()
+    {
+        if (_module is not null && Floating)
+        {
+            await _module.InvokeVoidAsync("closeFloating");
+        }
+        Floating = false;
+        Notify();
+    }
+
+    public async Task UpdateFloatingAsync(string? main, string? secondary)
+    {
+        if (_module is not null && Floating)
+        {
+            await _module.InvokeVoidAsync("updateFloating", main, secondary, RemoteScreen);
+        }
+    }
+
+    [JSInvokable]
+    public void OnFloatingClosed()
+    {
+        Floating = false;
+        Notify();
+    }
+
+    internal static string QualityName(VideoQuality quality) => quality.ToString().ToLowerInvariant();
+
+    internal static VideoQuality ParseQuality(string? name) =>
+        Enum.TryParse<VideoQuality>(name, ignoreCase: true, out var quality) && Enum.IsDefined(quality) ? quality : VideoQuality.Maxima;
 
     public async Task SetMicrophoneAsync(bool enabled)
     {
@@ -281,7 +375,7 @@ public sealed class CallSession(
     {
         if (_module is not null && Stage == CallStage.Connected)
         {
-            await _module.InvokeAsync<bool>("sendApp", AppMessages.Serialize(new ByeMessage()));
+            await _module.InvokeAsync<bool>("sendAppFlushed", AppMessages.Serialize(new ByeMessage()));
         }
         await ResetAsync();
         Notify();
@@ -412,6 +506,12 @@ public sealed class CallSession(
     [JSInvokable]
     public void OnMediaError(string message)
     {
+        // Encerrada, a conexão fechando gera erros de renegociação que não interessam a ninguém
+        // e não podem apagar o motivo do encerramento.
+        if (Stage != CallStage.Connected)
+        {
+            return;
+        }
         Problem = "Não foi possível ajustar o áudio ou o vídeo da chamada.";
         Notify();
     }
@@ -654,6 +754,7 @@ public sealed class CallSession(
         SharingScreen = false;
         RemoteScreen = false;
         ScreenStats = null;
+        Floating = false;
         Stage = CallStage.Idle;
         titleBar.SetPeer(null, null);
         titleBar.SetStatus(null);
@@ -667,6 +768,7 @@ public sealed class CallSession(
         _ = StopTranslationAsync();
         Stage = CallStage.Ended;
         Problem = reason;
+        Floating = false;
         _pendingInvite = null;
         titleBar.SetStatus(null);
         _ = _module?.InvokeVoidAsync("hangup");

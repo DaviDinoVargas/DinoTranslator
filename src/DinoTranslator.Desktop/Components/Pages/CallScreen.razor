@@ -1,5 +1,6 @@
 @page "/chamada"
 @implements IDisposable
+@using DinoTranslator.Shared.Call
 @inject CallSession Call
 @inject ProfileStore Profiles
 @inject NavigationManager Navigation
@@ -19,10 +20,6 @@
         código de segurança <span class="call__digits">@securityCode</span>
       </p>
     }
-    @if (TranslationWhere is { } where)
-    {
-      <p class="call__translation">tradução @where</p>
-    }
     <p class="call__route">
       @if (Call.RoundTripMs is { } rtt)
       {
@@ -33,6 +30,15 @@
         <span> · conexão @route</span>
       }
     </p>
+    <label class="call__quality">
+      <span>Vídeo</span>
+      <select value="@Call.VideoQuality" @onchange="ChangeQualityAsync" disabled="@(!Live)" aria-label="Qualidade do vídeo enviado">
+        <option value="@VideoQuality.Maxima">Máxima · 1080p</option>
+        <option value="@VideoQuality.Alta">Alta · 720p</option>
+        <option value="@VideoQuality.Media">Média · 480p</option>
+        <option value="@VideoQuality.Baixa">Baixa · 360p</option>
+      </select>
+    </label>
   </header>
 
   @if (Call.Problem is { } problem)
@@ -68,41 +74,63 @@
     </div>
   }
 
-  <section class="call__stage @(Call.RemoteScreen ? "call__stage--screen" : "")">
-    <figure class="screen-tile">
-      <video @ref="_remoteScreen" autoplay playsinline muted></video>
-      <figcaption>
-        Tela de @Call.Peer?.Name
-        @if (!Call.SharingScreen && Call.ScreenStats is { } received)
-        {
-          <span> · @received</span>
-        }
-      </figcaption>
-    </figure>
-    <figure class="video-tile tile--other">
-      <video @ref="_remoteVideo" autoplay playsinline></video>
-      <figcaption>@Call.Peer?.Name</figcaption>
-    </figure>
-    <figure class="video-tile tile--me">
-      <video @ref="_localVideo" autoplay playsinline muted></video>
-      <figcaption>Você@(Profiles.Current is { } me ? $" · {Languages.Get(me.Language).Tag}" : "")</figcaption>
-    </figure>
-  </section>
+  <div class="call__body">
+    <section class="call__stage @(Call.RemoteScreen ? "call__stage--screen" : "")" aria-label="Vídeo da chamada">
+      <figure class="screen-tile">
+        <video @ref="_remoteScreen" autoplay playsinline muted></video>
+        <figcaption>
+          Tela de @Call.Peer?.Name
+          @if (!Call.SharingScreen && Call.ScreenStats is { } received)
+          {
+            <span> · @received</span>
+          }
+        </figcaption>
+      </figure>
+      <figure class="video-tile tile--other">
+        <video @ref="_remoteVideo" autoplay playsinline></video>
+        <figcaption>@Call.Peer?.Name@(_sound ? "" : " · som desligado")</figcaption>
+      </figure>
+      <figure class="video-tile tile--me @(_camera ? "" : "video-tile--off")">
+        <video @ref="_localVideo" autoplay playsinline muted></video>
+        <figcaption>Você@(Profiles.Current is { } me ? $" · {Languages.Get(me.Language).Tag}" : "")@(_microphone ? "" : " · mudo")</figcaption>
+      </figure>
+      @if (Call.Floating)
+      {
+        <p class="call__floating-note">A imagem de @Call.Peer?.Name está na janela flutuante.</p>
+      }
+      <CaptionStrip />
+    </section>
 
-  <CaptionStrip />
+    @if (_conversation)
+    {
+      <ConversationPanel OnClose="() => _conversation = false" />
+    }
+  </div>
 
   <footer class="call__dock">
-    <button type="button" class="dock-button @(_microphone ? "dock-button--on" : "")" @onclick="ToggleMicrophoneAsync"
-            disabled="@(!Live)" aria-pressed="@(_microphone ? "true" : "false")">
+    <button type="button" class="dock-button @(_microphone ? "dock-button--on" : "dock-button--muted")" @onclick="ToggleMicrophoneAsync"
+            disabled="@(!Live || !_hasMicrophone)" aria-pressed="@(_microphone ? "true" : "false")" title="Seu microfone">
       @(_microphone ? "Microfone" : "Microfone mudo")
     </button>
-    <button type="button" class="dock-button @(_camera ? "dock-button--on" : "")" @onclick="ToggleCameraAsync"
-            disabled="@(!Live)" aria-pressed="@(_camera ? "true" : "false")">
+    <button type="button" class="dock-button @(_camera ? "dock-button--on" : "dock-button--muted")" @onclick="ToggleCameraAsync"
+            disabled="@(!Live || !_hasCamera)" aria-pressed="@(_camera ? "true" : "false")" title="Sua câmera">
       @(_camera ? "Câmera" : "Câmera desligada")
+    </button>
+    <button type="button" class="dock-button @(_sound ? "dock-button--on" : "dock-button--muted")" @onclick="ToggleSoundAsync"
+            disabled="@(!Live)" aria-pressed="@(_sound ? "true" : "false")" title="Som da outra pessoa neste computador">
+      @(_sound ? "Som da chamada" : "Som desligado")
     </button>
     <button type="button" class="dock-button @(Call.SharingScreen ? "dock-button--on" : "")" @onclick="ToggleScreenAsync"
             disabled="@(!Live)" aria-pressed="@(Call.SharingScreen ? "true" : "false")">
       @(Call.SharingScreen ? "Parar tela" : "Compartilhar tela")
+    </button>
+    <button type="button" class="dock-button @(_conversation ? "dock-button--on" : "")" @onclick="() => _conversation = !_conversation"
+            aria-pressed="@(_conversation ? "true" : "false")" title="Painel com a conversa traduzida">
+      Conversa
+    </button>
+    <button type="button" class="dock-button @(Call.Floating ? "dock-button--on" : "")" @onclick="ToggleFloatingAsync"
+            disabled="@(!Live)" aria-pressed="@(Call.Floating ? "true" : "false")" title="Janela sempre por cima, que pode ir para outro monitor">
+      Janela flutuante
     </button>
     <button type="button" class="dock-button dock-button--end" @onclick="HangUpAsync">Encerrar</button>
   </footer>
@@ -114,16 +142,14 @@
     private ElementReference _remoteScreen;
     private bool _microphone = true;
     private bool _camera = true;
+    private bool _sound = true;
+    private bool _hasMicrophone = true;
+    private bool _hasCamera = true;
+    private bool _conversation = true;
     private bool _mediaStarted;
+    private string? _floatingText;
 
     private bool Live => Call.Stage == CallStage.Connected;
-
-    private string? TranslationWhere => Call.Translator switch
-    {
-        DinoTranslator.Desktop.Services.Translation.TranslatorSide.Here => "neste computador",
-        DinoTranslator.Desktop.Services.Translation.TranslatorSide.There => $"no computador de {Call.Peer?.Name}",
-        _ => null,
-    };
 
     protected override void OnInitialized()
     {
@@ -145,14 +171,17 @@
         await Call.BindRemoteScreenAsync(_remoteScreen);
         try
         {
-            await Call.StartMediaAsync(_localVideo, _remoteVideo, highFidelity: false);
+            var media = await Call.StartMediaAsync(_localVideo, _remoteVideo, highFidelity: false);
+            _hasCamera = _camera = media.Camera;
+            _hasMicrophone = _microphone = media.Microphone;
         }
         catch (JSException)
         {
-            _microphone = false;
-            _camera = false;
+            _hasMicrophone = _microphone = false;
+            _hasCamera = _camera = false;
             Call.OnMediaError("getUserMedia");
         }
+        StateHasChanged();
     }
 
     private async Task ToggleMicrophoneAsync()
@@ -167,8 +196,56 @@
         await Call.SetCameraAsync(_camera);
     }
 
+    private async Task ToggleSoundAsync()
+    {
+        _sound = !_sound;
+        await Call.SetRemoteAudioAsync(_sound);
+    }
+
+    private Task ChangeQualityAsync(ChangeEventArgs e) =>
+        Call.SetVideoQualityAsync(Enum.TryParse<VideoQuality>(e.Value?.ToString(), out var quality) ? quality : VideoQuality.Maxima);
+
     private Task ToggleScreenAsync() =>
         Call.SharingScreen ? Call.StopScreenShareAsync() : Call.StartScreenShareAsync();
+
+    private async Task ToggleFloatingAsync()
+    {
+        if (Call.Floating)
+        {
+            await Call.CloseFloatingAsync();
+            return;
+        }
+        try
+        {
+            if (await Call.OpenFloatingAsync())
+            {
+                _floatingText = null;
+                await PushFloatingCaptionAsync();
+            }
+        }
+        catch (JSException)
+        {
+            Call.OnMediaError("janela flutuante");
+        }
+    }
+
+    /// <summary>A legenda da outra pessoa acompanha a janela flutuante.</summary>
+    private async Task PushFloatingCaptionAsync()
+    {
+        if (!Call.Floating)
+        {
+            return;
+        }
+        var caption = Call.Captions.Visible().LastOrDefault(c => c.Owner == CaptionOwner.Other);
+        var main = caption is null ? null : caption.TranslatedText ?? caption.SourceText;
+        var secondary = caption?.TranslatedText is null ? null : caption.SourceText;
+        var key = $"{main}\u0001{secondary}\u0001{Call.RemoteScreen}";
+        if (key != _floatingText)
+        {
+            _floatingText = key;
+            await Call.UpdateFloatingAsync(main, secondary);
+        }
+    }
 
     private async Task HangUpAsync()
     {
@@ -178,7 +255,18 @@
 
     private void BackHome() => Navigation.NavigateTo("/");
 
-    private void OnCallChanged() => InvokeAsync(StateHasChanged);
+    private void OnCallChanged() => InvokeAsync(async () =>
+    {
+        StateHasChanged();
+        try
+        {
+            await PushFloatingCaptionAsync();
+        }
+        catch (JSException)
+        {
+            // Janela flutuante fechando junto: a próxima legenda tenta de novo.
+        }
+    });
 
     public void Dispose() => Call.Changed -= OnCallChanged;
 }

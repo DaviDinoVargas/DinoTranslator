@@ -26,7 +26,8 @@ async function connect(port) {
           socket.send(JSON.stringify({ id: messageId, method, params }));
         });
         const evaluate = async (expression) => {
-          const m = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+          // userGesture: conta como clique da pessoa (a janela flutuante exige).
+          const m = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true, userGesture: true });
           if (m.result?.exceptionDetails) {
             throw new Error(JSON.stringify(m.result.exceptionDetails));
           }
@@ -38,7 +39,11 @@ async function connect(port) {
           const { writeFileSync } = await import("node:fs");
           writeFileSync(path, Buffer.from(m.result.data, "base64"));
         };
-        return { evaluate, screenshot, close: () => socket.close() };
+        // Janela menor que a tela: confere se o palco acompanha o tamanho.
+        const resize = (width, height) => width
+          ? send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false })
+          : send("Emulation.clearDeviceMetricsOverride", {});
+        return { evaluate, screenshot, resize, close: () => socket.close() };
       }
     } catch {
       // App ainda subindo.
@@ -109,8 +114,8 @@ try {
 
   // Tradução: só o Dino (anfitrião) tem motor, o simulado; a Anna recebe tudo pela chamada.
   const captionText = (selector) => `document.querySelector('${selector}')?.textContent.replace(/\\s+/g, ' ').trim() || null`;
-  result.traducao_a = await waitFor(a, captionText(".call__translation"), "aviso de tradução (A)");
-  result.traducao_b = await waitFor(b, captionText(".call__translation"), "aviso de tradução (B)");
+  result.traducao_a = await waitFor(a, captionText(".conversation__where"), "aviso de tradução (A)");
+  result.traducao_b = await waitFor(b, captionText(".conversation__where"), "aviso de tradução (B)");
   result.legenda_da_anna_em_a = await waitFor(a, captionText(".caption--other .caption__main"), "legenda da Anna em A", 20000);
   result.legenda_do_dino_em_b = await waitFor(b, captionText(".caption--other .caption__main"), "legenda do Dino em B", 20000);
   result.legenda_propria_em_b = await waitFor(b, captionText(".caption--me .caption__main"), "legenda da própria Anna em B", 20000);
@@ -118,6 +123,48 @@ try {
     await b.screenshot(`${process.env.E2E_SHOTS}-legendas-anna.png`);
     await a.screenshot(`${process.env.E2E_SHOTS}-legendas-dino.png`);
   }
+
+  // Conversa: as falas finais viram bolhas no painel lateral.
+  result.conversa_bolhas_b = await waitFor(b, `(() => { const n = document.querySelectorAll('.conversation .bubble:not(.bubble--partial)').length; return n >= 2 ? n : 0; })()`, "bolhas na conversa (B)", 20000);
+  result.conversa_outra_b = await b.evaluate(`document.querySelector('.conversation .bubble--other .bubble__main')?.textContent.trim() || null`);
+
+  // Palco com a janela pequena: a outra pessoa continua inteira e a sua câmera no canto.
+  const layout = `(() => {
+    const box = (s) => { const r = document.querySelector(s)?.getBoundingClientRect(); return r ? [Math.round(r.width), Math.round(r.height)] : null; };
+    return { palco: box('.call__stage'), outra: box('.tile--other'), voce: box('.tile--me'), conversa: box('.conversation'), rolagem: document.documentElement.scrollWidth > innerWidth };
+  })()`;
+  result.layout_1280 = await b.evaluate(layout);
+  await b.resize(760, 520);
+  await new Promise((r) => setTimeout(r, 500));
+  result.layout_760 = await b.evaluate(layout);
+  if (process.env.E2E_SHOTS) {
+    await b.screenshot(`${process.env.E2E_SHOTS}-janela-pequena.png`);
+  }
+  await b.resize(0);
+
+  // Qualidade do vídeo: troca no meio da chamada, sem renegociar nem aviso de problema.
+  await a.evaluate(`(() => { const s = document.querySelector('.call__quality select'); s.value = 'Baixa'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+  await new Promise((r) => setTimeout(r, 1500));
+  result.qualidade_a = await a.evaluate(`document.querySelector('.call__quality select').value`);
+  result.qualidade_guardada_a = await a.evaluate(`localStorage.getItem('dt.qualidade')`);
+
+  // Som da chamada desligado em B: o vídeo da Anna fica mudo, a legenda continua.
+  await waitFor(b, click("Som da chamada"), "som da chamada (B)");
+  result.som_desligado_b = await waitFor(b, `document.querySelector('.tile--other video').muted`, "som mudo (B)", 5000).catch(() => false);
+  await waitFor(b, click("Som desligado"), "religar o som (B)");
+
+  // Janela flutuante (exige clique da pessoa): abre e fecha pelo próprio botão.
+  await waitFor(a, click("Janela flutuante"), "janela flutuante (A)");
+  result.flutuante_aberta_a = await waitFor(a, `!!document.querySelector('.call__floating-note') && !!document.pictureInPictureElement`, "janela flutuante (A)", 5000).catch(() => false);
+  if (process.env.E2E_SHOTS && result.flutuante_aberta_a) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const png = await a.evaluate(`(() => { const v = document.pictureInPictureElement; const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0); return c.toDataURL('image/png').split(',')[1]; })()`);
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(`${process.env.E2E_SHOTS}-janela-flutuante.png`, Buffer.from(png, "base64"));
+  }
+  result.flutuante_problema_a =await a.evaluate(`document.querySelector('.call__problem')?.textContent.trim() || null`);
+  await a.evaluate(click("Janela flutuante"));
+  result.flutuante_fechada_a = await waitFor(a, `!document.querySelector('.call__floating-note')`, "janela flutuante fechada (A)", 5000).catch(() => false);
 
   // Tela 2K com vídeo sintético: resultado previsível e nada da tela real.
   await a.evaluate(`(async () => {
@@ -161,9 +208,14 @@ try {
 
   if (process.env.E2E_HANGUP !== "0") {
     await a.evaluate(click("Encerrar"));
-    result.b_aviso_encerramento = await waitFor(b, `document.querySelector('.call__problem')?.textContent.includes('encerrou') && document.querySelector('.call__problem').textContent.trim()`, "aviso de encerramento (B)");
+    result.b_aviso_encerramento = await waitFor(b, `document.querySelector('.call__problem')?.textContent.includes('encerrou') && document.querySelector('.call__problem').textContent.trim()`, "aviso de encerramento (B)").catch(async (error) => { result.b_depois_de_encerrar = await b.evaluate(`({ url: location.pathname, problema: document.querySelector('.call__problem')?.textContent.trim() || null, botoes: [...document.querySelectorAll('.call__dock button')].map(x => x.textContent.trim() + (x.disabled ? ' (off)' : '')).join(' | ') })`); result.a_depois_de_encerrar = await a.evaluate(`location.pathname`); throw error; });
   }
   result.ok = result.codigos_iguais
+    && result.conversa_bolhas_b >= 2
+    && !result.layout_760?.rolagem
+    && result.qualidade_a === "Baixa"
+    && result.som_desligado_b === true
+    && result.flutuante_aberta_a === true
     && result.legenda_da_anna_em_a?.startsWith("[pt-BR]")
     && result.legenda_do_dino_em_b?.startsWith("[ru-RU]")
     && result.legenda_propria_em_b?.startsWith("[ru-RU]");

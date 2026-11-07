@@ -78,6 +78,21 @@ public sealed class CallSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task Erro_de_midia_depois_do_fim_nao_apaga_o_motivo()
+    {
+        var (host, _) = Session(Dino, relay: false);
+        var (guest, _) = Session(Anna, relay: false);
+        await host.AcceptAnswerAsync(await guest.AcceptInviteAsync(await host.CreateInviteAsync()));
+        await host.OnChannelOpen();
+
+        await host.OnAppMessage(AppMessages.Serialize(new ByeMessage()));
+        host.OnMediaError("InvalidStateError: closed");
+
+        Assert.Equal(CallStage.Ended, host.Stage);
+        Assert.Equal("Anna encerrou a chamada.", host.Problem);
+    }
+
+    [Fact]
     public async Task Resposta_volta_sozinha_pelo_encontro_automatico()
     {
         var (host, module) = Session(Dino);
