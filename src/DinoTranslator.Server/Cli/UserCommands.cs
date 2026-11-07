@@ -10,7 +10,7 @@ public sealed class UserCommands(UserAdministration admin, TextWriter output, IS
 {
     public const string Usage = """
         Uso:
-          users add <usuario> --nome "<nome de exibição>" --idioma pt-BR|ru-RU [--genero masculino|feminino]
+          users add <usuario> --nome "<nome de exibição>" --idioma pt-BR|en-US|uk-UA|ru-RU|es-ES [--genero masculino|feminino]
           users list
           users reset-password <usuario>
           users unlock <usuario>

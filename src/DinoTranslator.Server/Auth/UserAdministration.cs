@@ -36,7 +36,7 @@ public sealed class UserAdministration(
 
         if (!Languages.IsSupported(request.Language))
         {
-            throw new UserAdministrationException($"Idioma inválido: use {string.Join(" ou ", Languages.All)}.");
+            throw new UserAdministrationException($"Idioma inválido: use {string.Join(", ", Languages.All.Select(l => l.Code))}.");
         }
 
         if (!Enum.IsDefined(request.Gender))
