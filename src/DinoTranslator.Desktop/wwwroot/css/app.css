@@ -189,6 +189,55 @@ h1 {
   color: var(--papel);
 }
 
+.home__lead {
+  margin-bottom: 20px;
+  color: var(--papel-2);
+}
+
+select.field__input {
+  appearance: none;
+  padding-right: 32px;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--papel-2) 50%) right 16px center / 5px 5px no-repeat,
+    linear-gradient(-45deg, transparent 50%, var(--papel-2) 50%) right 11px center / 5px 5px no-repeat,
+    var(--superficie);
+  cursor: pointer;
+}
+
+select.field__input option {
+  background: var(--superficie);
+  color: var(--papel);
+}
+
+.form__actions {
+  display: flex;
+  gap: 12px;
+}
+
+.form__actions .button--primary {
+  flex: 1;
+}
+
+.profile-card {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  margin-top: 20px;
+  padding: 16px;
+  border-left: 2px solid var(--ipe);
+  background: var(--superficie);
+}
+
+.profile-card__name {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.profile-card__meta {
+  margin-bottom: 8px;
+  color: var(--papel-2);
+}
+
 /* Sala */
 
 .room {
