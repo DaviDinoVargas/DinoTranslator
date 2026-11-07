@@ -1,0 +1,27 @@
+@using DinoTranslator.Shared.Call
+
+@{
+    var mine = Caption.Owner == CaptionOwner.Me;
+    var ending = Caption.Final ? "" : "…";
+    // Da outra pessoa: o principal é a tradução (no seu idioma). Sua: o que você falou.
+    var main = mine ? Caption.SourceText : Caption.TranslatedText ?? Caption.SourceText;
+    var mainLanguage = mine || Caption.TranslatedText is null ? Caption.SourceLanguage : Caption.TargetLanguage;
+    var secondary = mine ? Caption.TranslatedText : Caption.TranslatedText is null ? null : Caption.SourceText;
+    var secondaryLanguage = mine ? Caption.TargetLanguage : Caption.SourceLanguage;
+}
+<li class="bubble bubble--@(mine ? "me" : "other") @(Caption.Final ? "" : "bubble--partial")">
+  <p class="bubble__main" lang="@mainLanguage">@main@ending</p>
+  @if (secondary is not null)
+  {
+    <p class="bubble__secondary" lang="@secondaryLanguage">@secondary@ending</p>
+  }
+  @if (Caption.Final)
+  {
+    <time class="bubble__time">@Caption.UpdatedAt.ToLocalTime().ToString("HH:mm")</time>
+  }
+</li>
+
+@code {
+    [Parameter, EditorRequired]
+    public Caption Caption { get; set; } = default!;
+}

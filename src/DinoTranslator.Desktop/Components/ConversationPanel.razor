@@ -1,0 +1,75 @@
+@using DinoTranslator.Shared.Call
+@implements IDisposable
+@inject CallSession Call
+
+@* Conversa traduzida em forma de chat: as falas da outra pessoa à esquerda, no seu idioma
+   (com o original menor), e as suas à direita, com o que ela está lendo. *@
+<aside class="conversation" aria-label="Conversa traduzida">
+  <header class="conversation__head">
+    <p class="conversation__title">Conversa</p>
+    <p class="conversation__where">@Where</p>
+    <button type="button" class="conversation__copy button button--quiet" @onclick="Copy" disabled="@(Call.Captions.Transcript.Count == 0)">
+      @(_copied ? "Copiada" : "Copiar")
+    </button>
+    <button type="button" class="conversation__close" @onclick="OnClose" aria-label="Fechar a conversa" title="Fechar">✕</button>
+  </header>
+
+  @if (Call.TranslationNotice is { } notice)
+  {
+    <p class="conversation__notice" role="status">@notice</p>
+  }
+
+  @* Lista invertida: o mais recente fica embaixo e a rolagem acompanha sozinha. *@
+  <ol class="conversation__list" aria-live="polite">
+    @foreach (var caption in Partials())
+    {
+      <Bubble Caption="caption" />
+    }
+    @for (var i = Call.Captions.Transcript.Count - 1; i >= 0; i--)
+    {
+      <Bubble Caption="Call.Captions.Transcript[i]" />
+    }
+    @if (Call.Captions.Transcript.Count == 0 && Call.TranslationNotice is null)
+    {
+      <li class="conversation__empty">As falas aparecem aqui, traduzidas, enquanto vocês conversam.</li>
+    }
+  </ol>
+</aside>
+
+@code {
+    private bool _copied;
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private string Where => Call.Translator switch
+    {
+        DinoTranslator.Desktop.Services.Translation.TranslatorSide.Here => "tradução neste computador",
+        DinoTranslator.Desktop.Services.Translation.TranslatorSide.There => $"tradução no computador de {Call.Peer?.Name}",
+        _ => "sem tradução",
+    };
+
+    /// <summary>Falas em andamento, da mais recente para a mais antiga (a lista é invertida).</summary>
+    private IEnumerable<Caption> Partials() =>
+        Call.Captions.Visible().Where(c => !c.Final).OrderByDescending(c => c.UpdatedAt);
+
+    private void Copy()
+    {
+        var lines = Call.Captions.Transcript.Select(c =>
+        {
+            var who = c.Owner == CaptionOwner.Me ? "Você" : Call.Peer?.Name ?? "Outra pessoa";
+            var time = c.UpdatedAt.ToLocalTime().ToString("HH:mm");
+            return c.TranslatedText is { } translated
+                ? $"[{time}] {who}: {c.SourceText}\n        ({translated})"
+                : $"[{time}] {who}: {c.SourceText}";
+        });
+        ClipboardText.Copy(string.Join("\n", lines));
+        _copied = true;
+    }
+
+    protected override void OnInitialized() => Call.Changed += OnCallChanged;
+
+    private void OnCallChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Call.Changed -= OnCallChanged;
+}
