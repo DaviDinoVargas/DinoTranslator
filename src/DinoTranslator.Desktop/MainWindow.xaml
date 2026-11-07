@@ -38,6 +38,8 @@
                    FontFamily="Consolas" FontSize="12" Foreground="{StaticResource Papel2}" />
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+          <TextBlock x:Name="Status" VerticalAlignment="Center" Margin="0,0,16,0"
+                     FontFamily="Consolas" FontSize="12" Foreground="{StaticResource Papel2}" />
           <Button Style="{StaticResource CaptionButton}" Content="&#xE921;" ToolTip="Minimizar"
                   WindowChrome.IsHitTestVisibleInChrome="True" Click="OnMinimize" />
           <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}" Content="&#xE922;" ToolTip="Maximizar"
