@@ -14,6 +14,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+    <PackageReference Include="Microsoft.CognitiveServices.Speech" />
   </ItemGroup>
 
   <ItemGroup>
