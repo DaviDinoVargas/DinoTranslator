@@ -10,7 +10,9 @@
     <Deterministic>true</Deterministic>
     <Product>DinoTranslator</Product>
     <Company>DinoTranslator</Company>
-    <Version>0.1.0</Version>
+    <!-- Versão base: a release automática completa com o número da execução (0.2.N). -->
+    <DinoVersionBase>0.2</DinoVersionBase>
+    <Version Condition="'$(Version)' == ''">$(DinoVersionBase).0</Version>
     <!-- Dependências com vulnerabilidade conhecida quebram o build. -->
     <NuGetAudit>true</NuGetAudit>
     <NuGetAuditMode>all</NuGetAuditMode>
