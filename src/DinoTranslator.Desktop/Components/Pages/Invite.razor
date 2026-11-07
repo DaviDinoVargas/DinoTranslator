@@ -1,0 +1,133 @@
+@page "/chamada/convite"
+@implements IDisposable
+@using DinoTranslator.Shared.Call
+@inject CallSession Call
+@inject NavigationManager Navigation
+
+<main class="handshake">
+  <section class="handshake__panel">
+    <p class="handshake__kicker">Nova chamada</p>
+
+    <h1 class="handshake__step">1 · Envie o convite</h1>
+    @if (_invite is null)
+    {
+      <p class="handshake__hint">@(_error is null ? "Preparando o convite…" : "")</p>
+    }
+    else
+    {
+      <p class="handshake__hint">
+        Copie e mande pelo mensageiro. Vale até @Call.InviteExpiresAt?.ToLocalTime().ToString("HH:mm") e para uma única pessoa.
+      </p>
+      <textarea class="code-box" readonly rows="4" aria-label="Código de convite">@_invite</textarea>
+      <button type="button" class="button button--primary" @onclick="CopyInvite">
+        @(_copied ? "Convite copiado" : "Copiar convite")
+      </button>
+
+      <h2 class="handshake__step">2 · Cole a resposta</h2>
+      <p class="handshake__hint">Quando a outra pessoa mandar o código de resposta, cole aqui.</p>
+      <textarea class="code-box" rows="4" placeholder="DT1.…" spellcheck="false" aria-label="Código de resposta"
+                @bind="_answer" @bind:event="oninput" disabled="@Busy"></textarea>
+      <div class="form__actions">
+        <button type="button" class="button" @onclick="PasteAnswer" disabled="@Busy">Colar</button>
+        <button type="button" class="button button--primary" @onclick="ConnectAsync"
+                disabled="@(Busy || string.IsNullOrWhiteSpace(_answer))">
+          @(Call.Stage == CallStage.Connecting ? "Conectando…" : "Conectar")
+        </button>
+      </div>
+    }
+
+    @if (_error is not null)
+    {
+      <p class="login__error" role="alert">@_error</p>
+    }
+
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="CancelAsync">Cancelar</button>
+  </section>
+</main>
+
+@code {
+    private string? _invite;
+    private string _answer = string.Empty;
+    private string? _error;
+    private bool _copied;
+    private CancellationTokenSource? _connectTimeout;
+
+    private bool Busy => Call.Stage == CallStage.Connecting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Call.Changed += OnCallChanged;
+        try
+        {
+            _invite = await Call.CreateInviteAsync();
+        }
+        catch (CallCodeException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (JSException)
+        {
+            _error = "Não foi possível preparar a conexão neste computador.";
+        }
+    }
+
+    private void CopyInvite()
+    {
+        ClipboardText.Copy(_invite!);
+        _copied = true;
+    }
+
+    private void PasteAnswer() => _answer = ClipboardText.Paste();
+
+    private async Task ConnectAsync()
+    {
+        _error = null;
+        try
+        {
+            await Call.AcceptAnswerAsync(_answer);
+            WatchConnection();
+        }
+        catch (CallCodeException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    /// <summary>Sem conexão em 30 s, as redes provavelmente não se alcançam diretamente.</summary>
+    private void WatchConnection()
+    {
+        _connectTimeout = new CancellationTokenSource();
+        var token = _connectTimeout.Token;
+        _ = Task.Delay(TimeSpan.FromSeconds(30), token).ContinueWith(_ => InvokeAsync(() =>
+        {
+            if (Call.Stage == CallStage.Connecting)
+            {
+                _error = "Não foi possível conectar. Confiram se os dois estão na internet (de preferência Wi-Fi ou cabo) e criem um novo convite.";
+                StateHasChanged();
+            }
+        }), token, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
+    }
+
+    private async Task CancelAsync()
+    {
+        await Call.HangUpAsync();
+        Navigation.NavigateTo("/");
+    }
+
+    private void OnCallChanged() => InvokeAsync(() =>
+    {
+        if (Call.Stage == CallStage.Connected)
+        {
+            Navigation.NavigateTo("/chamada");
+            return;
+        }
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        Call.Changed -= OnCallChanged;
+        _connectTimeout?.Cancel();
+        _connectTimeout?.Dispose();
+    }
+}

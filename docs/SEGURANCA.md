@@ -42,6 +42,7 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 - STUN público usado só para descobrir o endereço de cada lado; nenhum dado da chamada passa por ele.
 - Canal de dados: JSON de até 16 KB por mensagem, tipos conhecidos, limite de mensagens por segundo; o que não for reconhecido é descartado.
 - O app não abre portas de entrada nem fica escutando conexões fora de uma chamada.
+- Renegociação de mídia só é aceita pelo canal de sinal e com o mesmo certificado DTLS do início da chamada.
 
 ### 3.3 Chaves dos motores (`cliente/traducao`)
 
@@ -63,6 +64,8 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 - CSP estrita: sem scripts, estilos ou fontes de fora do app.
 - Câmera, microfone e tela são liberados só para a origem do app; qualquer outra permissão é negada.
 - DevTools, menu de contexto padrão, atalhos do navegador e preenchimento automático desligados na versão final.
+- Na versão final, o app apaga ao iniciar as variáveis de ambiente do WebView2 (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` e afins), que permitiriam a um atalho ou lançador malicioso ligar a depuração remota, trocar o navegador embutido ou a pasta de dados.
+- Variáveis de desenvolvimento (`DINOTRANSLATOR_DATA`, `DINOTRANSLATOR_MODE`, `DINOTRANSLATOR_SERVER`) só existem no build Debug.
 - Texto vindo do outro usuário é sempre renderizado como texto.
 
 ### 4.2 Repositório e distribuição

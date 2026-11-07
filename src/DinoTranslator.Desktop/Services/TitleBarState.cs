@@ -20,6 +20,19 @@ public sealed class TitleBarState
         Changed?.Invoke();
     }
 
+    /// <summary>Ping da chamada, à direita da barra.</summary>
+    public string? Status { get; private set; }
+
+    public void SetStatus(string? status)
+    {
+        if (Status == status)
+        {
+            return;
+        }
+        Status = status;
+        Changed?.Invoke();
+    }
+
     public void SetPeer(string? name, string? timeZone)
     {
         PeerName = name;

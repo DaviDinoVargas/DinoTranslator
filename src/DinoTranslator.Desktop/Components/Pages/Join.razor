@@ -1,0 +1,103 @@
+@page "/chamada/entrar"
+@implements IDisposable
+@using DinoTranslator.Shared.Call
+@inject CallSession Call
+@inject NavigationManager Navigation
+
+<main class="handshake">
+  <section class="handshake__panel">
+    <p class="handshake__kicker">Entrar com código</p>
+
+    @if (_answerCode is null)
+    {
+      <h1 class="handshake__step">1 · Cole o convite</h1>
+      <p class="handshake__hint">Cole o código de convite que você recebeu pelo mensageiro.</p>
+      <textarea class="code-box" rows="4" placeholder="DT1.…" spellcheck="false" aria-label="Código de convite"
+                @bind="_invite" @bind:event="oninput" disabled="@_busy"></textarea>
+      <div class="form__actions">
+        <button type="button" class="button" @onclick="PasteInvite" disabled="@_busy">Colar</button>
+        <button type="button" class="button button--primary" @onclick="AnswerAsync"
+                disabled="@(_busy || string.IsNullOrWhiteSpace(_invite))">
+          @(_busy ? "Preparando…" : "Gerar resposta")
+        </button>
+      </div>
+    }
+    else
+    {
+      <h1 class="handshake__step">2 · Envie a resposta</h1>
+      <p class="handshake__hint">
+        Convite de <strong>@Call.Peer?.Name</strong>. Copie a resposta e mande pelo mensageiro.
+      </p>
+      <textarea class="code-box" readonly rows="4" aria-label="Código de resposta">@_answerCode</textarea>
+      <button type="button" class="button button--primary" @onclick="CopyAnswer">
+        @(_copied ? "Resposta copiada" : "Copiar resposta")
+      </button>
+      <p class="handshake__waiting">Aguardando @Call.Peer?.Name colar a resposta…</p>
+    }
+
+    @if (_error is not null)
+    {
+      <p class="login__error" role="alert">@_error</p>
+    }
+
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="CancelAsync">Cancelar</button>
+  </section>
+</main>
+
+@code {
+    private string _invite = string.Empty;
+    private string? _answerCode;
+    private string? _error;
+    private bool _busy;
+    private bool _copied;
+
+    protected override void OnInitialized() => Call.Changed += OnCallChanged;
+
+    private void PasteInvite() => _invite = ClipboardText.Paste();
+
+    private async Task AnswerAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            _answerCode = await Call.AcceptInviteAsync(_invite);
+        }
+        catch (CallCodeException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (JSException)
+        {
+            _error = "Não foi possível preparar a conexão neste computador.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void CopyAnswer()
+    {
+        ClipboardText.Copy(_answerCode!);
+        _copied = true;
+    }
+
+    private async Task CancelAsync()
+    {
+        await Call.HangUpAsync();
+        Navigation.NavigateTo("/");
+    }
+
+    private void OnCallChanged() => InvokeAsync(() =>
+    {
+        if (Call.Stage == CallStage.Connected)
+        {
+            Navigation.NavigateTo("/chamada");
+            return;
+        }
+        StateHasChanged();
+    });
+
+    public void Dispose() => Call.Changed -= OnCallChanged;
+}

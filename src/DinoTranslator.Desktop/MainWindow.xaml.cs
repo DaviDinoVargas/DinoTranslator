@@ -41,6 +41,7 @@ public partial class MainWindow : Window
             text += $"   ·   {peerName.ToUpperInvariant()} {FormatTime(now, peerZone)}";
         }
         Clocks.Text = text;
+        Status.Text = _titleBar.Status ?? string.Empty;
     }
 
     private static string FormatTime(DateTimeOffset now, string timeZoneId) =>

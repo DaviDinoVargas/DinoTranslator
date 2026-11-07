@@ -32,6 +32,8 @@ public sealed record DesktopSettings(ConnectionMode Mode, Uri? ServerUri, string
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DinoTranslator");
         var (mode, serverUrl) = ReadFile(Path.Combine(AppContext.BaseDirectory, FileName));
 #if DEBUG
+        // Só em desenvolvimento: duas instâncias com perfis separados no mesmo computador.
+        dataFolder = Environment.GetEnvironmentVariable("DINOTRANSLATOR_DATA") ?? dataFolder;
         mode = Environment.GetEnvironmentVariable("DINOTRANSLATOR_MODE") ?? mode;
         serverUrl = Environment.GetEnvironmentVariable("DINOTRANSLATOR_SERVER") ?? serverUrl;
 #endif

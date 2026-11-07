@@ -20,6 +20,12 @@ public static class DesktopServices
         services.AddSingleton(profiles);
         services.AddSingleton(titleBar);
 
+        if (settings.Mode == ConnectionMode.Code)
+        {
+            // Escopo do BlazorWebView: uma sessão de chamada por janela.
+            services.AddScoped<CallSession>();
+        }
+
         if (settings.Mode == ConnectionMode.Server)
         {
             services.AddSingleton<ISessionStore>(new DpapiSessionStore(settings.SessionFile));

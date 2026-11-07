@@ -1,0 +1,130 @@
+@page "/chamada"
+@implements IDisposable
+@inject CallSession Call
+@inject ProfileStore Profiles
+@inject NavigationManager Navigation
+
+<main class="call">
+  <header class="call__bar">
+    <p class="call__peer">
+      @Call.Peer?.Name
+      @if (Call.Peer is { } peer)
+      {
+        <span class="tag tag--other">@Languages.Get(peer.Language).Tag</span>
+      }
+    </p>
+    @if (Call.SecurityCode is { } securityCode)
+    {
+      <p class="call__security" title="Os dois devem ver o mesmo número. Se for diferente, encerrem a chamada.">
+        código de segurança <span class="call__digits">@securityCode</span>
+      </p>
+    }
+    <p class="call__route">
+      @if (Call.RoundTripMs is { } rtt)
+      {
+        <span>@rtt ms</span>
+      }
+      @if (Call.Route is { } route)
+      {
+        <span> · conexão @route</span>
+      }
+    </p>
+  </header>
+
+  @if (Call.Problem is { } problem)
+  {
+    <p class="call__problem" role="alert">
+      @problem
+      @if (Call.Stage is CallStage.Ended or CallStage.Idle)
+      {
+        <button type="button" class="button button--quiet" @onclick="BackHome">Voltar ao início</button>
+      }
+    </p>
+  }
+
+  <section class="call__stage">
+    <figure class="video-tile tile--other">
+      <video @ref="_remoteVideo" autoplay playsinline></video>
+      <figcaption>@Call.Peer?.Name</figcaption>
+    </figure>
+    <figure class="video-tile tile--me">
+      <video @ref="_localVideo" autoplay playsinline muted></video>
+      <figcaption>Você@(Profiles.Current is { } me ? $" · {Languages.Get(me.Language).Tag}" : "")</figcaption>
+    </figure>
+  </section>
+
+  <footer class="call__dock">
+    <button type="button" class="dock-button @(_microphone ? "dock-button--on" : "")" @onclick="ToggleMicrophoneAsync"
+            disabled="@(!Live)" aria-pressed="@_microphone">
+      @(_microphone ? "Microfone" : "Microfone mudo")
+    </button>
+    <button type="button" class="dock-button @(_camera ? "dock-button--on" : "")" @onclick="ToggleCameraAsync"
+            disabled="@(!Live)" aria-pressed="@_camera">
+      @(_camera ? "Câmera" : "Câmera desligada")
+    </button>
+    <button type="button" class="dock-button dock-button--end" @onclick="HangUpAsync">Encerrar</button>
+  </footer>
+</main>
+
+@code {
+    private ElementReference _localVideo;
+    private ElementReference _remoteVideo;
+    private bool _microphone = true;
+    private bool _camera = true;
+    private bool _mediaStarted;
+
+    private bool Live => Call.Stage == CallStage.Connected;
+
+    protected override void OnInitialized()
+    {
+        if (Call.Stage is CallStage.Idle)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+        Call.Changed += OnCallChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _mediaStarted || !Live)
+        {
+            return;
+        }
+        _mediaStarted = true;
+        try
+        {
+            await Call.StartMediaAsync(_localVideo, _remoteVideo, highFidelity: false);
+        }
+        catch (JSException)
+        {
+            _microphone = false;
+            _camera = false;
+            Call.OnMediaError("getUserMedia");
+        }
+    }
+
+    private async Task ToggleMicrophoneAsync()
+    {
+        _microphone = !_microphone;
+        await Call.SetMicrophoneAsync(_microphone);
+    }
+
+    private async Task ToggleCameraAsync()
+    {
+        _camera = !_camera;
+        await Call.SetCameraAsync(_camera);
+    }
+
+    private async Task HangUpAsync()
+    {
+        await Call.HangUpAsync();
+        Navigation.NavigateTo("/");
+    }
+
+    private void BackHome() => Navigation.NavigateTo("/");
+
+    private void OnCallChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Call.Changed -= OnCallChanged;
+}

@@ -27,6 +27,10 @@
           </p>
           <button type="button" class="button button--quiet" @onclick="() => _editing = true">Editar perfil</button>
         </div>
+        <div class="home__actions">
+          <button type="button" class="button button--primary" @onclick="@(() => Navigation.NavigateTo("/chamada/convite"))">Nova chamada</button>
+          <button type="button" class="button" @onclick="@(() => Navigation.NavigateTo("/chamada/entrar"))">Entrar com código</button>
+        </div>
       }
     </section>
   </main>
