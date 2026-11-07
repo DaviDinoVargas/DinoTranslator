@@ -178,7 +178,8 @@ public sealed class RoomHubTests : IAsyncLifetime
         var (dinoConnection, _) = await ConnectBothAsync();
         var candidate = new SignalMessage(SignalTypes.Candidate, "candidate:1 1 udp 1 10.0.0.1 9 typ host");
 
-        var results = await Task.WhenAll(Enumerable.Range(0, 260).Select(async _ =>
+        // Bem acima do balde (200 + 50 por segundo): mesmo numa máquina lenta, a rajada estoura o limite.
+        var results = await Task.WhenAll(Enumerable.Range(0, 1_500).Select(async _ =>
         {
             try
             {
