@@ -12,7 +12,79 @@ const STATS_INTERVAL_MS = 1000;
 const MAX_SIGNAL_LENGTH = 64 * 1024;
 const MAX_APP_MESSAGE_LENGTH = 16 * 1024;
 const AUDIO_MAX_BITRATE = 128_000;
-const VIDEO_MAX_BITRATE = 2_500_000;
+
+/** Qualidade da câmera enviada; o WebRTC ainda reduz sozinho se a rede apertar. */
+export const QUALITIES = {
+  maxima: { width: 1920, height: 1080, frameRate: 30, bitrate: 4_000_000 },
+  alta: { width: 1280, height: 720, frameRate: 30, bitrate: 2_000_000 },
+  media: { width: 854, height: 480, frameRate: 30, bitrate: 900_000 },
+  baixa: { width: 640, height: 360, frameRate: 24, bitrate: 450_000 },
+};
+
+// Preferências deste computador (câmera, microfone, alto-falante e qualidade), guardadas no
+// próprio WebView2 do app e usadas pelo teste de dispositivos e pela chamada.
+const PREFERENCES = { camera: "dt.camera", microphone: "dt.microfone", speaker: "dt.altofalante", quality: "dt.qualidade" };
+
+export function preference(name) {
+  try {
+    return localStorage.getItem(PREFERENCES[name]) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setPreference(name, value) {
+  try {
+    if (value) {
+      localStorage.setItem(PREFERENCES[name], value);
+    } else {
+      localStorage.removeItem(PREFERENCES[name]);
+    }
+  } catch {
+    // Sem armazenamento: vale só nesta sessão.
+  }
+}
+
+export function videoQuality() {
+  const name = preference("quality");
+  return Object.hasOwn(QUALITIES, name ?? "") ? name : "maxima";
+}
+
+/** Restrições de câmera e microfone com os dispositivos escolhidos (se ainda existirem). */
+export function mediaConstraints(quality = videoQuality(), { highFidelity = false } = {}) {
+  const { width, height, frameRate } = QUALITIES[quality];
+  const camera = preference("camera");
+  const microphone = preference("microphone");
+  const processing = !highFidelity;
+  return {
+    audio: {
+      ...(microphone ? { deviceId: { ideal: microphone } } : {}),
+      echoCancellation: processing,
+      noiseSuppression: processing,
+      autoGainControl: processing,
+      sampleRate: 48000,
+      channelCount: 1,
+    },
+    video: {
+      ...(camera ? { deviceId: { ideal: camera } } : {}),
+      width: { ideal: width },
+      height: { ideal: height },
+      frameRate: { ideal: frameRate, max: 30 },
+    },
+  };
+}
+
+/** Saída de som escolhida no teste de dispositivos (alto-falante ou fone). */
+export async function applySpeaker(element) {
+  const speaker = preference("speaker");
+  if (speaker && typeof element?.setSinkId === "function") {
+    try {
+      await element.setSinkId(speaker);
+    } catch {
+      // Dispositivo removido: fica a saída padrão do Windows.
+    }
+  }
+}
 const SCREEN_MAX = { width: 2560, height: 1440, frameRate: 30 };
 // Tela "nítida" guarda a resolução (texto, código); "fluida" guarda os quadros por segundo (vídeo).
 const SCREEN_BITRATE = { detail: 6_000_000, motion: 8_000_000 };
@@ -34,6 +106,7 @@ export class CallPeer {
     this.pendingNegotiation = false;
     this.remoteFingerprint = null;
     this.localStream = null;
+    this.quality = videoQuality();
     this.remoteStream = new MediaStream();
     this.statsTimer = null;
 
@@ -255,23 +328,37 @@ export class CallPeer {
 
   /** Câmera e microfone. highFidelity desliga o processamento de áudio (exige fones). */
   async startLocalMedia({ highFidelity = false } = {}) {
-    const processing = !highFidelity;
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: processing,
-        noiseSuppression: processing,
-        autoGainControl: processing,
-        sampleRate: 48000,
-        channelCount: 1,
-      },
-      video: {
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        frameRate: { ideal: 30, max: 30 },
-      },
-    });
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(mediaConstraints(this.quality, { highFidelity }));
+    } catch {
+      // Sem câmera (ou ocupada por outro programa): a chamada segue só com o microfone.
+      stream = await navigator.mediaDevices.getUserMedia({ audio: mediaConstraints(this.quality, { highFidelity }).audio });
+    }
     this.addStream(stream);
     return stream;
+  }
+
+  /** Troca a qualidade da câmera no meio da chamada, sem renegociar. */
+  async setVideoQuality(name) {
+    if (!Object.hasOwn(QUALITIES, name)) {
+      return;
+    }
+    this.quality = name;
+    setPreference("quality", name);
+    const { width, height, frameRate } = QUALITIES[name];
+    for (const track of this.localStream?.getVideoTracks() ?? []) {
+      try {
+        await track.applyConstraints({ width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: frameRate, max: 30 } });
+      } catch {
+        // A câmera não aceita esse tamanho: fica no mais próximo e só o limite de taxa muda.
+      }
+    }
+    await this.tuneSenders();
+  }
+
+  hasLocalTrack(kind) {
+    return (this.localStream?.getTracks() ?? []).some((track) => track.kind === kind && track.readyState === "live");
   }
 
   addStream(stream) {
@@ -446,7 +533,7 @@ export class CallPeer {
           encoding.maxBitrate = SCREEN_BITRATE[this.screenMode];
           parameters.degradationPreference = this.screenMode === "detail" ? "maintain-resolution" : "maintain-framerate";
         } else {
-          encoding.maxBitrate = VIDEO_MAX_BITRATE;
+          encoding.maxBitrate = QUALITIES[this.quality].bitrate;
           parameters.degradationPreference = "balanced";
         }
         await sender.setParameters(parameters);
@@ -628,6 +715,20 @@ export const acceptInvite = (sdp) => current.acceptInvite(sdp);
 export const acceptAnswer = (sdp) => current.acceptAnswer(sdp);
 export const localSdp = () => current?.localSdp() ?? null;
 export const sendApp = (text) => current?.sendApp(text) ?? false;
+
+/** Envia e espera a mensagem sair (até 500 ms) — para o aviso de encerramento não se perder no fechamento. */
+export async function sendAppFlushed(text) {
+  if (!current?.sendApp(text)) {
+    return false;
+  }
+  const channel = current.app;
+  for (let waited = 0; channel.readyState === "open" && channel.bufferedAmount > 0 && waited < 500; waited += 20) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  // Os bytes saíram do buffer; um instante para o SCTP entregar antes de fechar.
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  return true;
+}
 export const setTrackEnabled = (kind, enabled) => current?.setTrackEnabled(kind, enabled);
 export const startScreenShare = (mode) => current.startScreenShare({ mode });
 
@@ -646,13 +747,181 @@ export function bindRemoteScreen(video) {
   video.srcObject = current.remoteScreen;
 }
 
+let remoteElement = null;
+
+/** Liga câmera e microfone; devolve o que ficou disponível ({ camera, microphone }). */
 export async function startMedia(localVideo, remoteVideo, highFidelity) {
+  remoteElement = remoteVideo;
   remoteVideo.srcObject = current.remoteStream;
+  await applySpeaker(remoteVideo);
   const stream = await current.startLocalMedia({ highFidelity });
   localVideo.srcObject = stream;
+  return { camera: current.hasLocalTrack("video"), microphone: current.hasLocalTrack("audio") };
+}
+
+export const setVideoQuality = (name) => current?.setVideoQuality(name);
+export const currentVideoQuality = () => current?.quality ?? videoQuality();
+
+/** Som da chamada (o que a outra pessoa fala). A tradução continua ouvindo mesmo mudo. */
+export function setRemoteAudio(enabled) {
+  if (remoteElement) {
+    remoteElement.muted = !enabled;
+  }
+}
+
+// ---- Janela flutuante -----------------------------------------------------------------
+// Janela de vídeo do próprio Windows (picture-in-picture): sempre por cima, redimensionável e
+// fácil de levar para outro monitor. Ela só mostra vídeo, então a imagem da outra pessoa (ou
+// da tela dela) e a legenda são desenhadas juntas num quadro, e esse quadro vai para a janela.
+
+const FLOATING_SIZE = { width: 1280, height: 720 };
+const FLOATING_FPS = 30;
+
+let floating = null;
+
+export const canFloat = () => document.pictureInPictureEnabled === true;
+
+export async function openFloating(dotnet, showScreen) {
+  if (floating) {
+    return;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = FLOATING_SIZE.width;
+  canvas.height = FLOATING_SIZE.height;
+  const source = document.createElement("video");
+  source.muted = true;
+  source.playsInline = true;
+  const output = document.createElement("video");
+  output.muted = true;
+  output.playsInline = true;
+  output.srcObject = canvas.captureStream(FLOATING_FPS);
+  floating = { canvas, source, output, main: "", secondary: "", showScreen: null, timer: null, dotnet };
+  setFloatingSource(showScreen);
+  drawFloating();
+  floating.timer = setInterval(drawFloating, 1000 / FLOATING_FPS);
+  output.addEventListener("leavepictureinpicture", () => {
+    const closing = floating;
+    stopFloating();
+    closing?.dotnet.invokeMethodAsync("OnFloatingClosed");
+  });
+  try {
+    await output.play();
+    await output.requestPictureInPicture();
+  } catch (error) {
+    stopFloating();
+    throw error;
+  }
+}
+
+function setFloatingSource(showScreen) {
+  if (!floating || floating.showScreen === showScreen) {
+    return;
+  }
+  floating.showScreen = showScreen;
+  const stream = showScreen && current ? current.remoteScreen : current?.remoteStream;
+  floating.source.srcObject = stream ?? null;
+  floating.source.play().catch(() => {});
+}
+
+function drawFloating() {
+  const state = floating;
+  if (!state) {
+    return;
+  }
+  const { canvas, source } = state;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#000";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  if (source.videoWidth > 0) {
+    // Imagem inteira, sem corte (faixas pretas se a proporção for outra).
+    const scale = Math.min(canvas.width / source.videoWidth, canvas.height / source.videoHeight);
+    const width = source.videoWidth * scale;
+    const height = source.videoHeight * scale;
+    context.drawImage(source, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+  }
+  if (!state.main) {
+    return;
+  }
+  const margin = 40;
+  const maxWidth = canvas.width - margin * 2;
+  context.font = "500 46px 'Segoe UI', sans-serif";
+  const mainLines = wrapText(context, state.main, maxWidth, 3);
+  context.font = "30px 'Segoe UI', sans-serif";
+  const secondaryLines = state.secondary ? wrapText(context, state.secondary, maxWidth, 2) : [];
+  const height = mainLines.length * 56 + secondaryLines.length * 38 + 40;
+  const gradient = context.createLinearGradient(0, canvas.height - height - 40, 0, canvas.height);
+  gradient.addColorStop(0, "rgba(18, 17, 15, 0)");
+  gradient.addColorStop(0.35, "rgba(18, 17, 15, .88)");
+  gradient.addColorStop(1, "rgba(18, 17, 15, .92)");
+  context.fillStyle = gradient;
+  context.fillRect(0, canvas.height - height - 40, canvas.width, height + 40);
+  context.textAlign = "center";
+  context.textBaseline = "top";
+  let y = canvas.height - height + 8;
+  context.fillStyle = "#a8a091";
+  for (const line of secondaryLines) {
+    context.fillText(line, canvas.width / 2, y);
+    y += 38;
+  }
+  context.font = "500 46px 'Segoe UI', sans-serif";
+  context.fillStyle = "#f1ece2";
+  for (const line of mainLines) {
+    context.fillText(line, canvas.width / 2, y);
+    y += 56;
+  }
+}
+
+/** Quebra o texto em linhas; se passar do limite, fica o final (o que está sendo dito agora). */
+function wrapText(context, text, maxWidth, maxLines) {
+  const lines = [];
+  let line = "";
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (context.measureText(candidate).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) {
+    lines.push(line);
+  }
+  return lines.length > maxLines ? ["…" + lines.slice(-maxLines)[0], ...lines.slice(-maxLines + 1)] : lines;
+}
+
+/** Legenda e fonte da janela flutuante. */
+export function updateFloating(mainText, secondaryText, showScreen) {
+  if (!floating) {
+    return;
+  }
+  setFloatingSource(showScreen);
+  floating.main = typeof mainText === "string" ? mainText : "";
+  floating.secondary = typeof secondaryText === "string" ? secondaryText : "";
+}
+
+function stopFloating() {
+  if (!floating) {
+    return;
+  }
+  clearInterval(floating.timer);
+  for (const track of floating.output.srcObject?.getTracks() ?? []) {
+    track.stop();
+  }
+  floating.source.srcObject = null;
+  floating = null;
+}
+
+export function closeFloating() {
+  if (floating && document.pictureInPictureElement === floating.output) {
+    document.exitPictureInPicture().catch(() => {});
+  }
+  stopFloating();
 }
 
 export function hangup() {
+  closeFloating();
   current?.close();
   current = null;
+  remoteElement = null;
 }
