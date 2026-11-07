@@ -35,6 +35,8 @@ public class SpeechEnginesTests
         Assert.Contains(expected, AzureSpeechTranslationEngine.Describe(code));
     }
 
+#if DEBUG
+    // O motor simulado só existe no build de desenvolvimento.
     [Fact]
     public async Task Motor_simulado_gera_provisorias_e_fecha_o_trecho_depois_da_pausa()
     {
@@ -76,6 +78,14 @@ public class SpeechEnginesTests
 
         Assert.Equal(0, updates);
     }
+#else
+    [Fact]
+    public void Motor_simulado_nao_existe_na_versao_final()
+    {
+        var factory = new SpeechEngineFactory(new DinoTranslator.Desktop.Services.Translation.Local.ModelFolder(Path.GetTempPath()));
+        Assert.Null(factory.Create(new TranslationSettings(TranslationProvider.Simulated, null, null)));
+    }
+#endif
 
     private static byte[] Tone(int milliseconds)
     {
