@@ -1,0 +1,145 @@
+// Teste de câmera, microfone, alto-falante e tradução antes da chamada. As escolhas ficam
+// guardadas como preferência e a chamada usa as mesmas (call.js).
+import { QUALITIES, mediaConstraints, preference, setPreference, videoQuality } from "./call.js";
+
+let state = null;
+
+/** Liga a prévia da câmera e o medidor do microfone; devolve o que ficou ligado. */
+export async function startPreview(video, meter) {
+  stopPreview();
+  let stream;
+  let cameraError = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(mediaConstraints());
+  } catch (error) {
+    cameraError = error?.name ?? "erro";
+    stream = await navigator.mediaDevices.getUserMedia({ audio: mediaConstraints().audio }).catch(() => null);
+  }
+  if (!stream) {
+    return { camera: false, microphone: false, width: 0, height: 0, frameRate: 0, cameraError };
+  }
+  state = { stream, video, meter, context: null, timer: null, capture: null };
+  video.srcObject = stream;
+
+  const audio = stream.getAudioTracks()[0];
+  if (audio) {
+    const context = new AudioContext();
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 1024;
+    context.createMediaStreamSource(new MediaStream([audio])).connect(analyser);
+    const samples = new Float32Array(analyser.fftSize);
+    state.context = context;
+    // O medidor é atualizado aqui mesmo, sem ir e voltar ao C#.
+    state.timer = setInterval(() => {
+      analyser.getFloatTimeDomainData(samples);
+      let peak = 0;
+      for (const sample of samples) {
+        peak = Math.max(peak, Math.abs(sample));
+      }
+      const level = Math.min(100, Math.round(Math.sqrt(peak) * 100));
+      meter.style.width = `${level}%`;
+      meter.classList.toggle("meter__fill--loud", level > 35);
+    }, 60);
+  }
+
+  const settings = stream.getVideoTracks()[0]?.getSettings() ?? {};
+  return {
+    camera: Boolean(stream.getVideoTracks()[0]),
+    microphone: Boolean(audio),
+    width: settings.width ?? 0,
+    height: settings.height ?? 0,
+    frameRate: Math.round(settings.frameRate ?? 0),
+    cameraError,
+  };
+}
+
+/** Dispositivos disponíveis e os escolhidos (os nomes só aparecem depois da permissão). */
+export async function listDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const current = (kind) => state?.stream.getTracks().find((t) => t.kind === kind)?.getSettings().deviceId ?? null;
+  return {
+    cameras: devices.filter((d) => d.kind === "videoinput").map((d) => ({ id: d.deviceId, label: d.label || "Câmera" })),
+    microphones: devices.filter((d) => d.kind === "audioinput" && d.deviceId !== "communications").map((d) => ({ id: d.deviceId, label: d.label || "Microfone" })),
+    speakers: devices.filter((d) => d.kind === "audiooutput" && d.deviceId !== "communications").map((d) => ({ id: d.deviceId, label: d.label || "Alto-falante" })),
+    camera: current("video") ?? preference("camera"),
+    microphone: current("audio") ?? preference("microphone"),
+    speaker: preference("speaker") ?? "default",
+    quality: videoQuality(),
+  };
+}
+
+/** Guarda uma escolha (camera, microphone, speaker ou quality). */
+export function choose(kind, value) {
+  if (kind === "quality" && !Object.hasOwn(QUALITIES, value)) {
+    return;
+  }
+  setPreference(kind, value);
+}
+
+/** Toca um "plim" curto na saída escolhida. */
+export async function playTestSound() {
+  const context = new AudioContext();
+  const speaker = preference("speaker");
+  if (speaker && typeof context.setSinkId === "function") {
+    await context.setSinkId(speaker).catch(() => {});
+  }
+  const now = context.currentTime;
+  for (const [offset, frequency] of [[0, 880], [0.18, 1320]]) {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0, now + offset);
+    gain.gain.linearRampToValueAtTime(0.25, now + offset + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.5);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start(now + offset);
+    oscillator.stop(now + offset + 0.55);
+  }
+  setTimeout(() => context.close(), 1200);
+}
+
+/** Manda a fala do microfone (16 kHz) para o C# testar o reconhecimento e a tradução. */
+export async function startTranslationTest(dotnet) {
+  const audio = state?.stream.getAudioTracks()[0];
+  if (!state?.context || !audio || state.capture) {
+    return false;
+  }
+  await state.context.audioWorklet.addModule(new URL("./pcm-capture.js", import.meta.url));
+  const source = state.context.createMediaStreamSource(new MediaStream([audio]));
+  const node = new AudioWorkletNode(state.context, "pcm-capture");
+  const silent = state.context.createGain();
+  silent.gain.value = 0;
+  node.port.onmessage = ({ data }) => dotnet.invokeMethodAsync("OnTestAudio", new Uint8Array(data));
+  source.connect(node);
+  node.connect(silent).connect(state.context.destination);
+  await state.context.resume();
+  state.capture = { source, node, silent };
+  return true;
+}
+
+export function stopTranslationTest() {
+  if (!state?.capture) {
+    return;
+  }
+  const { source, node, silent } = state.capture;
+  node.port.onmessage = null;
+  source.disconnect();
+  node.disconnect();
+  silent.disconnect();
+  state.capture = null;
+}
+
+export function stopPreview() {
+  if (!state) {
+    return;
+  }
+  stopTranslationTest();
+  clearInterval(state.timer);
+  state.context?.close();
+  for (const track of state.stream.getTracks()) {
+    track.stop();
+  }
+  state.video.srcObject = null;
+  state.meter.style.width = "0%";
+  state = null;
+}

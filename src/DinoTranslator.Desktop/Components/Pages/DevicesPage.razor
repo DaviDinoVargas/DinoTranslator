@@ -1,0 +1,352 @@
+@page "/configuracoes/dispositivos"
+@implements IAsyncDisposable
+@using DinoTranslator.Desktop.Services.Translation
+@inject IJSRuntime Js
+@inject ProfileStore Profiles
+@inject TranslationSettingsStore Translation
+@inject SpeechEngineFactory Engines
+@inject NavigationManager Navigation
+
+<main class="devices">
+  <section class="devices__panel">
+    <p class="handshake__kicker">Antes da chamada</p>
+    <h1 class="handshake__step">Câmera, áudio e tradução</h1>
+    <p class="handshake__hint">O que você escolher aqui vale para as próximas chamadas.</p>
+
+    <div class="devices__grid">
+      <figure class="devices__preview">
+        <video @ref="_video" autoplay playsinline muted></video>
+        <figcaption>
+          @if (_preview is { Camera: true } preview)
+          {
+            <span>@preview.Width×@preview.Height · @preview.FrameRate fps</span>
+          }
+          else if (_preview is not null)
+          {
+            <span>@CameraProblem(_preview.CameraError)</span>
+          }
+          else
+          {
+            <span>Ligando a câmera…</span>
+          }
+        </figcaption>
+      </figure>
+
+      <div class="login__form">
+        <label class="field">
+          <span class="field__label">Câmera</span>
+          <select class="field__input" value="@_devices?.Camera" @onchange="@(e => ChooseAsync("camera", e))">
+            @foreach (var camera in _devices?.Cameras ?? [])
+            {
+              <option value="@camera.Id">@camera.Label</option>
+            }
+          </select>
+        </label>
+        <label class="field">
+          <span class="field__label">Qualidade do vídeo enviado</span>
+          <select class="field__input" value="@_devices?.Quality" @onchange="@(e => ChooseAsync("quality", e))">
+            <option value="maxima">Máxima · 1080p (até 4 Mb/s)</option>
+            <option value="alta">Alta · 720p (até 2 Mb/s)</option>
+            <option value="media">Média · 480p (até 0,9 Mb/s)</option>
+            <option value="baixa">Baixa · 360p (redes fracas)</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field__label">Microfone</span>
+          <select class="field__input" value="@_devices?.Microphone" @onchange="@(e => ChooseAsync("microphone", e))">
+            @foreach (var microphone in _devices?.Microphones ?? [])
+            {
+              <option value="@microphone.Id">@microphone.Label</option>
+            }
+          </select>
+        </label>
+        <div class="meter" role="img" aria-label="Volume do microfone">
+          <div class="meter__fill" @ref="_meter"></div>
+        </div>
+        <label class="field">
+          <span class="field__label">Alto-falante ou fone</span>
+          <select class="field__input" value="@_devices?.Speaker" @onchange="@(e => ChooseAsync("speaker", e))">
+            @foreach (var speaker in _devices?.Speakers ?? [])
+            {
+              <option value="@speaker.Id">@speaker.Label</option>
+            }
+          </select>
+        </label>
+        <button type="button" class="button" @onclick="PlaySoundAsync">Tocar som de teste</button>
+      </div>
+    </div>
+
+    <h2 class="handshake__step">Teste da tradução</h2>
+    @if (!Engines.IsReady(Translation.Current))
+    {
+      <p class="handshake__hint">
+        A tradução ainda não está pronta neste computador. Basta um dos dois configurar, mas sem ela vocês conversam sem legendas.
+      </p>
+      <button type="button" class="button button--primary" @onclick="@(() => Navigation.NavigateTo("/configuracoes/traducao"))">Configurar a tradução</button>
+    }
+    else
+    {
+      <div class="devices__translation">
+        <label class="field">
+          <span class="field__label">Traduzir para</span>
+          <select class="field__input" @bind="_target" disabled="@_testing">
+            @foreach (var language in Languages.All.Where(l => l.Code != MyLanguage))
+            {
+              <option value="@language.Code">@language.NativeName</option>
+            }
+          </select>
+        </label>
+        <button type="button" class="button @(_testing ? "" : "button--primary")" @onclick="ToggleTestAsync" disabled="@_starting">
+          @(_starting ? "Carregando o motor…" : _testing ? "Parar o teste" : "Começar a falar")
+        </button>
+      </div>
+      <p class="handshake__hint">@TestHint</p>
+      @if (_results.Count > 0)
+      {
+        <ol class="devices__results" aria-live="polite">
+          @foreach (var result in _results.AsEnumerable().Reverse())
+          {
+            <li class="bubble bubble--me @(result.Final ? "" : "bubble--partial")">
+              <p class="bubble__main">@result.SourceText@(result.Final ? "" : "…")</p>
+              @if (result.TranslatedText is { } translated)
+              {
+                <p class="bubble__secondary">@translated</p>
+              }
+              @if (result.Final && result.Latency is { } latency)
+              {
+                <time class="bubble__time">legenda final @latency.TotalSeconds.ToString("0.0") s depois da pausa</time>
+              }
+            </li>
+          }
+        </ol>
+      }
+    }
+    @if (_error is not null)
+    {
+      <p class="login__error" role="alert">@_error</p>
+    }
+
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))">Voltar</button>
+  </section>
+</main>
+
+@code {
+    private ElementReference _video;
+    private ElementReference _meter;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<DevicesPage>? _self;
+    private PreviewResult? _preview;
+    private DeviceList? _devices;
+    private string? _error;
+    private string _target = Languages.Russian;
+    private bool _testing;
+    private bool _starting;
+    private ISpeechTranslationStream? _stream;
+    private DateTimeOffset _lastAudio;
+    private readonly List<TestResult> _results = [];
+
+    private sealed record PreviewResult(bool Camera, bool Microphone, int Width, int Height, int FrameRate, string? CameraError);
+
+    private sealed record Device(string Id, string Label);
+
+    private sealed record DeviceList(
+        IReadOnlyList<Device> Cameras, IReadOnlyList<Device> Microphones, IReadOnlyList<Device> Speakers,
+        string? Camera, string? Microphone, string? Speaker, string Quality);
+
+    private sealed record TestResult(int Segment, string SourceText, string? TranslatedText, bool Final, TimeSpan? Latency);
+
+    private string MyLanguage => Profiles.Current?.Language ?? Languages.PortugueseBrazil;
+
+    private string TestHint => _testing
+        ? $"Fale em {Languages.Get(MyLanguage).NativeName}. Cada pausa fecha uma frase."
+        : "Fale uma frase e veja como a outra pessoa vai ler. O tempo mostrado é quanto a legenda final leva depois que você para de falar.";
+
+    protected override void OnInitialized()
+    {
+        if (MyLanguage == _target)
+        {
+            _target = Languages.PortugueseBrazil;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await Js.InvokeAsync<IJSObjectReference>("import", "./js/devices.js");
+            await RestartPreviewAsync();
+        }
+    }
+
+    private async Task RestartPreviewAsync()
+    {
+        try
+        {
+            _preview = await _module!.InvokeAsync<PreviewResult>("startPreview", _video, _meter);
+            _devices = await _module!.InvokeAsync<DeviceList>("listDevices");
+            _error = _preview.Microphone ? null : "Nenhum microfone encontrado. Confira se ele está ligado e liberado nas configurações de privacidade do Windows.";
+        }
+        catch (JSException)
+        {
+            _error = "Não foi possível ligar a câmera e o microfone.";
+        }
+        StateHasChanged();
+    }
+
+    private async Task ChooseAsync(string kind, ChangeEventArgs e)
+    {
+        if (_module is null || e.Value?.ToString() is not { Length: > 0 and <= 512 } value)
+        {
+            return;
+        }
+        await _module.InvokeVoidAsync("choose", kind, value);
+        if (kind != "speaker")
+        {
+            await StopTestAsync();
+            await RestartPreviewAsync();
+        }
+        else
+        {
+            _devices = _devices! with { Speaker = value };
+        }
+    }
+
+    private async Task PlaySoundAsync()
+    {
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("playTestSound");
+        }
+    }
+
+    private async Task ToggleTestAsync()
+    {
+        if (_testing)
+        {
+            await StopTestAsync();
+            return;
+        }
+        if (_module is null || Engines.Create(Translation.Current) is not { } engine)
+        {
+            return;
+        }
+        _starting = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            var stream = await engine.StartAsync(new SpeechStreamOptions(MyLanguage, _target, []), CancellationToken.None);
+            stream.Updated += update => _ = InvokeAsync(() => OnUpdate(update));
+            stream.Failed += message => _ = InvokeAsync(() =>
+            {
+                _error = message;
+                StateHasChanged();
+            });
+            _stream = stream;
+            _self ??= DotNetObjectReference.Create(this);
+            _results.Clear();
+            _testing = await _module.InvokeAsync<bool>("startTranslationTest", _self);
+            if (!_testing)
+            {
+                _error = "Sem microfone para testar.";
+                await stream.DisposeAsync();
+                _stream = null;
+            }
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException or System.IO.IOException or DinoTranslator.Desktop.Services.Translation.Local.ModelDownloadException)
+        {
+            _error = "Não foi possível ligar o motor de tradução. Confira a configuração da tradução.";
+        }
+        finally
+        {
+            _starting = false;
+        }
+    }
+
+    [JSInvokable]
+    public void OnTestAudio(byte[] pcm)
+    {
+        if (pcm.Length is > 0 and <= 64 * 1024)
+        {
+            if (Rms(pcm) > 0.01)
+            {
+                _lastAudio = DateTimeOffset.UtcNow;
+            }
+            _stream?.Write(pcm);
+        }
+    }
+
+    private void OnUpdate(SpeechUpdate update)
+    {
+        var index = _results.FindIndex(r => r.Segment == update.Segment);
+        var latency = update.Final && _lastAudio != default ? DateTimeOffset.UtcNow - _lastAudio : (TimeSpan?)null;
+        var result = new TestResult(update.Segment, LiveTranslation.Clean(update.SourceText),
+            update.TranslatedText is { } translated ? LiveTranslation.Clean(translated) : null, update.Final, latency);
+        if (index >= 0)
+        {
+            _results[index] = result;
+        }
+        else
+        {
+            _results.Add(result);
+        }
+        if (_results.Count > 20)
+        {
+            _results.RemoveAt(0);
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>Volume do bloco (0–1), para medir quando a pessoa parou de falar.</summary>
+    private static double Rms(byte[] pcm)
+    {
+        double sum = 0;
+        var count = pcm.Length / 2;
+        for (var i = 0; i < count; i++)
+        {
+            var sample = BitConverter.ToInt16(pcm, i * 2) / 32768.0;
+            sum += sample * sample;
+        }
+        return count == 0 ? 0 : Math.Sqrt(sum / count);
+    }
+
+    private async Task StopTestAsync()
+    {
+        _testing = false;
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("stopTranslationTest");
+        }
+        if (_stream is { } stream)
+        {
+            _stream = null;
+            await stream.DisposeAsync();
+        }
+    }
+
+    private static string CameraProblem(string? error) => error switch
+    {
+        "NotReadableError" => "A câmera está sendo usada por outro programa.",
+        "NotAllowedError" => "A câmera está bloqueada nas configurações de privacidade do Windows.",
+        "NotFoundError" or "OverconstrainedError" => "Nenhuma câmera encontrada.",
+        _ => "Sem câmera: a chamada segue só com o áudio.",
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await StopTestAsync();
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("stopPreview");
+                await _module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // A janela já fechou.
+        }
+        _self?.Dispose();
+    }
+}
