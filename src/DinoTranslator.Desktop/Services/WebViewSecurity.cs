@@ -21,6 +21,30 @@ internal static class WebViewSecurity
     private const bool DeveloperMode = false;
 #endif
 
+    /// <summary>
+    /// Variáveis de ambiente que o WebView2 lê ao iniciar e que permitiriam a um atalho ou
+    /// lançador malicioso ligar a depuração remota, trocar o navegador ou a pasta de dados.
+    /// </summary>
+    private static readonly string[] EnvironmentOverrides =
+    [
+        "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+        "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER",
+        "WEBVIEW2_USER_DATA_FOLDER",
+        "WEBVIEW2_RELEASE_CHANNEL_PREFERENCE",
+        "WEBVIEW2_CHANNEL_SEARCH_KIND",
+    ];
+
+    /// <summary>Na versão final, o WebView2 sobe só com a configuração do próprio app.</summary>
+    public static void ClearEnvironmentOverrides()
+    {
+#if !DEBUG
+        foreach (var variable in EnvironmentOverrides)
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+        }
+#endif
+    }
+
     public static void Apply(BlazorWebView webView, DesktopSettings settings)
     {
         // Fora da pasta do programa: em "Arquivos de Programas" o usuário não tem permissão de escrita.
