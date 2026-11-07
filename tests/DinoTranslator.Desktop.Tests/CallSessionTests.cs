@@ -130,6 +130,7 @@ public sealed class CallSessionTests : IDisposable
             profiles,
             new TitleBarState(),
             new TranslationSettingsStore(Path.Combine(folder, "motores.dat")),
+            new ConnectionSettingsStore(Path.Combine(folder, "conexao.dat")),
             new SpeechEngineFactory(new ModelFolder(Path.Combine(folder, "modelos"))),
             new RendezvousRelay(new HttpClient(_relay), relay ? new Uri("https://encontro.exemplo/") : null),
             new ImmediateDispatcher(),
