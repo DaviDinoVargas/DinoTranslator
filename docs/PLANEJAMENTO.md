@@ -148,6 +148,13 @@ A tradução é **só em texto na tela**: cada um ouve a voz original do outro, 
 
 O app tem adaptadores por provedor. **Implementado: Azure Speech**, que reconhece e traduz na mesma conexão de streaming (provisórias estáveis, trecho fechado após 600 ms de pausa, glossário). No build de desenvolvimento há também um motor simulado, que gera legendas a partir do volume do áudio, para testar sem serviço externo.
 
+**Implementado também: motor neste computador**, sem conta nem chave, e o áudio não sai da máquina:
+
+- Reconhecimento com Whisper (turbo, preciso, ou small, rápido) na placa de vídeo pelo Vulkan; a fala é separada em trechos pelo volume (provisória a cada segundo de fala, final após 600 ms de pausa).
+- Tradução com NLLB-200 (600M, quantizado) no processador; por ser lenta (1 a 4 s por frase numa CPU de 8 núcleos), só o trecho final é traduzido.
+- Modelos baixados pelo app (1,5 a 1,7 GB) de versões fixas, conferidos por SHA-256 ao baixar e ao carregar; a pasta pode ficar em outro disco.
+- Medido numa GTX 1650: 6 s de fala reconhecidos em 0,5 s (small) ou 1,1 s (turbo); legenda final traduzida cerca de 7 s após a pausa. Próximo passo: traduzir na placa de vídeo ou com um modelo menor.
+
 | Etapa         | Serviços em nuvem (candidatos)                                      | No próprio computador                         |
 |---------------|---------------------------------------------------------------------|-----------------------------------------------|
 | VAD           | —                                                                   | Silero VAD (ONNX, CPU)                        |
