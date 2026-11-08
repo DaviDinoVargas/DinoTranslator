@@ -1,4 +1,3 @@
-using System.Threading.Channels;
 using DinoTranslator.Shared;
 using Whisper.net;
 
@@ -17,27 +16,25 @@ public sealed class LocalSpeechTranslationEngine(Func<LocalSpeechRuntime> runtim
         return new Stream(loaded, options);
     }
 
+    /// <summary>
+    /// Fala de uma pessoa: o segmentador fecha os trechos pelo volume e a linha de montagem
+    /// reconhece (placa de vídeo) e traduz (processador) ao mesmo tempo.
+    /// </summary>
     private sealed class Stream : ISpeechTranslationStream
     {
-        private readonly LocalSpeechRuntime _runtime;
-        private readonly SpeechStreamOptions _options;
         private readonly WhisperProcessor _recognizer;
         private readonly SpeechSegmenter _segmenter = new();
-        private readonly Channel<SpeechSegment> _segments = Channel.CreateUnbounded<SpeechSegment>(new UnboundedChannelOptions { SingleReader = true });
-        private readonly CancellationTokenSource _stop = new();
-        private readonly Task _worker;
-        private readonly bool _translate;
-        private int _segment = -1;
-        private int _revision;
-        private int _pending;
+        private readonly SpeechPipeline _pipeline;
 
         public Stream(LocalSpeechRuntime runtime, SpeechStreamOptions options)
         {
-            _runtime = runtime;
-            _options = options;
-            _translate = Languages.NeedsTranslation(options.SourceLanguage, options.TargetLanguage);
             _recognizer = runtime.CreateRecognizer(options.SourceLanguage, options.Phrases);
-            _worker = Task.Run(ProcessAsync);
+            var translate = Languages.NeedsTranslation(options.SourceLanguage, options.TargetLanguage)
+                ? (text, token) => Task.Run(() => runtime.Translator.Translate(text, options.SourceLanguage, options.TargetLanguage, token), token)
+                : (Func<string, CancellationToken, Task<string>>?)null;
+            _pipeline = new SpeechPipeline((samples, token) => runtime.TranscribeAsync(_recognizer, samples, token), translate);
+            _pipeline.Updated += update => Updated?.Invoke(update);
+            _pipeline.Failed += () => Failed?.Invoke("O motor local parou de responder. A chamada continua, sem legendas.");
         }
 
         public event Action<SpeechUpdate>? Updated;
@@ -46,72 +43,16 @@ public sealed class LocalSpeechTranslationEngine(Func<LocalSpeechRuntime> runtim
 
         public void Write(byte[] pcm)
         {
-            if (_segmenter.Append(pcm) is { } segment && _segments.Writer.TryWrite(segment))
+            if (_segmenter.Append(pcm) is { } segment)
             {
-                Interlocked.Increment(ref _pending);
+                _pipeline.Enqueue(segment);
             }
         }
 
         public async ValueTask DisposeAsync()
         {
-            _segments.Writer.TryComplete();
-            await _stop.CancelAsync();
-            try
-            {
-                await _worker.WaitAsync(TimeSpan.FromSeconds(5));
-            }
-            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
-            {
-                // Encerrando: trecho em andamento é descartado.
-            }
+            await _pipeline.DisposeAsync();
             await _recognizer.DisposeAsync();
-            _stop.Dispose();
-        }
-
-        private async Task ProcessAsync()
-        {
-            try
-            {
-                await foreach (var segment in _segments.Reader.ReadAllAsync(_stop.Token))
-                {
-                    // Provisória atrasada: se já chegou coisa mais nova, ela fica para trás.
-                    if (Interlocked.Decrement(ref _pending) > 0 && !segment.Final)
-                    {
-                        continue;
-                    }
-                    await ProcessAsync(segment);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // Chamada encerrada.
-            }
-            catch (Exception)
-            {
-                Failed?.Invoke("O motor local parou de responder. A chamada continua, sem legendas.");
-            }
-        }
-
-        private async Task ProcessAsync(SpeechSegment segment)
-        {
-            var text = await _runtime.TranscribeAsync(_recognizer, segment.Samples, _stop.Token);
-            if (text.Length == 0)
-            {
-                return;
-            }
-
-            // A tradução local leva de 1 a 4 s por frase no processador: só o trecho final é
-            // traduzido; a provisória mostra o texto reconhecido enquanto a pessoa fala.
-            var translated = _translate && segment.Final
-                ? await Task.Run(() => _runtime.Translator.Translate(text, _options.SourceLanguage, _options.TargetLanguage), _stop.Token)
-                : null;
-
-            if (segment.Index != _segment)
-            {
-                _segment = segment.Index;
-                _revision = 0;
-            }
-            Updated?.Invoke(new SpeechUpdate(segment.Index, _revision++, text, translated, segment.Final));
         }
     }
 }
