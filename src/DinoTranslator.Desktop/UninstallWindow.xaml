@@ -139,7 +139,7 @@
           <Image Source="Assets/DinoTranslator.png" Width="76" Height="76" Opacity="0.6" RenderOptions.BitmapScalingMode="HighQuality" />
           <TextBlock Margin="0,18,0,0" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="24" FontWeight="Bold"
                      TextAlignment="Center" Text="Desinstalado" />
-          <TextBlock Margin="0,6,0,0" Foreground="{StaticResource Papel2}" TextAlignment="Center"
+          <TextBlock x:Name="DoneText" Margin="0,6,0,0" Foreground="{StaticResource Papel2}" TextAlignment="Center" TextWrapping="Wrap"
                      Text="A pasta do app é apagada assim que esta janela fechar." />
         </StackPanel>
         <Button DockPanel.Dock="Bottom" Style="{StaticResource BotaoTexto}" Content="Fechar" VerticalAlignment="Bottom"
