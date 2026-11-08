@@ -74,6 +74,29 @@ export function mediaConstraints(quality = videoQuality(), { highFidelity = fals
   };
 }
 
+/**
+ * Mostra a própria câmera só com a imagem. O atributo "muted" do HTML não basta: o Chromium só o
+ * respeita quando vem do HTML lido da página, não quando o Blazor cria o elemento — e aí o vídeo
+ * tocava o som do próprio microfone (a pessoa se ouvia, e o microfone captava de novo: eco).
+ */
+export function showPreview(element, stream) {
+  element.muted = true;
+  element.defaultMuted = true;
+  element.srcObject = stream ? new MediaStream(stream.getVideoTracks()) : null;
+}
+
+/**
+ * Áudio para o reconhecimento já em 16 kHz: o próprio navegador converte a fala com o filtro
+ * dele, de boa qualidade. Se não der, a captura (pcm-capture.js) filtra e converte sozinha.
+ */
+export function speechContext() {
+  try {
+    return new AudioContext({ sampleRate: 16000 });
+  } catch {
+    return new AudioContext();
+  }
+}
+
 /** Saída de som escolhida no teste de dispositivos (alto-falante ou fone). */
 export async function applySpeaker(element) {
   const speaker = preference("speaker");
@@ -388,7 +411,7 @@ export class CallPeer {
   async enableSpeechCapture(onAudio) {
     this.onSpeechAudio = onAudio;
     if (!this.audioContext) {
-      this.audioContext = new AudioContext();
+      this.audioContext = speechContext();
       await this.audioContext.audioWorklet.addModule(new URL("./pcm-capture.js", import.meta.url));
       // Mantém o grafo de áudio ativo sem tocar nada de novo: saída com volume zero.
       this.silentSink = this.audioContext.createGain();
@@ -744,6 +767,7 @@ export const setScreenMode = (mode) => current?.setScreenMode(mode);
 export const shareStream = (stream, mode) => current.startScreenShare({ mode, stream });
 
 export function bindRemoteScreen(video) {
+  video.muted = true;
   video.srcObject = current.remoteScreen;
 }
 
@@ -755,7 +779,7 @@ export async function startMedia(localVideo, remoteVideo, highFidelity) {
   remoteVideo.srcObject = current.remoteStream;
   await applySpeaker(remoteVideo);
   const stream = await current.startLocalMedia({ highFidelity });
-  localVideo.srcObject = stream;
+  showPreview(localVideo, stream);
   return { camera: current.hasLocalTrack("video"), microphone: current.hasLocalTrack("audio") };
 }
 

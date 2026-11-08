@@ -1,6 +1,6 @@
 // Teste de câmera, microfone, alto-falante e tradução antes da chamada. As escolhas ficam
 // guardadas como preferência e a chamada usa as mesmas (call.js).
-import { QUALITIES, mediaConstraints, preference, setPreference, videoQuality } from "./call.js";
+import { QUALITIES, mediaConstraints, preference, setPreference, showPreview, speechContext, videoQuality } from "./call.js";
 
 let state = null;
 
@@ -19,11 +19,11 @@ export async function startPreview(video, meter) {
     return { camera: false, microphone: false, width: 0, height: 0, frameRate: 0, cameraError };
   }
   state = { stream, video, meter, context: null, timer: null, capture: null };
-  video.srcObject = stream;
+  showPreview(video, stream);
 
   const audio = stream.getAudioTracks()[0];
   if (audio) {
-    const context = new AudioContext();
+    const context = speechContext();
     const analyser = context.createAnalyser();
     analyser.fftSize = 1024;
     context.createMediaStreamSource(new MediaStream([audio])).connect(analyser);
