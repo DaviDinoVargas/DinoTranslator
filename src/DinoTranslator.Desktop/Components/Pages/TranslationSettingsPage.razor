@@ -1,8 +1,10 @@
 @page "/configuracoes/traducao"
 @implements IDisposable
+@using System.IO
 @using System.Net.Http
 @using DinoTranslator.Desktop.Services.Translation
 @using DinoTranslator.Desktop.Services.Translation.Local
+@using DinoTranslator.Installation
 @inject TranslationSettingsStore Store
 @inject SpeechEngineFactory Engines
 @inject NavigationManager Navigation
@@ -57,6 +59,7 @@
             <select class="field__input" @bind="_localModel" disabled="@Downloading">
               <option value="@WhisperModel.Turbo">Preciso · Whisper turbo (@Size(LocalModels.WhisperTurbo.Size))</option>
               <option value="@WhisperModel.Small">Rápido · Whisper small (@Size(LocalModels.WhisperSmall.Size))</option>
+              <option value="@WhisperModel.Large">Máximo · Whisper large-v3 (@Size(LocalModels.WhisperLarge.Size))</option>
             </select>
           </label>
 
@@ -72,7 +75,7 @@
             </div>
           </div>
 
-          @if (Folder.IsInstalled(_localModel))
+          @if (ModelsReady)
           {
             <p class="handshake__waiting">Modelos baixados e conferidos.</p>
           }
@@ -131,11 +134,101 @@
       </div>
     }
 
-    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))" disabled="@Downloading"><Icon Name="voltar" />Voltar</button>
+    <div class="extras">
+      <p class="group-title">Motores extras</p>
+      <div class="group extras__card">
+        <p class="extras__text">
+          faster-whisper, Whisper large-v3, NLLB 1.3B, MarianMT (OPUS-MT) e o detector Silero, para escolher e comparar
+          durante a chamada, no botão <strong>Motores</strong>. A placa de vídeo da NVIDIA acelera vários deles.
+        </p>
+        @if (_extrasProgress is { } progress)
+        {
+          <div class="download">
+            <div class="download__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@ExtrasPercent">
+              <div class="download__fill download__fill--@(ExtrasPercent / 5 * 5)"></div>
+            </div>
+            <p class="handshake__waiting">@Gigabytes(progress.DoneBytes) de @Gigabytes(progress.TotalBytes) · @progress.Title</p>
+            <button type="button" class="button button--quiet" @onclick="() => _extrasCancel?.Cancel()">Cancelar</button>
+          </div>
+        }
+        else if (MissingExtras is { Count: > 0 } missing)
+        {
+          <p class="extras__status"><span class="chip chip--dot chip--warn">Faltam @missing.Count de @ExtrasCatalog.All.Count componentes</span></p>
+          <button type="button" class="button button--primary" @onclick="InstallExtrasAsync" disabled="@Downloading">
+            <Icon Name="baixar" />Instalar motores extras (@Gigabytes(missing.Sum(c => c.Size)))
+          </button>
+        }
+        else
+        {
+          <p class="extras__status"><span class="chip chip--dot chip--ok">Instalados e conferidos</span></p>
+        }
+        @if (_extrasError is not null)
+        {
+          <p class="login__error" role="alert"><Icon Name="alerta" />@_extrasError</p>
+        }
+      </div>
+    </div>
+
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))" disabled="@(Downloading || _extrasProgress is not null)"><Icon Name="voltar" />Voltar</button>
   </section>
 </main>
 
 @code {
+    private ExtrasProgress? _extrasProgress;
+    private CancellationTokenSource? _extrasCancel;
+    private string? _extrasError;
+
+    /// <summary>Os modelos do ajuste já estão em alguma das pastas (a configurada ou a dos extras).</summary>
+    private bool ModelsReady =>
+        LocalModels.Required(_localModel).All(file => Engines.FolderFor(Draft, file).IsInstalled(file));
+
+    private TranslationSettings Draft => new(TranslationProvider.Local, null, null, _localModel, _modelsFolder);
+
+    /// <summary>Componentes que faltam; modelos originais já baixados na pasta configurada não contam.</summary>
+    private IReadOnlyList<ExtraComponent> MissingExtras =>
+        ExtrasInstaller.Missing(Engines.Extras.Root)
+            .Where(c => c.Kind != ExtraKind.File || !Engines.ModelsFor(Store.Current).IsInstalled(new ModelFile(c.FileName!, c.Source, c.Size, c.Sha256)))
+            .ToList();
+
+    private int ExtrasPercent => _extrasProgress is { TotalBytes: > 0 } p ? (int)(p.DoneBytes * 100 / p.TotalBytes) : 0;
+
+    private static string Gigabytes(long bytes) => $"{bytes / 1_000_000_000.0:0.0} GB";
+
+    private async Task InstallExtrasAsync()
+    {
+        var missing = MissingExtras;
+        _extrasError = null;
+        _extrasCancel = new CancellationTokenSource();
+        _extrasProgress = new ExtrasProgress("começando", 0, missing.Sum(c => c.Size));
+        var progress = new Progress<ExtrasProgress>(p =>
+        {
+            _extrasProgress = p;
+            StateHasChanged();
+        });
+        try
+        {
+            // O motor auxiliar usa esses arquivos: para antes de substituí-los.
+            await Engines.StopExtrasAsync();
+            using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("DinoTranslator");
+            await Task.Run(() => ExtrasInstaller.InstallAsync(Engines.Extras.Root, missing, http, progress, _extrasCancel.Token));
+        }
+        catch (OperationCanceledException)
+        {
+            _extrasError = "Instalação dos motores extras cancelada. O que já foi baixado e conferido fica.";
+        }
+        catch (Exception ex) when (ex is InstallationException or HttpRequestException or IOException or UnauthorizedAccessException)
+        {
+            _extrasError = ex is InstallationException ? ex.Message : "Não foi possível baixar os motores extras. Confira a internet e tente de novo.";
+        }
+        finally
+        {
+            _extrasProgress = null;
+            _extrasCancel.Dispose();
+            _extrasCancel = null;
+        }
+    }
+
     private TranslationProvider _provider = TranslationProvider.Local;
     private WhisperModel _localModel = WhisperModel.Turbo;
     private string? _region;
@@ -276,7 +369,7 @@
     public static string Describe(TranslationSettings settings) => settings.Provider switch
     {
         TranslationProvider.AzureSpeech => $"Azure Speech · {settings.Region}",
-        TranslationProvider.Local => $"Neste computador · {(settings.LocalModel == WhisperModel.Small ? "rápido" : "preciso")}",
+        TranslationProvider.Local => $"Neste computador · {settings.LocalModel switch { WhisperModel.Small => "rápido", WhisperModel.Large => "máximo", _ => "preciso" }}",
         TranslationProvider.Simulated => "Simulado (desenvolvimento)",
         _ => "Não configurado",
     };

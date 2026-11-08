@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Windows;
 using DinoTranslator.Installation;
 using Microsoft.Win32;
@@ -21,6 +22,8 @@ public partial class SetupWindow : Window
         InitializeComponent();
         Heading.Text = $"Instalar o DinoTranslator {App.Version}";
         FolderText.Text = _folder;
+        ExtrasText.Text = $"Instalar também os motores e modelos de tradução (download de {Gigabytes(ExtrasCatalog.TotalSize)}). "
+            + "Sem eles, dá para baixar depois em Ajustes › Tradução.";
         WebView2Notice.Visibility = Installer.HasWebView2() ? Visibility.Collapsed : Visibility.Visible;
     }
 
@@ -51,7 +54,9 @@ public partial class SetupWindow : Window
             ShowError("Este instalador está sem o pacote do app. Gere-o com tools/criar-instalador.ps1.");
             return;
         }
-        if (Installer.FreeSpace(_folder) < payload.Length * 3 + SpareSpace)
+        var extras = ExtrasCheck.IsChecked == true;
+        var extrasNeeded = extras ? ExtrasCatalog.TotalSize * 2 : 0;
+        if (Installer.FreeSpace(_folder) < payload.Length * 3 + SpareSpace + extrasNeeded)
         {
             payload.Dispose();
             ShowError("Falta espaço no disco escolhido. Clique em Alterar… e escolha outro disco.");
@@ -75,6 +80,10 @@ public partial class SetupWindow : Window
             {
                 await Task.Run(() => Installer.Install(payload, _folder, App.Version, desktop, progress));
             }
+            if (extras)
+            {
+                await InstallExtrasAsync();
+            }
             ProgressPanel.Visibility = Visibility.Collapsed;
             DonePanel.Visibility = Visibility.Visible;
         }
@@ -96,6 +105,41 @@ public partial class SetupWindow : Window
             CloseButton.IsEnabled = true;
         }
     }
+
+    /// <summary>
+    /// Motores e modelos de tradução: o app já está instalado, então uma falha aqui só vira um aviso
+    /// (dá para baixar de novo pelos Ajustes do app).
+    /// </summary>
+    private async Task InstallExtrasAsync()
+    {
+        var root = ExtrasInstaller.RootFor(_folder);
+        var missing = ExtrasInstaller.Missing(root);
+        if (missing.Count == 0)
+        {
+            return;
+        }
+        ProgressHeading.Text = "Baixando os motores de tradução…";
+        var progress = new Progress<ExtrasProgress>(p =>
+        {
+            Progress.Value = p.TotalBytes == 0 ? 100 : p.DoneBytes * 100.0 / p.TotalBytes;
+            ProgressText.Text = $"{Gigabytes(p.DoneBytes)} de {Gigabytes(p.TotalBytes)} · {p.Title}";
+        });
+        try
+        {
+            using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("DinoTranslator-Instalador");
+            await Task.Run(() => ExtrasInstaller.InstallAsync(root, missing, http, progress, CancellationToken.None));
+        }
+        catch (Exception ex) when (ex is InstallationException or HttpRequestException or IOException or UnauthorizedAccessException)
+        {
+            ExtrasNote.Text = ex is InstallationException
+                ? ex.Message + " O app está instalado; baixe os motores depois em Ajustes › Tradução."
+                : "Os motores de tradução não terminaram de baixar. O app está instalado; baixe-os depois em Ajustes › Tradução.";
+            ExtrasNote.Visibility = Visibility.Visible;
+        }
+    }
+
+    private static string Gigabytes(long bytes) => $"{bytes / 1_000_000_000.0:0.0} GB";
 
     private void OnFinish(object sender, RoutedEventArgs e)
     {

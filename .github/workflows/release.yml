@@ -47,7 +47,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSAO: ${{ steps.versao.outputs.versao }}
         run: |
-          $anterior = git describe --tags --abbrev=0 HEAD^ 2>$null
+          $anterior = git describe --tags --abbrev=0 --match "v*" HEAD^ 2>$null
           $intervalo = if ($anterior) { "$anterior..HEAD" } else { "HEAD" }
           $mudancas = git log $intervalo --no-merges --pretty="- %s" | Select-Object -First 60
           $hash = (Get-Content "artifacts/DinoTranslatorSetup-$env:VERSAO.exe.sha256").Split(" ")[0]
