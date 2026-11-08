@@ -55,7 +55,8 @@ public static class NllbVocabulary
 
 /// <summary>
 /// Tradução local com o NLLB-200 (600M, quantizado) no ONNX Runtime, na CPU: codificador uma
-/// vez por frase e decodificador palavra por palavra, reaproveitando o cache de atenção.
+/// vez por frase e decodificador palavra por palavra (cerca de 45 ms cada), reaproveitando o
+/// cache de atenção.
 /// </summary>
 public sealed class NllbTranslator : IDisposable
 {
@@ -80,7 +81,18 @@ public sealed class NllbTranslator : IDisposable
             IntraOpNumThreads = threads,
         };
         _encoder = new InferenceSession(encoderPath, options);
-        _decoder = new InferenceSession(decoderPath, options);
+
+        // A tabela de 256 mil palavras vem em 8 bits e o ONNX Runtime a descomprimia inteira
+        // (cerca de 1 GB) a cada palavra gerada: 155 ms de 200 por passo. Assim ela é
+        // descomprimida uma vez, ao carregar, e o passo cai para uns 45 ms.
+        using var decoderOptions = new SessionOptions
+        {
+            GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
+            ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
+            IntraOpNumThreads = threads,
+        };
+        decoderOptions.AddSessionConfigEntry("session.disable_quant_qdq", "1");
+        _decoder = new InferenceSession(decoderPath, decoderOptions);
         using (var stream = File.OpenRead(vocabularyPath))
         {
             _vocabulary = SentencePieceTokenizer.Create(stream, addBeginningOfSentence: false, addEndOfSentence: false);
@@ -92,7 +104,8 @@ public sealed class NllbTranslator : IDisposable
         _headSize = shape[3] > 0 ? shape[3] : 64;
     }
 
-    public string Translate(string text, string sourceLanguage, string targetLanguage)
+    /// <param name="cancellationToken">Conferido a cada palavra: uma tradução provisória pode ser abandonada no meio.</param>
+    public string Translate(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -112,7 +125,7 @@ public sealed class NllbTranslator : IDisposable
             ]);
             var hidden = encoded.First(v => v.Name == "last_hidden_state").AsTensor<float>();
 
-            var output = Decode(hidden, mask, NllbVocabulary.LanguageId(targetLanguage), MaxTokens(source.Length));
+            var output = Decode(hidden, mask, NllbVocabulary.LanguageId(targetLanguage), MaxTokens(source.Length), cancellationToken);
             return _vocabulary.Decode(output.Where(NllbVocabulary.IsText).Select(NllbVocabulary.ToPieceId)).Trim();
         }
     }
@@ -125,7 +138,7 @@ public sealed class NllbTranslator : IDisposable
 
     private static int MaxTokens(int sourceLength) => Math.Min(MaxNewTokens, (sourceLength * 3) + 10);
 
-    private List<long> Decode(Tensor<float> hidden, DenseTensor<long> mask, long targetLanguage, int maxTokens)
+    private List<long> Decode(Tensor<float> hidden, DenseTensor<long> mask, long targetLanguage, int maxTokens, CancellationToken cancellationToken)
     {
         var output = new List<long>();
         IDisposableReadOnlyCollection<DisposableNamedOnnxValue>? first = null;
@@ -136,6 +149,7 @@ public sealed class NllbTranslator : IDisposable
             long[] next = [NllbVocabulary.EndOfSentence, targetLanguage];
             for (var step = 0; step < maxTokens; step++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var inputs = new List<NamedOnnxValue>
                 {
                     NamedOnnxValue.CreateFromTensor("input_ids", new DenseTensor<long>(next, [1, next.Length])),
