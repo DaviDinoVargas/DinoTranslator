@@ -40,7 +40,7 @@ public partial class App : Application
             Installer.Install(payload, folder, Version, desktopShortcut: !args.Contains("/sem-atalho"), progress: null);
             return 0;
         }
-        catch (Exception ex) when (ex is InstallationException or IOException or UnauthorizedAccessException)
+        catch (Exception)
         {
             return 1;
         }

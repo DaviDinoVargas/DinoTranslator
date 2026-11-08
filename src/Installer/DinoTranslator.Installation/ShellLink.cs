@@ -1,11 +1,12 @@
 using System.IO;
+using System.Text;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 
 namespace DinoTranslator.Installation;
 
 /// <summary>Atalho .lnk do Windows (menu Iniciar e área de trabalho) pela interface IShellLink.</summary>
-internal static class ShellLink
+public static class ShellLink
 {
     public static void Create(string shortcutPath, string targetPath, string description)
     {
@@ -25,6 +26,31 @@ internal static class ShellLink
         }
     }
 
+    /// <summary>Para onde o atalho aponta; <c>null</c> se ele não existir ou não puder ser lido.</summary>
+    public static string? TargetOf(string shortcutPath)
+    {
+        if (!File.Exists(shortcutPath))
+        {
+            return null;
+        }
+        var link = (IShellLinkW)new ShellLinkObject();
+        try
+        {
+            ((IPersistFile)link).Load(shortcutPath, 0);
+            var target = new StringBuilder(1024);
+            link.GetPath(target, target.Capacity, IntPtr.Zero, 0);
+            return target.Length > 0 ? target.ToString() : null;
+        }
+        catch (COMException)
+        {
+            return null;
+        }
+        finally
+        {
+            Marshal.FinalReleaseComObject(link);
+        }
+    }
+
     [ComImport]
     [Guid("00021401-0000-0000-C000-000000000046")]
     private class ShellLinkObject;
@@ -34,7 +60,7 @@ internal static class ShellLink
     [Guid("000214F9-0000-0000-C000-000000000046")]
     private interface IShellLinkW
     {
-        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] char[] pszFile, int cch, IntPtr pfd, uint fFlags);
+        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile, int cch, IntPtr pfd, uint fFlags);
         void GetIDList(out IntPtr ppidl);
         void SetIDList(IntPtr pidl);
         void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] char[] pszName, int cch);

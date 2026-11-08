@@ -7,8 +7,8 @@ using DinoTranslator.Installation;
 namespace DinoTranslator.Desktop;
 
 /// <summary>
-/// Desinstalador próprio, aberto por "Aplicativos instalados" do Windows (DinoTranslator.exe /desinstalar).
-/// Só age sobre a cópia registrada pelo instalador.
+/// Desinstalador próprio: aberto pelo Desinstalar.exe da pasta do app ou por "Aplicativos
+/// instalados" do Windows. Só age sobre uma cópia instalada pelo instalador.
 /// </summary>
 public partial class UninstallWindow : Window
 {
@@ -18,8 +18,7 @@ public partial class UninstallWindow : Window
     public UninstallWindow()
     {
         InitializeComponent();
-        _installed = Installer.InstalledFolder() is { } registered
-            && string.Equals(Path.GetFullPath(registered).TrimEnd(Path.DirectorySeparatorChar), _folder, StringComparison.OrdinalIgnoreCase);
+        _installed = Installer.IsInstalledCopy(_folder);
         if (!_installed)
         {
             Message.Text = "Esta cópia do DinoTranslator não foi instalada pelo instalador; não há o que remover.";
@@ -46,7 +45,7 @@ public partial class UninstallWindow : Window
             {
                 DeleteUserData();
             }
-            Installer.Unregister();
+            Installer.Unregister(_folder);
             Installer.DeleteFolderAfterExit(_folder);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

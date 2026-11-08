@@ -13,7 +13,7 @@ public partial class SetupWindow : Window
     /// <summary>Folga além do app instalado: o disco não pode ficar cheio.</summary>
     private const long SpareSpace = 500_000_000;
 
-    private string _folder = Installer.InstalledFolder() ?? Installer.DefaultFolder;
+    private string _folder = Installer.PreviousFolder() ?? Installer.DefaultFolder;
     private bool _installing;
 
     public SetupWindow()
@@ -78,11 +78,17 @@ public partial class SetupWindow : Window
             ProgressPanel.Visibility = Visibility.Collapsed;
             DonePanel.Visibility = Visibility.Visible;
         }
-        catch (Exception ex) when (ex is InstallationException or IOException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
+            // Qualquer falha volta para a tela inicial com o motivo, em vez de fechar o instalador.
             ProgressPanel.Visibility = Visibility.Collapsed;
             WelcomePanel.Visibility = Visibility.Visible;
-            ShowError(ex is InstallationException ? ex.Message : "Não foi possível gravar na pasta escolhida.");
+            ShowError(ex switch
+            {
+                InstallationException => ex.Message,
+                IOException or UnauthorizedAccessException => "Não foi possível gravar na pasta escolhida.",
+                _ => "A instalação não terminou. Tente de novo; se continuar, escolha outra pasta.",
+            });
         }
         finally
         {
