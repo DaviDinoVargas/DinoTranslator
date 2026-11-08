@@ -53,6 +53,7 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 - Nunca enviadas pela chamada, nunca em log; erros do serviço viram frases sem detalhes internos.
 - Áudio enviado ao motor só durante a chamada, a partir da captura do próprio app (blocos de até 64 KB).
 - Legendas recebidas são aceitas só de quem foi escolhido para traduzir e passam pela mesma validação das mensagens do canal.
+- Chat escrito e correções: mensagens de tipo próprio (texto com id `e-…`, correção de um trecho), com texto exibível de até 2.000 caracteres e ao menos uma letra ou número. Quem traduz aceita no máximo 40 por minuto da outra pessoa (cada uma custa uma tradução) e só corrige trechos que são dela — ninguém muda a fala dos outros.
 - O motor simulado e a variável que o liga existem só no build Debug.
 - Motor local: modelos baixados por HTTPS de versões fixas dos repositórios, conferidos por tamanho e SHA-256 ao baixar e de novo ao carregar (a pasta pode estar em outro disco); arquivo diferente é recusado. A pasta só pode ficar num disco fixo deste computador, e apagar os modelos remove só os arquivos do catálogo.
 
@@ -79,6 +80,7 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 - Nada de segredos, bancos de dados, certificados ou builds no Git (`.gitignore`).
 - Auditoria de dependências vulneráveis em todo build.
 - Instalador assinado; SHA-256 publicado com cada versão.
+- Instalação por usuário, sem administrador. O registro em "Aplicativos instalados" é gravado antes dos atalhos e aponta para o `Desinstalar.exe` da pasta do app. O app só conserta o registro numa pasta instalada pelo instalador (registrada, ou apontada pelo atalho do menu Iniciar), e desinstalar uma cópia só remove o registro e os atalhos dela. Os testes usam registro e atalhos próprios.
 
 ## 5. Modo servidor (opcional, desligado)
 
