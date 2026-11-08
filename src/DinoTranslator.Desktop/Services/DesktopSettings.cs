@@ -36,6 +36,9 @@ public sealed record DesktopSettings(ConnectionMode Mode, Uri? ServerUri, string
 
     public string ModelsFolder => Path.Combine(DataFolder, "modelos");
 
+    /// <summary>Última combinação de motores escolhida na chamada (não é segredo).</summary>
+    public string EngineChoiceFile => Path.Combine(DataFolder, "motores-escolha.json");
+
     public static DesktopSettings Load()
     {
         var dataFolder = Path.Combine(

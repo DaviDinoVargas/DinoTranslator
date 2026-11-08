@@ -15,6 +15,9 @@ public enum WhisperModel
 
     /// <summary>Whisper small (q5_1): mais leve e mais rápido, erra um pouco mais.</summary>
     Small,
+
+    /// <summary>Whisper large-v3 (q5_0): o mais preciso, e o mais lento (decodificador inteiro, sem a poda do turbo).</summary>
+    Large,
 }
 
 /// <summary>
@@ -38,6 +41,12 @@ public static class LocalModels
         190_085_487,
         "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb");
 
+    public static ModelFile WhisperLarge { get; } = new(
+        "ggml-large-v3-q5_0.bin",
+        new Uri(WhisperRepository + "ggml-large-v3-q5_0.bin"),
+        1_081_140_203,
+        "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1");
+
     /// <summary>NLLB-200 (600M, destilado, quantizado): traduz entre os cinco idiomas em qualquer direção.</summary>
     public static ModelFile TranslatorEncoder { get; } = new(
         "nllb-encoder-quantized.onnx",
@@ -57,7 +66,15 @@ public static class LocalModels
         4_852_054,
         "14bb8dfb35c0ffdea7bc01e56cea38b9e3d5efcdcb9c251d6b40538e1aab555a");
 
-    public static ModelFile Whisper(WhisperModel model) => model == WhisperModel.Small ? WhisperSmall : WhisperTurbo;
+    public static ModelFile Whisper(WhisperModel model) => model switch
+    {
+        WhisperModel.Small => WhisperSmall,
+        WhisperModel.Large => WhisperLarge,
+        _ => WhisperTurbo,
+    };
+
+    /// <summary>Os três arquivos do NLLB-200 600M em ONNX.</summary>
+    public static IReadOnlyList<ModelFile> Translator { get; } = [TranslatorEncoder, TranslatorDecoder, TranslatorVocabulary];
 
     public static IReadOnlyList<ModelFile> Required(WhisperModel model) =>
         [Whisper(model), TranslatorEncoder, TranslatorDecoder, TranslatorVocabulary];
@@ -65,14 +82,20 @@ public static class LocalModels
     public static long DownloadSize(WhisperModel model) => Required(model).Sum(f => f.Size);
 
     public static IReadOnlyList<ModelFile> All { get; } =
-        [WhisperTurbo, WhisperSmall, TranslatorEncoder, TranslatorDecoder, TranslatorVocabulary];
+        [WhisperTurbo, WhisperSmall, WhisperLarge, TranslatorEncoder, TranslatorDecoder, TranslatorVocabulary];
+}
+
+/// <summary>Diz se um arquivo do catálogo está instalado (numa pasta ou em mais de uma).</summary>
+public interface IModelFiles
+{
+    bool IsInstalled(ModelFile file);
 }
 
 /// <summary>
 /// Pasta dos modelos: %LOCALAPPDATA%\DinoTranslator\modelos por padrão, ou outra escolhida
 /// nas configurações (ex.: em outro disco).
 /// </summary>
-public sealed class ModelFolder(string path)
+public sealed class ModelFolder(string path) : IModelFiles
 {
     public const int MaxPathLength = 200;
 

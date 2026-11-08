@@ -38,13 +38,20 @@ public static class TranslatorChoice
 /// Tradução ao vivo no computador que traduz: a fala de cada pessoa vira legenda no idioma
 /// da outra. A sua fala entra pelo microfone; a da outra pessoa, pelo áudio da chamada.
 /// </summary>
-public sealed class LiveTranslation(ISpeechTranslationEngine engine, Profile me, Profile peer, TimeProvider time) : IAsyncDisposable
+/// <param name="generation">
+/// Quantas vezes a tradução já recomeçou nesta chamada (troca de motores): entra no id dos trechos,
+/// que senão repetiriam os da tradução anterior e seriam recusados como já finalizados.
+/// </param>
+public sealed class LiveTranslation(ISpeechTranslationEngine engine, Profile me, Profile peer, TimeProvider time, int generation = 0) : IAsyncDisposable
 {
     private ISpeechTranslationStream? _mine;
     private ISpeechTranslationStream? _theirs;
 
     /// <summary>Disparado na thread do motor.</summary>
     public event Action<Caption>? CaptionReady;
+
+    /// <summary>Tempos de cada frase final do motor local (disparado na thread do motor).</summary>
+    public event Action<SpeechTiming>? Measured;
 
     public event Action<string>? Failed;
 
@@ -108,16 +115,23 @@ public sealed class LiveTranslation(ISpeechTranslationEngine engine, Profile me,
     {
         var stream = await engine.StartAsync(new SpeechStreamOptions(source, target, glossary), cancellationToken);
         var translate = Languages.NeedsTranslation(source, target);
-        stream.Updated += update => CaptionReady?.Invoke(new Caption(
-            owner,
-            $"s{update.Segment}",
-            update.Revision,
-            source,
-            Clean(update.SourceText),
-            target,
-            translate && update.TranslatedText is { } translated ? Clean(translated) : null,
-            update.Final,
-            time.GetUtcNow()));
+        stream.Updated += update =>
+        {
+            CaptionReady?.Invoke(new Caption(
+                owner,
+                generation == 0 ? $"s{update.Segment}" : $"s{generation}-{update.Segment}",
+                update.Revision,
+                source,
+                Clean(update.SourceText),
+                target,
+                translate && update.TranslatedText is { } translated ? Clean(translated) : null,
+                update.Final,
+                time.GetUtcNow()));
+            if (update.Timing is { } timing)
+            {
+                Measured?.Invoke(timing);
+            }
+        };
         stream.Failed += message => Failed?.Invoke(message);
         return stream;
     }

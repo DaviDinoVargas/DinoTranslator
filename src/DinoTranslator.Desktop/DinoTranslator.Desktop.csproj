@@ -43,4 +43,9 @@
     <InternalsVisibleTo Include="DinoTranslator.Desktop.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Motor auxiliar (faster-whisper e CTranslate2): roda no Python dos motores extras. -->
+    <None Update="Motor\motor.py" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

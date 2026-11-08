@@ -6,10 +6,13 @@ namespace DinoTranslator.Desktop.Services.Translation.Local;
 public sealed record SpeechSegment(int Index, float[] Samples, bool Final);
 
 /// <summary>
-/// Separa a fala em trechos pelo volume, para o reconhecimento local (que não é streaming):
-/// o trecho abre com voz, gera uma versão provisória a cada segundo e fecha após uma pausa.
+/// Separa a fala em trechos, para o reconhecimento local (que não é streaming): o trecho abre com
+/// voz, gera uma versão provisória a cada segundo e fecha após uma pausa. A voz é detectada pelo
+/// volume (padrão) ou por um detector (Silero).
 /// </summary>
-public sealed class SpeechSegmenter
+/// <param name="detector"><c>null</c> = pelo volume, com o limiar acompanhando o ruído do ambiente.</param>
+/// <param name="pauseMs">Silêncio que fecha a frase.</param>
+public sealed class SpeechSegmenter(IVoiceDetector? detector = null, int pauseMs = SpeechSegmenter.PauseToCloseMs)
 {
     public const int SampleRate = 16_000;
 
@@ -48,7 +51,7 @@ public sealed class SpeechSegmenter
 
         var durationMs = block.Length * 1000.0 / SampleRate;
         var level = Rms(block);
-        var voice = level > Math.Max(MinThreshold, _noiseFloor * NoiseMultiplier);
+        var voice = detector?.IsVoice(block) ?? level > Math.Max(MinThreshold, _noiseFloor * NoiseMultiplier);
 
         if (!_speaking)
         {
@@ -84,7 +87,7 @@ public sealed class SpeechSegmenter
         }
 
         var lengthMs = _segment.Count * 1000.0 / SampleRate;
-        if (_silenceMs >= PauseToCloseMs || lengthMs >= MaxSegmentMs)
+        if (_silenceMs >= pauseMs || lengthMs >= MaxSegmentMs)
         {
             return Close();
         }
