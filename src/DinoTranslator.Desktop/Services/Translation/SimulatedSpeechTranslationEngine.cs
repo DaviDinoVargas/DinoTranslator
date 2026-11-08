@@ -12,6 +12,11 @@ public sealed class SimulatedSpeechTranslationEngine : ISpeechTranslationEngine
     public Task<ISpeechTranslationStream> StartAsync(SpeechStreamOptions options, CancellationToken cancellationToken) =>
         Task.FromResult<ISpeechTranslationStream>(new Stream(options));
 
+    public bool CanTranslateText => true;
+
+    public Task<string?> TranslateTextAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken) =>
+        Task.FromResult<string?>($"[{targetLanguage}] {text}");
+
     private sealed class Stream(SpeechStreamOptions options) : ISpeechTranslationStream
     {
         private const double VoiceThreshold = 0.02;

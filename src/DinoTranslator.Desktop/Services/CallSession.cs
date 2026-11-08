@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using DinoTranslator.Desktop.Services.Translation;
 using DinoTranslator.Shared;
 using DinoTranslator.Shared.Call;
@@ -91,6 +92,12 @@ public sealed class CallSession(
 
     private const int MaxSpeechChunkBytes = 64 * 1024;
 
+    /// <summary>Mensagens escritas e correções aceitas da outra pessoa por minuto (cada uma custa uma tradução).</summary>
+    public const int MaxWrittenPerMinute = 40;
+
+    /// <summary>Correção sem resposta de quem traduz deixa de aparecer como pendente depois disto.</summary>
+    private static readonly TimeSpan PendingCorrectionTimeout = TimeSpan.FromSeconds(20);
+
     private IJSObjectReference? _module;
     private DotNetObjectReference<CallSession>? _self;
     private CallCode? _pendingInvite;
@@ -102,6 +109,8 @@ public sealed class CallSession(
     private CancellationTokenSource? _rendezvous;
     private ITimer? _openingDeadline;
     private int _attempt;
+    private readonly Queue<DateTimeOffset> _writtenReceived = new();
+    private readonly Dictionary<string, (string Text, DateTimeOffset At)> _pendingCorrections = [];
 
     public event Action? Changed;
 
@@ -144,6 +153,95 @@ public sealed class CallSession(
 
     /// <summary>Aviso sobre a tradução para mostrar na chamada (desligada, erro do motor etc.).</summary>
     public string? TranslationNotice { get; private set; }
+
+    /// <summary>Dá para escrever no chat: a chamada está conectada e os dois já se apresentaram.</summary>
+    public bool CanWrite => Stage == CallStage.Connected && _peerHello is not null;
+
+    /// <summary>O que é escrito vai sem tradução (e por quê); <c>null</c> quando vai traduzido.</summary>
+    public string? WritingNotice => Translator switch
+    {
+        TranslatorSide.None => "Sem tradução nesta chamada: o que você escrever vai como está.",
+        TranslatorSide.Here when _translation is { CanTranslateText: false } =>
+            "O motor de tradução deste computador só traduz fala: o que você escrever vai sem tradução.",
+        _ => null,
+    };
+
+    /// <summary>Correção sua ainda sem a nova tradução (texto novo), ou <c>null</c>.</summary>
+    public string? PendingCorrection(string segmentId) =>
+        _pendingCorrections.TryGetValue(segmentId, out var pending) && time.GetUtcNow() - pending.At < PendingCorrectionTimeout
+            ? pending.Text
+            : null;
+
+    /// <summary>
+    /// Mensagem escrita no chat. Ela aparece na hora; quem traduz devolve a tradução e as duas
+    /// telas mostram o mesmo balão.
+    /// </summary>
+    public async Task SendTextAsync(string text)
+    {
+        var cleaned = LiveTranslation.Clean(text);
+        if (!CanWrite || !AppMessages.IsWrittenText(cleaned) || Peer is not { } peer || profiles.Current is not { } me)
+        {
+            return;
+        }
+        var id = TextMessage.IdPrefix + Convert.ToHexString(RandomNumberGenerator.GetBytes(6)).ToLowerInvariant();
+        var waiting = new Caption(CaptionOwner.Me, id, 0, me.Language, cleaned, peer.Language, null, Final: false, time.GetUtcNow());
+        switch (Translator)
+        {
+            case TranslatorSide.Here:
+                Captions.Apply(waiting);
+                Notify();
+                var final = waiting with { Revision = 1, TranslatedText = await TranslateWrittenAsync(cleaned, CaptionOwner.Me), Final = true };
+                if (Captions.Apply(final))
+                {
+                    await SendAppAsync(CaptionBoard.ToMessage(final));
+                }
+                break;
+            case TranslatorSide.There:
+                Captions.Apply(waiting);
+                await SendAppAsync(new TextMessage(id, cleaned));
+                break;
+            default:
+                Captions.Apply(waiting with { Revision = 1, Final = true });
+                await SendAppAsync(new TextMessage(id, cleaned));
+                break;
+        }
+        Notify();
+    }
+
+    /// <summary>Corrige o texto de uma fala (ou mensagem) sua; a tradução é refeita para os dois.</summary>
+    public async Task CorrectAsync(string segmentId, string text)
+    {
+        var cleaned = LiveTranslation.Clean(text);
+        if (!CanWrite || !AppMessages.IsWrittenText(cleaned)
+            || Captions.Find(CaptionOwner.Me, segmentId) is not { } current || current.SourceText == cleaned)
+        {
+            return;
+        }
+        switch (Translator)
+        {
+            case TranslatorSide.Here:
+                _pendingCorrections[segmentId] = (cleaned, time.GetUtcNow());
+                Notify();
+                var translated = await TranslateWrittenAsync(cleaned, CaptionOwner.Me);
+                _pendingCorrections.Remove(segmentId);
+                var latest = Captions.Find(CaptionOwner.Me, segmentId) ?? current;
+                var corrected = latest with { Revision = latest.Revision + 1, SourceText = cleaned, TranslatedText = translated, Edited = true };
+                if (Captions.Apply(corrected))
+                {
+                    await SendAppAsync(CaptionBoard.ToMessage(corrected));
+                }
+                break;
+            case TranslatorSide.There:
+                _pendingCorrections[segmentId] = (cleaned, time.GetUtcNow());
+                await SendAppAsync(new CorrectionMessage(segmentId, cleaned));
+                break;
+            default:
+                Captions.Apply(current with { Revision = current.Revision + 1, SourceText = cleaned, Edited = true });
+                await SendAppAsync(new CorrectionMessage(segmentId, cleaned));
+                break;
+        }
+        Notify();
+    }
 
     /// <summary>Anfitrião: gera o convite. Cada convite aceita uma única resposta.</summary>
     public async Task<string> CreateInviteAsync()
@@ -452,10 +550,22 @@ public sealed class CallSession(
                 break;
             // Legendas só são aceitas de quem foi escolhido para traduzir.
             case CaptionMessage caption when Translator == TranslatorSide.There:
-                if (Captions.Apply(CaptionBoard.FromMessage(caption, time.GetUtcNow())))
+                var received = CaptionBoard.FromMessage(caption, time.GetUtcNow());
+                if (received is { Edited: true, Owner: CaptionOwner.Me })
+                {
+                    _pendingCorrections.Remove(received.SegmentId);
+                }
+                if (Captions.Apply(received))
                 {
                     Notify();
                 }
+                break;
+            // Escrita e correções vêm de quem não traduz; com limite, porque cada uma é uma tradução.
+            case TextMessage written when Translator != TranslatorSide.There && AcceptWritten():
+                await OnPeerTextAsync(written);
+                break;
+            case CorrectionMessage correction when Translator != TranslatorSide.There && AcceptWritten():
+                await OnPeerCorrectionAsync(correction);
                 break;
             case ByeMessage:
                 End($"{Peer?.Name ?? "A outra pessoa"} encerrou a chamada.");
@@ -596,6 +706,78 @@ public sealed class CallSession(
             _ = SendAppAsync(CaptionBoard.ToMessage(caption));
         }
         Notify();
+    }
+
+    private bool AcceptWritten()
+    {
+        var now = time.GetUtcNow();
+        while (_writtenReceived.Count > 0 && now - _writtenReceived.Peek() > TimeSpan.FromMinutes(1))
+        {
+            _writtenReceived.Dequeue();
+        }
+        if (_writtenReceived.Count >= MaxWrittenPerMinute)
+        {
+            return false;
+        }
+        _writtenReceived.Enqueue(now);
+        return true;
+    }
+
+    private async Task OnPeerTextAsync(TextMessage written)
+    {
+        if (Peer is not { } peer || profiles.Current is not { } me || Captions.Find(CaptionOwner.Other, written.Id) is not null)
+        {
+            return;
+        }
+        var caption = new Caption(CaptionOwner.Other, written.Id, 1, peer.Language, written.Text, me.Language, null, Final: true, time.GetUtcNow());
+        if (Translator == TranslatorSide.Here)
+        {
+            caption = caption with { TranslatedText = await TranslateWrittenAsync(written.Text, CaptionOwner.Other) };
+        }
+        if (Captions.Apply(caption))
+        {
+            if (Translator == TranslatorSide.Here)
+            {
+                await SendAppAsync(CaptionBoard.ToMessage(caption));
+            }
+            Notify();
+        }
+    }
+
+    private async Task OnPeerCorrectionAsync(CorrectionMessage correction)
+    {
+        if (Captions.Find(CaptionOwner.Other, correction.SegmentId) is not { } current || current.SourceText == correction.Text)
+        {
+            return;
+        }
+        var translated = Translator == TranslatorSide.Here ? await TranslateWrittenAsync(correction.Text, CaptionOwner.Other) : null;
+        var latest = Captions.Find(CaptionOwner.Other, correction.SegmentId) ?? current;
+        var corrected = latest with { Revision = latest.Revision + 1, SourceText = correction.Text, TranslatedText = translated, Edited = true };
+        if (Captions.Apply(corrected))
+        {
+            if (Translator == TranslatorSide.Here)
+            {
+                await SendAppAsync(CaptionBoard.ToMessage(corrected));
+            }
+            Notify();
+        }
+    }
+
+    /// <summary>Tradução de texto escrito; sem motor que traduza texto (ou com erro), vai sem tradução.</summary>
+    private async Task<string?> TranslateWrittenAsync(string text, CaptionOwner author)
+    {
+        if (_translation is not { CanTranslateText: true } translation)
+        {
+            return null;
+        }
+        try
+        {
+            return await translation.TranslateTextAsync(text, author, CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     private async Task SendAppAsync(AppMessage message)
@@ -741,6 +923,8 @@ public sealed class CallSession(
         _peerHello = null;
         _mediaStarted = false;
         _lastPartialSent.Clear();
+        _writtenReceived.Clear();
+        _pendingCorrections.Clear();
         Captions.Clear();
         Translator = TranslatorSide.None;
         TranslationNotice = null;

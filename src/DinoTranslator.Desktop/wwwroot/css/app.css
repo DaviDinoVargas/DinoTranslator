@@ -1887,15 +1887,183 @@ h2.handshake__step {
   color: rgba(255, 255, 255, .75);
 }
 
-.bubble__time {
-  justify-self: end;
+.bubble__secondary--waiting {
+  font-style: italic;
+}
+
+/* Rodapé do balão: "escrita", "editada", horário e o lápis de corrigir. */
+.bubble__meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
   color: var(--texto-3);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
 }
 
-.bubble--me .bubble__time {
-  color: rgba(255, 255, 255, .6);
+.bubble--me .bubble__meta {
+  color: rgba(255, 255, 255, .62);
+}
+
+.bubble__edit-button {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  margin: -3px -6px -3px 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: .75;
+}
+
+.bubble__edit-button .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.bubble__edit-button:hover,
+.bubble__edit-button:focus-visible {
+  background: rgba(255, 255, 255, .2);
+  color: #fff;
+  opacity: 1;
+}
+
+.bubble--editing {
+  width: 84%;
+}
+
+.bubble__edit {
+  display: grid;
+  gap: 8px;
+}
+
+.bubble__input {
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  resize: vertical;
+  border: 1px solid rgba(255, 255, 255, .35);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .16);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1.38;
+}
+
+.bubble__input:focus {
+  border-color: #fff;
+  outline: none;
+}
+
+.bubble__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.bubble__cancel,
+.bubble__save {
+  min-height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--pilula);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bubble__cancel {
+  background: transparent;
+  color: rgba(255, 255, 255, .8);
+}
+
+.bubble__cancel:hover {
+  background: rgba(255, 255, 255, .14);
+}
+
+.bubble__save {
+  background: #fff;
+  color: #0a6fe0;
+}
+
+.bubble__save:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+/* Campo de escrever, no pé da conversa, como no iMessage. */
+.composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--separador);
+}
+
+.composer__input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--vidro-borda);
+  border-radius: var(--pilula);
+  background: rgba(255, 255, 255, .08);
+  font-size: 15px;
+}
+
+.composer__input::placeholder {
+  color: var(--texto-3);
+}
+
+.composer__input:focus {
+  border-color: rgba(10, 132, 255, .8);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, .22);
+}
+
+.composer__input:disabled {
+  opacity: .55;
+}
+
+.composer__send {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--azul);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color var(--rapido) var(--curva), transform var(--rapido) var(--curva);
+}
+
+.composer__send .icon {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.3;
+}
+
+.composer__send:active:not(:disabled) {
+  transform: scale(.94);
+}
+
+.composer__send:disabled {
+  background: var(--vidro-2);
+  color: var(--texto-3);
+  cursor: default;
+}
+
+.composer__hint {
+  margin-top: -4px;
+  padding: 0 18px 12px;
+  color: var(--texto-3);
+  font-size: 11.5px;
 }
 
 /* ---------- Modo servidor (opcional) ---------- */

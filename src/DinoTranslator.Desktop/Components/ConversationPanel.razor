@@ -1,9 +1,11 @@
 @using DinoTranslator.Shared.Call
 @implements IDisposable
 @inject CallSession Call
+@inject ProfileStore Profiles
 
 @* Conversa traduzida em forma de chat: as falas da outra pessoa à esquerda, no seu idioma
-   (com o original menor), e as suas à direita, com o que ela está lendo. *@
+   (com o original menor), e as suas à direita, com o que ela está lendo. Dá para escrever
+   (vai traduzido) e corrigir o texto das suas falas. *@
 <aside class="conversation" aria-label="Conversa traduzida">
   <header class="conversation__head">
     <Icon Name="conversa" />
@@ -26,21 +28,38 @@
   <ol class="conversation__list" aria-live="polite">
     @foreach (var caption in Partials())
     {
-      <Bubble Caption="caption" />
+      <Bubble @key="KeyOf(caption)" Caption="caption" ExpectsTranslation="ExpectsTranslation" />
     }
     @for (var i = Call.Captions.Transcript.Count - 1; i >= 0; i--)
     {
-      <Bubble Caption="Call.Captions.Transcript[i]" />
+      var caption = Call.Captions.Transcript[i];
+      var mine = caption.Owner == CaptionOwner.Me;
+      <Bubble @key="KeyOf(caption)" Caption="caption" ExpectsTranslation="ExpectsTranslation"
+              CanEdit="@(mine && Call.CanWrite)" Pending="@(mine ? Call.PendingCorrection(caption.SegmentId) : null)"
+              OnCorrect="CorrectAsync" />
     }
     @if (Call.Captions.Transcript.Count == 0 && Call.TranslationNotice is null)
     {
-      <li class="conversation__empty"><Icon Name="traducao" />As falas aparecem aqui, traduzidas, enquanto vocês conversam.</li>
+      <li class="conversation__empty"><Icon Name="traducao" />As falas aparecem aqui, traduzidas, enquanto vocês conversam. Você também pode escrever.</li>
     }
   </ol>
+
+  <form class="composer" @onsubmit="SendAsync">
+    <input class="composer__input" type="text" @bind="_draft" @bind:event="oninput" maxlength="@CaptionMessage.MaxTextLength"
+           placeholder="@Placeholder" aria-label="@($"Escrever para {Call.Peer?.Name}")" disabled="@(!Call.CanWrite)" autocomplete="off" />
+    <button type="submit" class="composer__send" disabled="@(!Call.CanWrite || string.IsNullOrWhiteSpace(_draft))" aria-label="Enviar" title="Enviar">
+      <Icon Name="enviar" />
+    </button>
+  </form>
+  @if (Call.CanWrite && Call.WritingNotice is { } writing)
+  {
+    <p class="composer__hint">@writing</p>
+  }
 </aside>
 
 @code {
     private bool _copied;
+    private string _draft = "";
 
     [Parameter]
     public EventCallback OnClose { get; set; }
@@ -51,6 +70,29 @@
         DinoTranslator.Desktop.Services.Translation.TranslatorSide.There => $"tradução no computador de {Call.Peer?.Name}",
         _ => "sem tradução",
     };
+
+    private bool ExpectsTranslation => Call.Translator != DinoTranslator.Desktop.Services.Translation.TranslatorSide.None
+        && Call.WritingNotice is null
+        && Call.Peer is { } peer && Profiles.Current is { } me && DinoTranslator.Shared.Languages.NeedsTranslation(me.Language, peer.Language);
+
+    private string Placeholder => ExpectsTranslation
+        ? $"Escreva para {Call.Peer?.Name} — vai traduzido"
+        : $"Escreva para {Call.Peer?.Name}";
+
+    private static string KeyOf(Caption caption) => $"{caption.Owner}:{caption.SegmentId}";
+
+    private async Task SendAsync()
+    {
+        var text = _draft;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+        _draft = "";
+        await Call.SendTextAsync(text);
+    }
+
+    private Task CorrectAsync((string SegmentId, string Text) correction) => Call.CorrectAsync(correction.SegmentId, correction.Text);
 
     /// <summary>Falas em andamento, da mais recente para a mais antiga (a lista é invertida).</summary>
     private IEnumerable<Caption> Partials() =>
