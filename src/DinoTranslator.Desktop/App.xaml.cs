@@ -1,5 +1,6 @@
 using System.Windows;
 using DinoTranslator.Desktop.Services;
+using DinoTranslator.Installation;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DinoTranslator.Desktop;
@@ -13,8 +14,8 @@ public partial class App : Application
         base.OnStartup(e);
         WebViewSecurity.ClearEnvironmentOverrides();
 
-        // Aberto por "Aplicativos instalados" do Windows para desinstalar.
-        if (e.Args is [DinoTranslator.Installation.Installer.UninstallArgument])
+        // Aberto pelo Desinstalar.exe ou por "Aplicativos instalados" do Windows.
+        if (e.Args is [Installer.UninstallArgument] || Installer.IsUninstaller(Environment.ProcessPath))
         {
             MainWindow = new UninstallWindow();
             MainWindow.Show();
@@ -43,6 +44,27 @@ public partial class App : Application
 
         MainWindow = new MainWindow(_services, settings);
         MainWindow.Show();
+        RepairInstallation();
+    }
+
+    /// <summary>
+    /// Instalações antigas (ou com o registro apagado) ganham o Desinstalar.exe e voltam para
+    /// "Aplicativos instalados". Fora da janela e sem nunca atrapalhar a abertura do app.
+    /// </summary>
+    private static void RepairInstallation()
+    {
+        var version = typeof(App).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                Installer.Repair(AppContext.BaseDirectory, version);
+            }
+            catch (Exception)
+            {
+                // Conserto é melhor esforço: o app funciona igual sem ele.
+            }
+        });
     }
 
     protected override void OnExit(ExitEventArgs e)

@@ -91,7 +91,7 @@
           <TextBlock Margin="0,18,0,0" FontFamily="{StaticResource FonteTitulo}" FontSize="25" FontWeight="Bold"
                      TextAlignment="Center" Text="Tudo pronto" />
           <TextBlock Margin="0,6,0,0" Foreground="{StaticResource Papel2}" TextAlignment="Center"
-                     Text="O DinoTranslator está no menu Iniciar. Para remover, use Configurações › Aplicativos › Aplicativos instalados." />
+                     Text="O DinoTranslator está no menu Iniciar. Para remover, abra o Desinstalar.exe na pasta do app ou use Configurações › Aplicativos › Aplicativos instalados." />
           <CheckBox x:Name="OpenNow" Margin="0,22,0,0" HorizontalAlignment="Center" IsChecked="True" Content="Abrir o DinoTranslator agora" />
         </StackPanel>
         <Button DockPanel.Dock="Bottom" Style="{StaticResource BotaoPrincipal}" Content="Concluir" VerticalAlignment="Bottom" Click="OnFinish" />

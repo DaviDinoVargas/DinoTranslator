@@ -7,9 +7,18 @@ namespace DinoTranslator.Installation;
 
 public sealed class InstallationException(string message) : Exception(message);
 
+/// <summary>Onde a instalação deixa marcas no Windows. Os testes usam lugares só deles.</summary>
+public sealed record InstallLocations(string RegistryKey, string StartMenuShortcut, string DesktopShortcut)
+{
+    public static InstallLocations Windows { get; } = new(
+        @"Software\Microsoft\Windows\CurrentVersion\Uninstall\DinoTranslator",
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), Installer.AppName + ".lnk"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), Installer.AppName + ".lnk"));
+}
+
 /// <summary>
-/// Instalação por usuário (sem pedir administrador): copia o app para a pasta escolhida,
-/// cria os atalhos e registra o desinstalador em "Aplicativos instalados" do Windows.
+/// Instalação por usuário (sem pedir administrador): copia o app para a pasta escolhida, deixa
+/// o Desinstalar.exe junto, registra em "Aplicativos instalados" do Windows e cria os atalhos.
 /// </summary>
 public static class Installer
 {
@@ -17,24 +26,60 @@ public static class Installer
     public const string AppExecutable = "DinoTranslator.exe";
     public const string UninstallArgument = "/desinstalar";
 
-    private const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\DinoTranslator";
+    /// <summary>
+    /// Cópia do inicializador do app (o .exe pequeno que abre o DinoTranslator.dll) com outro nome:
+    /// aberto assim, o app vai direto para a desinstalação.
+    /// </summary>
+    public const string UninstallerExecutable = "Desinstalar.exe";
+
     private const string WebView2ClientKey = @"Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
 
     /// <summary>%LOCALAPPDATA%\Programs\DinoTranslator, o lugar comum de apps por usuário.</summary>
     public static string DefaultFolder { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", AppName);
 
-    public static string StartMenuShortcut { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.Programs), AppName + ".lnk");
-
-    public static string DesktopShortcut { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), AppName + ".lnk");
-
     /// <summary>Pasta de uma instalação anterior, se houver.</summary>
-    public static string? InstalledFolder()
+    public static string? InstalledFolder(InstallLocations? at = null)
     {
-        using var key = Registry.CurrentUser.OpenSubKey(UninstallKey);
+        using var key = Registry.CurrentUser.OpenSubKey((at ?? InstallLocations.Windows).RegistryKey);
         return key?.GetValue("InstallLocation") as string;
+    }
+
+    /// <summary>
+    /// Pasta da instalação anterior: a registrada ou, se o registro sumiu, a do atalho do menu
+    /// Iniciar. Assim a atualização cai na mesma pasta em vez de criar uma segunda cópia.
+    /// </summary>
+    public static string? PreviousFolder(InstallLocations? at = null)
+    {
+        at ??= InstallLocations.Windows;
+        if (InstalledFolder(at) is { } registered)
+        {
+            return registered;
+        }
+        var target = ShellLink.TargetOf(at.StartMenuShortcut);
+        return target is not null
+            && string.Equals(Path.GetFileName(target), AppExecutable, StringComparison.OrdinalIgnoreCase)
+            && File.Exists(target)
+            ? Path.GetDirectoryName(target)
+            : null;
+    }
+
+    /// <summary>O app foi aberto pelo Desinstalar.exe.</summary>
+    public static bool IsUninstaller(string? processPath) =>
+        string.Equals(Path.GetFileName(processPath), UninstallerExecutable, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Esta pasta é uma instalação feita pelo instalador: está registrada, ou o atalho do menu
+    /// Iniciar aponta para ela (registro apagado por engano).
+    /// </summary>
+    public static bool IsInstalledCopy(string folder, InstallLocations? at = null)
+    {
+        at ??= InstallLocations.Windows;
+        if (!File.Exists(Path.Combine(folder, AppExecutable)))
+        {
+            return false;
+        }
+        return SameFolder(InstalledFolder(at), folder) || IsInside(ShellLink.TargetOf(at.StartMenuShortcut), folder);
     }
 
     /// <summary>O WebView2 Runtime já vem no Windows 11 e na maioria dos Windows 10.</summary>
@@ -69,8 +114,9 @@ public static class Installer
             .Any(p => p.Id != Environment.ProcessId && IsInside(TryGetPath(p), folder));
 
     /// <summary>Extrai o pacote do app; uma instalação anterior na mesma pasta é substituída.</summary>
-    public static void Install(Stream payload, string folder, string version, bool desktopShortcut, IProgress<int>? progress)
+    public static void Install(Stream payload, string folder, string version, bool desktopShortcut, IProgress<int>? progress, InstallLocations? at = null)
     {
+        at ??= InstallLocations.Windows;
         if (ValidateFolder(folder) is { } error)
         {
             throw new InstallationException(error);
@@ -116,20 +162,63 @@ public static class Installer
             throw new InstallationException("Pacote de instalação incompleto.");
         }
 
-        ShellLink.Create(StartMenuShortcut, executable, AppName);
+        // Primeiro o que permite desinstalar; os atalhos são conveniência e não podem impedir isso.
+        PlaceUninstaller(target);
+        Register(target, version, at);
+        TryCreateShortcut(at.StartMenuShortcut, executable);
         if (desktopShortcut)
         {
-            ShellLink.Create(DesktopShortcut, executable, AppName);
+            TryCreateShortcut(at.DesktopShortcut, executable);
         }
-        Register(target, executable, version);
     }
 
-    /// <summary>Tira atalhos e registro; a pasta é apagada depois que o app fechar.</summary>
-    public static void Unregister()
+    /// <summary>
+    /// Conserta uma instalação sem o Desinstalar.exe ou sem o registro (de versões antigas, ou
+    /// apagado por engano). Só age numa pasta instalada pelo instalador.
+    /// </summary>
+    public static bool Repair(string folder, string version, InstallLocations? at = null)
     {
-        File.Delete(StartMenuShortcut);
-        File.Delete(DesktopShortcut);
-        Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, throwOnMissingSubKey: false);
+        at ??= InstallLocations.Windows;
+        var target = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar);
+        if (!IsInstalledCopy(target, at))
+        {
+            return false;
+        }
+        var repaired = PlaceUninstaller(target);
+        using (var key = Registry.CurrentUser.OpenSubKey(at.RegistryKey))
+        {
+            if (key is null
+                || !SameFolder(key.GetValue("InstallLocation") as string, target)
+                || key.GetValue("UninstallString") as string != UninstallCommand(target)
+                || key.GetValue("DisplayVersion") as string != version)
+            {
+                repaired = true;
+            }
+        }
+        if (repaired)
+        {
+            Register(target, version, at);
+        }
+        return repaired;
+    }
+
+    /// <summary>Tira os atalhos e o registro desta instalação; a pasta é apagada depois que o app fechar.</summary>
+    public static void Unregister(string folder, InstallLocations? at = null)
+    {
+        at ??= InstallLocations.Windows;
+        // Só o que é desta pasta: outra instalação (ou outra cópia) continua intacta.
+        foreach (var shortcut in new[] { at.StartMenuShortcut, at.DesktopShortcut })
+        {
+            if (IsInside(ShellLink.TargetOf(shortcut), folder))
+            {
+                File.Delete(shortcut);
+            }
+        }
+        var registered = InstalledFolder(at);
+        if (registered is null || SameFolder(registered, folder))
+        {
+            Registry.CurrentUser.DeleteSubKeyTree(at.RegistryKey, throwOnMissingSubKey: false);
+        }
     }
 
     /// <summary>
@@ -153,19 +242,52 @@ public static class Installer
         });
     }
 
-    private static void Register(string folder, string executable, string version)
+    private static void Register(string folder, string version, InstallLocations at)
     {
-        using var key = Registry.CurrentUser.CreateSubKey(UninstallKey);
+        using var key = Registry.CurrentUser.CreateSubKey(at.RegistryKey);
         key.SetValue("DisplayName", AppName);
         key.SetValue("DisplayVersion", version);
         key.SetValue("Publisher", AppName);
-        key.SetValue("DisplayIcon", executable);
+        key.SetValue("DisplayIcon", Path.Combine(folder, AppExecutable));
         key.SetValue("InstallLocation", folder);
-        key.SetValue("UninstallString", $"\"{executable}\" {UninstallArgument}");
+        key.SetValue("UninstallString", UninstallCommand(folder));
         key.SetValue("NoModify", 1, RegistryValueKind.DWord);
         key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
         key.SetValue("EstimatedSize", (int)(DirectorySize(folder) / 1024), RegistryValueKind.DWord);
     }
+
+    private static string UninstallCommand(string folder) => $"\"{Path.Combine(folder, UninstallerExecutable)}\"";
+
+    /// <summary>Copia o inicializador como Desinstalar.exe (de novo, se estiver faltando ou for de outra versão).</summary>
+    private static bool PlaceUninstaller(string folder)
+    {
+        var launcher = new FileInfo(Path.Combine(folder, AppExecutable));
+        var uninstaller = new FileInfo(Path.Combine(folder, UninstallerExecutable));
+        if (uninstaller.Exists && uninstaller.Length == launcher.Length && uninstaller.LastWriteTimeUtc == launcher.LastWriteTimeUtc)
+        {
+            return false;
+        }
+        launcher.CopyTo(uninstaller.FullName, overwrite: true);
+        return true;
+    }
+
+    private static void TryCreateShortcut(string shortcut, string executable)
+    {
+        try
+        {
+            ShellLink.Create(shortcut, executable, AppName);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
+        {
+            // Sem o atalho o app continua instalado, registrado e com o Desinstalar.exe.
+        }
+    }
+
+    private static bool SameFolder(string? a, string b) =>
+        a is not null && string.Equals(
+            Path.GetFullPath(a).TrimEnd(Path.DirectorySeparatorChar),
+            Path.GetFullPath(b).TrimEnd(Path.DirectorySeparatorChar),
+            StringComparison.OrdinalIgnoreCase);
 
     private static long DirectorySize(string folder) =>
         new DirectoryInfo(folder).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length);
