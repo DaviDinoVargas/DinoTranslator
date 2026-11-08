@@ -82,7 +82,8 @@ public sealed class CallSession(
     SpeechEngineFactory engines,
     RendezvousRelay relay,
     IUiDispatcher ui,
-    TimeProvider time) : IAsyncDisposable
+    TimeProvider time,
+    EngineChoiceStore? engineChoices = null) : IAsyncDisposable
 {
     /// <summary>Intervalo mínimo entre legendas provisórias enviadas ao outro lado; finais vão sempre.</summary>
     private static readonly TimeSpan PartialCaptionInterval = TimeSpan.FromMilliseconds(150);
@@ -110,6 +111,9 @@ public sealed class CallSession(
     private ITimer? _openingDeadline;
     private int _attempt;
     private readonly Queue<DateTimeOffset> _writtenReceived = new();
+    private EngineChoice? _engineChoice;
+    private bool _enginesChanged;
+    private int _translationGeneration;
     private readonly Dictionary<string, (string Text, DateTimeOffset At)> _pendingCorrections = [];
 
     public event Action? Changed;
@@ -153,6 +157,64 @@ public sealed class CallSession(
 
     /// <summary>Aviso sobre a tradução para mostrar na chamada (desligada, erro do motor etc.).</summary>
     public string? TranslationNotice { get; private set; }
+
+    /// <summary>Médias de tempo das últimas frases com a combinação de motores atual.</summary>
+    public EngineStats EngineStats { get; } = new();
+
+    /// <summary>Trocando a combinação de motores (carregando modelos).</summary>
+    public bool EnginesBusy { get; private set; }
+
+    /// <summary>Por que a combinação escolhida não pôde ser usada, ou <c>null</c>.</summary>
+    public string? EnginesProblem { get; private set; }
+
+    /// <summary>A combinação em uso, quando este computador traduz com o motor local; senão, <c>null</c>.</summary>
+    public EngineChoice? Engines =>
+        Translator == TranslatorSide.Here && translationSettings.Current.Provider == TranslationProvider.Local ? CurrentEngineChoice() : null;
+
+    /// <summary>O que dá para escolher neste computador (modelos e componentes instalados).</summary>
+    public EngineAvailability EngineOptions => engines.Availability(translationSettings.Current);
+
+    /// <summary>
+    /// Troca a combinação de motores no meio da chamada: a tradução para, as peças que saem são
+    /// liberadas e ela volta com as novas (os primeiros segundos carregam os modelos).
+    /// </summary>
+    public async Task ChangeEnginesAsync(EngineChoice choice)
+    {
+        if (Engines is null || choice == _engineChoice)
+        {
+            return;
+        }
+        // Troca no meio de outra: vale a mais nova, logo que a atual terminar.
+        _engineChoice = choice;
+        engineChoices?.Save(choice);
+        if (EnginesBusy)
+        {
+            _enginesChanged = true;
+            return;
+        }
+        EnginesBusy = true;
+        EnginesProblem = null;
+        Notify();
+        try
+        {
+            do
+            {
+                _enginesChanged = false;
+                await StopTranslationAsync();
+                await engines.RetainAsync(CurrentEngineChoice());
+                EngineStats.Clear();
+                TranslationNotice = null;
+                EnginesProblem = null;
+                await MaybeStartTranslationAsync();
+            }
+            while (_enginesChanged && Stage == CallStage.Connected);
+        }
+        finally
+        {
+            EnginesBusy = false;
+            Notify();
+        }
+    }
 
     /// <summary>Dá para escrever no chat: a chamada está conectada e os dois já se apresentaram.</summary>
     public bool CanWrite => Stage == CallStage.Connected && _peerHello is not null;
@@ -661,14 +723,20 @@ public sealed class CallSession(
     /// <summary>Liga a tradução quando este computador foi escolhido e a mídia já começou.</summary>
     private async Task MaybeStartTranslationAsync()
     {
+        var settings = translationSettings.Current;
         if (Translator != TranslatorSide.Here || _translation is not null || !_mediaStarted
             || _module is null || _self is null || Peer is not { } peer || profiles.Current is not { } me
-            || engines.Create(translationSettings.Current) is not { } engine)
+            || engines.Create(settings, settings.Provider == TranslationProvider.Local ? CurrentEngineChoice() : null) is not { } engine)
         {
             return;
         }
 
-        var translation = new LiveTranslation(engine, me, peer, time);
+        var translation = new LiveTranslation(engine, me, peer, time, _translationGeneration++);
+        translation.Measured += timing =>
+        {
+            EngineStats.Add(timing);
+            _ = ui.InvokeAsync(Notify);
+        };
         translation.CaptionReady += caption => _ = ui.InvokeAsync(() => OnLocalCaption(caption));
         translation.Failed += message => _ = ui.InvokeAsync(() =>
         {
@@ -681,13 +749,38 @@ public sealed class CallSession(
             await translation.StartAsync([], CancellationToken.None);
             await _module.InvokeVoidAsync("enableSpeechCapture", _self);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             _translation = null;
             await translation.DisposeAsync();
             TranslationNotice = "Não foi possível ligar a tradução. A chamada continua, sem legendas.";
+            // Motor extra ou modelo com problema: o motivo aparece no painel de motores.
+            EnginesProblem = ex is Translation.Extras.PythonEngineException or Translation.Local.ModelDownloadException ? ex.Message : null;
             Notify();
         }
+    }
+
+    /// <summary>
+    /// A combinação desta chamada: a escolhida antes (guardada) ou a do ajuste. Opção que não está
+    /// mais instalada volta ao padrão.
+    /// </summary>
+    private EngineChoice CurrentEngineChoice()
+    {
+        if (_engineChoice is { } chosen)
+        {
+            return chosen;
+        }
+        var settings = translationSettings.Current;
+        var fallback = EngineChoice.For(settings);
+        var stored = engineChoices?.Load()?.Sanitized(settings) ?? fallback;
+        var options = EngineOptions;
+        _engineChoice = new EngineChoice(
+            options.Detectors.Contains(stored.Detector) ? stored.Detector : fallback.Detector,
+            stored.PauseMs,
+            options.Recognizers.Contains(stored.Recognizer) ? stored.Recognizer : fallback.Recognizer,
+            options.Translators.Contains(stored.Translator) ? stored.Translator : fallback.Translator,
+            stored.Careful);
+        return _engineChoice;
     }
 
     private void OnLocalCaption(Caption caption)
@@ -925,6 +1018,10 @@ public sealed class CallSession(
         _lastPartialSent.Clear();
         _writtenReceived.Clear();
         _pendingCorrections.Clear();
+        EngineStats.Clear();
+        EnginesProblem = null;
+        _engineChoice = null;
+        _translationGeneration = 0;
         Captions.Clear();
         Translator = TranslatorSide.None;
         TranslationNotice = null;

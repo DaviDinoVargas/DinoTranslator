@@ -1,0 +1,145 @@
+@using System.Globalization
+@using DinoTranslator.Desktop.Services.Translation
+@implements IDisposable
+@inject CallSession Call
+@inject TranslationSettingsStore Translation
+
+@* Motores da tradução, escolhidos durante a chamada para comparar: cada troca recarrega a
+   tradução com a nova combinação e zera as médias de tempo. *@
+<aside class="engines" aria-label="Motores da tradução" data-escolha="@ChoiceKey" data-ocupado="@(Call.EnginesBusy ? "sim" : "nao")" data-frases="@Call.EngineStats.Count">
+  <header class="engines__head">
+    <span class="engines__icon"><Icon Name="motor" /></span>
+    <div class="engines__titles">
+      <p class="engines__title">Motores da tradução</p>
+      <p class="engines__where">@Where</p>
+    </div>
+    <button type="button" class="conversation__close" @onclick="OnClose" aria-label="Fechar os motores" title="Fechar"><Icon Name="fechar" /></button>
+  </header>
+
+  @if (Call.Engines is { } choice)
+  {
+    var options = Call.EngineOptions;
+    var busy = Call.EnginesBusy;
+    <div class="engines__rows">
+      <label class="engines__row">
+        <span>Detector de fala</span>
+        <select value="@choice.Detector" @onchange="ChangeDetectorAsync" disabled="@busy" aria-label="Detector de fala">
+          @foreach (var option in Enum.GetValues<DetectorOption>())
+          {
+            <option value="@option" disabled="@(!options.Detectors.Contains(option))">@EngineChoice.Label(option)@Missing(options.Detectors.Contains(option))</option>
+          }
+        </select>
+      </label>
+      <label class="engines__row">
+        <span>Fim da frase</span>
+        <select value="@choice.PauseMs" @onchange="ChangePauseAsync" disabled="@busy" aria-label="Pausa que fecha a frase">
+          @foreach (var pause in EngineChoice.Pauses)
+          {
+            <option value="@pause">@Seconds(pause) de pausa@(pause == 800 ? " (original)" : "")</option>
+          }
+        </select>
+      </label>
+      <label class="engines__row">
+        <span>Reconhecimento</span>
+        <select value="@choice.Recognizer" @onchange="ChangeRecognizerAsync" disabled="@busy" aria-label="Reconhecimento de fala">
+          @foreach (var option in Enum.GetValues<RecognizerOption>())
+          {
+            <option value="@option" disabled="@(!options.Recognizers.Contains(option))">@EngineChoice.Label(option)@Missing(options.Recognizers.Contains(option))</option>
+          }
+        </select>
+      </label>
+      <label class="engines__row">
+        <span>Tradução</span>
+        <select value="@choice.Translator" @onchange="ChangeTranslatorAsync" disabled="@busy" aria-label="Tradução">
+          @foreach (var option in Enum.GetValues<TranslatorOption>())
+          {
+            <option value="@option" disabled="@(!options.Translators.Contains(option))">@EngineChoice.Label(option)@Missing(options.Translators.Contains(option))</option>
+          }
+        </select>
+      </label>
+      <label class="engines__row">
+        <span>Versão final</span>
+        <select value="@(choice.Careful ? "cuidadosa" : "rapida")" @onchange="ChangeCarefulAsync" disabled="@busy" aria-label="Versão final">
+          <option value="cuidadosa">Cuidadosa · busca em feixe (original)</option>
+          <option value="rapida">Rápida · palavra por palavra</option>
+        </select>
+      </label>
+    </div>
+
+    @if (busy)
+    {
+      <p class="engines__status" role="status"><span class="engines__spinner" aria-hidden="true"></span>Carregando os modelos…</p>
+    }
+    else if (Call.EnginesProblem is { } problem)
+    {
+      <p class="engines__status engines__status--problem" role="alert"><Icon Name="alerta" />@problem</p>
+    }
+
+    <div class="engines__stats" aria-live="polite">
+      @if (Call.EngineStats.Average is { } average)
+      {
+        <p class="engines__stats-title">Médias das últimas @Call.EngineStats.Count frases</p>
+        <dl>
+          <div><dt>Reconhecimento final</dt><dd>@Seconds(average.RecognitionMs)</dd></div>
+          <div><dt>Tradução final</dt><dd>@Seconds(average.TranslationMs)</dd></div>
+          <div class="engines__stats-total"><dt>Legenda final depois da fala</dt><dd>@Seconds(average.AfterSpeechMs)</dd></div>
+        </dl>
+      }
+      else
+      {
+        <p class="engines__stats-title">As médias de tempo aparecem aqui depois das primeiras frases.</p>
+      }
+    </div>
+  }
+  else
+  {
+    <p class="engines__note"><Icon Name="info" />@Note</p>
+  }
+</aside>
+
+@code {
+    private static readonly CultureInfo Portuguese = CultureInfo.GetCultureInfo("pt-BR");
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private string Where => Call.Engines is null ? "" : "neste computador";
+
+    /// <summary>A combinação em uso, para conferir de fora (teste de ponta a ponta).</summary>
+    private string ChoiceKey => Call.Engines is { } c ? $"{c.Detector}|{c.PauseMs}|{c.Recognizer}|{c.Translator}|{(c.Careful ? "cuidadosa" : "rapida")}" : "";
+
+    private string Note => Call.Translator switch
+    {
+        TranslatorSide.There => $"A tradução roda no computador de {Call.Peer?.Name}: as opções de motores ficam lá.",
+        TranslatorSide.None => "Sem tradução nesta chamada.",
+        _ when Translation.Current.Provider != TranslationProvider.Local => "O motor de tradução configurado não tem opções para escolher.",
+        _ => "As opções aparecem quando a tradução começar.",
+    };
+
+    private static string Missing(bool available) => available ? "" : " — não instalado";
+
+    private static string Seconds(int milliseconds) => (milliseconds / 1000.0).ToString("0.0 's'", Portuguese);
+
+    private Task ChangeDetectorAsync(ChangeEventArgs e) =>
+        Enum.TryParse<DetectorOption>(e.Value?.ToString(), out var option) ? ChangeAsync(c => c with { Detector = option }) : Task.CompletedTask;
+
+    private Task ChangePauseAsync(ChangeEventArgs e) =>
+        int.TryParse(e.Value?.ToString(), out var pause) && EngineChoice.Pauses.Contains(pause) ? ChangeAsync(c => c with { PauseMs = pause }) : Task.CompletedTask;
+
+    private Task ChangeRecognizerAsync(ChangeEventArgs e) =>
+        Enum.TryParse<RecognizerOption>(e.Value?.ToString(), out var option) ? ChangeAsync(c => c with { Recognizer = option }) : Task.CompletedTask;
+
+    private Task ChangeTranslatorAsync(ChangeEventArgs e) =>
+        Enum.TryParse<TranslatorOption>(e.Value?.ToString(), out var option) ? ChangeAsync(c => c with { Translator = option }) : Task.CompletedTask;
+
+    private Task ChangeCarefulAsync(ChangeEventArgs e) => ChangeAsync(c => c with { Careful = e.Value?.ToString() == "cuidadosa" });
+
+    private Task ChangeAsync(Func<EngineChoice, EngineChoice> change) =>
+        Call.Engines is { } current ? Call.ChangeEnginesAsync(change(current)) : Task.CompletedTask;
+
+    protected override void OnInitialized() => Call.Changed += OnCallChanged;
+
+    private void OnCallChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Call.Changed -= OnCallChanged;
+}
