@@ -5,6 +5,9 @@ namespace DinoTranslator.Desktop.Tests;
 
 public class SpeechSegmenterTests
 {
+    /// <summary>Silêncio que fecha o trecho, arredondado para os blocos de 100 ms.</summary>
+    private const int Pause = SpeechSegmenter.PauseToCloseMs + 100;
+
     private static List<SpeechSegment> Feed(SpeechSegmenter segmenter, params (bool Voice, int Ms)[] parts)
     {
         var segments = new List<SpeechSegment>();
@@ -41,7 +44,7 @@ public class SpeechSegmenterTests
     [Fact]
     public void Fala_com_pausa_gera_provisorias_e_um_final()
     {
-        var segments = Feed(new SpeechSegmenter(), (false, 500), (true, 2_500), (false, 800));
+        var segments = Feed(new SpeechSegmenter(), (false, 500), (true, 2_500), (false, Pause));
 
         Assert.Equal(2, segments.Count(s => !s.Final));
         var final = Assert.Single(segments, s => s.Final);
@@ -52,7 +55,7 @@ public class SpeechSegmenterTests
     [Fact]
     public void Trecho_guarda_um_pouco_de_audio_antes_da_voz()
     {
-        var final = Assert.Single(Feed(new SpeechSegmenter(), (false, 1_000), (true, 1_000), (false, 700)), s => s.Final);
+        var final = Assert.Single(Feed(new SpeechSegmenter(), (false, 1_000), (true, 1_000), (false, Pause)), s => s.Final);
 
         var expectedMs = SpeechSegmenter.PreRollMs + 1_000 + SpeechSegmenter.PauseToCloseMs;
         Assert.InRange(final.Samples.Length * 1000 / SpeechSegmenter.SampleRate, expectedMs - 100, expectedMs + 100);
@@ -78,7 +81,7 @@ public class SpeechSegmenterTests
     [Fact]
     public void Trechos_seguidos_tem_indices_seguidos()
     {
-        var finals = Feed(new SpeechSegmenter(), (true, 800), (false, 700), (true, 800), (false, 700)).Where(s => s.Final).ToList();
+        var finals = Feed(new SpeechSegmenter(), (true, 800), (false, Pause), (true, 800), (false, Pause)).Where(s => s.Final).ToList();
 
         Assert.Equal([0, 1], finals.Select(s => s.Index));
     }

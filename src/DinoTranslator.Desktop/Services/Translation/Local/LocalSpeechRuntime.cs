@@ -11,6 +11,16 @@ namespace DinoTranslator.Desktop.Services.Translation.Local;
 /// </summary>
 public sealed partial class LocalSpeechRuntime : IDisposable
 {
+    /// <summary>Caminhos comparados na versão final (o padrão do Whisper).</summary>
+    public const int FinalBeamSize = 5;
+
+    /// <summary>
+    /// Janela de áudio das versões provisórias: 768 quadros (15,36 s) em vez de 30 s, o que basta para
+    /// o trecho mais longo (12 s) e deixa o codificador cerca de duas vezes mais rápido. A versão
+    /// final usa a janela inteira, como o modelo foi treinado.
+    /// </summary>
+    public const int QuickAudioContext = 768;
+
     private readonly WhisperFactory _whisper;
 
     private LocalSpeechRuntime(WhisperFactory whisper, NllbTranslator translator, WhisperModel model)
@@ -38,7 +48,7 @@ public sealed partial class LocalSpeechRuntime : IDisposable
         }
 
         RuntimeOptions.RuntimeLibraryOrder = [RuntimeLibrary.Vulkan, RuntimeLibrary.Cpu];
-        var whisper = WhisperFactory.FromPath(folder.PathOf(LocalModels.Whisper(model)), new WhisperFactoryOptions { UseGpu = true });
+        var whisper = WhisperFactory.FromPath(folder.PathOf(LocalModels.Whisper(model)), new WhisperFactoryOptions { UseGpu = true, UseFlashAttention = true });
         try
         {
             var threads = Math.Clamp(Environment.ProcessorCount / 2, 2, 8);
@@ -56,28 +66,35 @@ public sealed partial class LocalSpeechRuntime : IDisposable
         }
     }
 
-    /// <summary>Um reconhecedor por pessoa, com o idioma fixo e o glossário como dica.</summary>
-    public WhisperProcessor CreateRecognizer(string language, IReadOnlyList<string> glossary)
+    /// <summary>
+    /// Reconhecedores de uma pessoa, com o idioma fixo e o glossário como dica: um rápido (a palavra
+    /// mais provável de cada vez) para as versões provisórias e um cuidadoso (compara 5 caminhos
+    /// antes de decidir) para a versão final, que é a que fica na conversa.
+    /// </summary>
+    public SpeechRecognizer CreateRecognizer(string language, IReadOnlyList<string> glossary)
     {
-        var builder = _whisper.CreateBuilder()
-            .WithLanguage(WhisperLanguage(language))
-            .WithNoContext()
-            .WithSingleSegment()
-            .WithThreads(Math.Clamp(Environment.ProcessorCount / 2, 2, 8));
-        if (glossary.Count > 0)
+        var quick = Builder(language, glossary).WithAudioContextSize(QuickAudioContext).Build();
+        try
         {
-            builder = builder.WithPrompt(string.Join(", ", glossary));
+            var careful = Builder(language, glossary)
+                .WithBeamSearchSamplingStrategy(beam => beam.WithBeamSize(FinalBeamSize))
+                .Build();
+            return new SpeechRecognizer(quick, careful);
         }
-        return builder.Build();
+        catch
+        {
+            quick.Dispose();
+            throw;
+        }
     }
 
-    public async Task<string> TranscribeAsync(WhisperProcessor recognizer, float[] samples, CancellationToken cancellationToken)
+    public async Task<string> TranscribeAsync(SpeechRecognizer recognizer, float[] samples, bool final, CancellationToken cancellationToken)
     {
         var text = new StringBuilder();
         await RecognitionGate.WaitAsync(cancellationToken);
         try
         {
-            await foreach (var segment in recognizer.ProcessAsync(PadToMinimum(samples), cancellationToken))
+            await foreach (var segment in recognizer.For(final).ProcessAsync(PadToMinimum(samples), cancellationToken))
             {
                 text.Append(segment.Text);
             }
@@ -97,6 +114,16 @@ public sealed partial class LocalSpeechRuntime : IDisposable
     }
 
     public static string WhisperLanguage(string language) => language[..2];
+
+    private WhisperProcessorBuilder Builder(string language, IReadOnlyList<string> glossary)
+    {
+        var builder = _whisper.CreateBuilder()
+            .WithLanguage(WhisperLanguage(language))
+            .WithNoContext()
+            .WithSingleSegment()
+            .WithThreads(Math.Clamp(Environment.ProcessorCount / 2, 2, 8));
+        return glossary.Count > 0 ? builder.WithPrompt(string.Join(", ", glossary)) : builder;
+    }
 
     /// <summary>
     /// O Whisper às vezes "ouve" créditos de legenda em ruído (vício dos dados de treino);
@@ -126,4 +153,16 @@ public sealed partial class LocalSpeechRuntime : IDisposable
 
     [GeneratedRegex(@"^[\[\(].*[\]\)]$|^[\s.…♪]*$", RegexOptions.CultureInvariant)]
     private static partial Regex BracketedNoise();
+}
+
+/// <summary>Os dois reconhecedores de uma pessoa (veja <see cref="LocalSpeechRuntime.CreateRecognizer"/>).</summary>
+public sealed class SpeechRecognizer(WhisperProcessor quick, WhisperProcessor careful) : IAsyncDisposable
+{
+    public WhisperProcessor For(bool final) => final ? careful : quick;
+
+    public async ValueTask DisposeAsync()
+    {
+        await quick.DisposeAsync();
+        await careful.DisposeAsync();
+    }
 }

@@ -74,23 +74,13 @@ public sealed class NllbTranslator : IDisposable
 
     public NllbTranslator(string encoderPath, string decoderPath, string vocabularyPath, int threads)
     {
-        using var options = new SessionOptions
-        {
-            GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
-            ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
-            IntraOpNumThreads = threads,
-        };
+        using var options = Options(threads);
         _encoder = new InferenceSession(encoderPath, options);
 
         // A tabela de 256 mil palavras vem em 8 bits e o ONNX Runtime a descomprimia inteira
         // (cerca de 1 GB) a cada palavra gerada: 155 ms de 200 por passo. Assim ela é
         // descomprimida uma vez, ao carregar, e o passo cai para uns 45 ms.
-        using var decoderOptions = new SessionOptions
-        {
-            GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
-            ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
-            IntraOpNumThreads = threads,
-        };
+        using var decoderOptions = Options(threads);
         decoderOptions.AddSessionConfigEntry("session.disable_quant_qdq", "1");
         _decoder = new InferenceSession(decoderPath, decoderOptions);
         using (var stream = File.OpenRead(vocabularyPath))
@@ -134,6 +124,23 @@ public sealed class NllbTranslator : IDisposable
     {
         _encoder.Dispose();
         _decoder.Dispose();
+    }
+
+    /// <summary>
+    /// Sem espera ativa: por padrão as threads do ONNX Runtime ficam girando no processador entre
+    /// uma operação e outra, e disputavam a CPU com o áudio e o vídeo da chamada.
+    /// </summary>
+    private static SessionOptions Options(int threads)
+    {
+        var options = new SessionOptions
+        {
+            GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
+            ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
+            IntraOpNumThreads = threads,
+        };
+        options.AddSessionConfigEntry("session.intra_op.allow_spinning", "0");
+        options.AddSessionConfigEntry("session.inter_op.allow_spinning", "0");
+        return options;
     }
 
     private static int MaxTokens(int sourceLength) => Math.Min(MaxNewTokens, (sourceLength * 3) + 10);

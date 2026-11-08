@@ -16,7 +16,7 @@ namespace DinoTranslator.Desktop.Services.Translation.Local;
 /// </summary>
 public sealed class SpeechPipeline : IAsyncDisposable
 {
-    private readonly Func<float[], CancellationToken, Task<string>> _recognize;
+    private readonly Func<SpeechSegment, CancellationToken, Task<string>> _recognize;
     private readonly Func<string, CancellationToken, Task<string>>? _translate;
     private readonly Channel<SpeechSegment> _segments = Channel.CreateUnbounded<SpeechSegment>(new UnboundedChannelOptions { SingleReader = true });
     private readonly Channel<Job> _jobs = Channel.CreateUnbounded<Job>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
@@ -34,8 +34,9 @@ public sealed class SpeechPipeline : IAsyncDisposable
     private int _pendingSegments;
     private int _pendingJobs;
 
+    /// <param name="recognize">Recebe o trecho inteiro: a versão final pode ser reconhecida com mais cuidado.</param>
     /// <param name="translate"><c>null</c> quando os dois falam o mesmo idioma.</param>
-    public SpeechPipeline(Func<float[], CancellationToken, Task<string>> recognize, Func<string, CancellationToken, Task<string>>? translate)
+    public SpeechPipeline(Func<SpeechSegment, CancellationToken, Task<string>> recognize, Func<string, CancellationToken, Task<string>>? translate)
     {
         _recognize = recognize;
         _translate = translate;
@@ -101,7 +102,7 @@ public sealed class SpeechPipeline : IAsyncDisposable
                 {
                     continue;
                 }
-                var text = await _recognize(segment.Samples, _stop.Token);
+                var text = await _recognize(segment, _stop.Token);
                 if (text.Length == 0)
                 {
                     string? last;
