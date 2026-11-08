@@ -151,9 +151,9 @@ O app tem adaptadores por provedor. **Implementado: Azure Speech**, que reconhec
 **Implementado também: motor neste computador**, sem conta nem chave, e o áudio não sai da máquina:
 
 - Reconhecimento com Whisper (turbo, preciso, ou small, rápido) na placa de vídeo pelo Vulkan; a fala é separada em trechos pelo volume (provisória a cada segundo de fala, final após 600 ms de pausa).
-- Tradução com NLLB-200 (600M, quantizado) no processador, cerca de 45 ms por palavra: a tabela de palavras é descomprimida uma vez ao carregar (antes, a cada palavra, o que levava 160 ms). Reconhecimento (placa de vídeo) e tradução (processador) trabalham ao mesmo tempo; a tradução acompanha a fala pelas provisórias e é reaproveitada no fim da frase.
+- Tradução com NLLB-200 (600M, quantizado) no processador, cerca de 45 ms por palavra: a tabela de palavras é descomprimida uma vez ao carregar (antes, a cada palavra, o que levava 160 ms). Reconhecimento (placa de vídeo) e tradução (processador) trabalham ao mesmo tempo. Durante a fala, reconhecimento com janela de 15 s e tradução rápida (a palavra mais provável de cada vez); no fim da frase, reconhecimento com a janela inteira e busca em feixe (5 caminhos) e tradução cuidadosa (busca em feixe com 4 caminhos), que não perde orações como a rápida às vezes perde.
 - Modelos baixados pelo app (1,5 a 1,7 GB) de versões fixas, conferidos por SHA-256 ao baixar e ao carregar; a pasta pode ficar em outro disco.
-- Medido numa GTX 1650 com i7-10700KF: 6 s de fala reconhecidos em 0,4 s (small) ou 1,2 s (turbo); frase curta traduzida em cerca de 0,5 s; legenda final traduzida 2,4 s após a pausa (antes, 7 s), com a tradução aparecendo durante a fala.
+- Medido numa GTX 1650 com i7-10700KF: 6,5 s de fala reconhecidos em 0,6 s (provisória) ou 1,1 s (final) com o turbo; frase traduzida em 0,4–1,4 s (rápida) ou 0,6–1,8 s (cuidadosa). A tradução completa aparece cerca de 1,5 s depois da pausa e a versão final, cuidadosa, cerca de 3,5 s depois.
 - Tradução na placa de vídeo (DirectML) foi medida e descartada por ora: o decodificador combinado gera texto errado no DirectML e, numa placa de 4 GB, divide a memória com o Whisper e deixa o reconhecimento 10 vezes mais lento.
 
 | Etapa         | Serviços em nuvem (candidatos)                                      | No próprio computador                         |

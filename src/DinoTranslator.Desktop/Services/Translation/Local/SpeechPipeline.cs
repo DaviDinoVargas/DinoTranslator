@@ -10,14 +10,14 @@ namespace DinoTranslator.Desktop.Services.Translation.Local;
 /// <list type="bullet">
 /// <item>O texto reconhecido aparece assim que sai, sem esperar a tradução.</item>
 /// <item>A tradução vai sendo adiantada com as provisórias (só a mais nova; as atrasadas são puladas).</item>
-/// <item>No fim do trecho, se o texto final for o mesmo da última provisória traduzida, a tradução
-/// já está pronta e a legenda final sai na hora.</item>
+/// <item>As provisórias usam a tradução rápida; a final é traduzida com cuidado (busca em feixe).
+/// Enquanto isso, a tradução rápida do mesmo texto já está na tela.</item>
 /// </list>
 /// </summary>
 public sealed class SpeechPipeline : IAsyncDisposable
 {
     private readonly Func<SpeechSegment, CancellationToken, Task<string>> _recognize;
-    private readonly Func<string, CancellationToken, Task<string>>? _translate;
+    private readonly Func<string, bool, CancellationToken, Task<string>>? _translate;
     private readonly Channel<SpeechSegment> _segments = Channel.CreateUnbounded<SpeechSegment>(new UnboundedChannelOptions { SingleReader = true });
     private readonly Channel<Job> _jobs = Channel.CreateUnbounded<Job>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
     private readonly CancellationTokenSource _stop = new();
@@ -28,15 +28,15 @@ public sealed class SpeechPipeline : IAsyncDisposable
     private readonly HashSet<int> _finished = [];
     private readonly Task _recognition;
     private readonly Task _translation;
-    private (int Segment, string Key, string Translation)? _cache;
+    private (int Segment, string Key, string Translation, bool Careful)? _cache;
     private CancellationTokenSource? _inFlight;
     private (int Segment, string Key)? _inFlightText;
     private int _pendingSegments;
     private int _pendingJobs;
 
     /// <param name="recognize">Recebe o trecho inteiro: a versão final pode ser reconhecida com mais cuidado.</param>
-    /// <param name="translate"><c>null</c> quando os dois falam o mesmo idioma.</param>
-    public SpeechPipeline(Func<SpeechSegment, CancellationToken, Task<string>> recognize, Func<string, CancellationToken, Task<string>>? translate)
+    /// <param name="translate">(texto, cuidadosa, cancelamento); <c>null</c> quando os dois falam o mesmo idioma.</param>
+    public SpeechPipeline(Func<SpeechSegment, CancellationToken, Task<string>> recognize, Func<string, bool, CancellationToken, Task<string>>? translate)
     {
         _recognize = recognize;
         _translate = translate;
@@ -183,7 +183,8 @@ public sealed class SpeechPipeline : IAsyncDisposable
                 }
                 var key = Key(job.Text);
                 string translation;
-                if (_cache is { } cached && cached.Segment == job.Segment && cached.Key == key)
+                // A provisória aproveita qualquer tradução do mesmo texto; a final, só a cuidadosa.
+                if (_cache is { } cached && cached.Segment == job.Segment && cached.Key == key && (cached.Careful || !job.Final))
                 {
                     translation = cached.Translation;
                 }
@@ -197,7 +198,7 @@ public sealed class SpeechPipeline : IAsyncDisposable
                     }
                     try
                     {
-                        translation = await _translate!(job.Text, attempt?.Token ?? _stop.Token);
+                        translation = await _translate!(job.Text, job.Final, attempt?.Token ?? _stop.Token);
                     }
                     catch (OperationCanceledException) when (!_stop.IsCancellationRequested)
                     {
@@ -212,7 +213,7 @@ public sealed class SpeechPipeline : IAsyncDisposable
                             _inFlightText = null;
                         }
                     }
-                    _cache = (job.Segment, key, translation);
+                    _cache = (job.Segment, key, translation, job.Final);
                 }
                 Emit(job.Segment, job.Text, translation, job.Final);
             }

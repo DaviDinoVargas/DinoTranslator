@@ -56,10 +56,14 @@ public static class NllbVocabulary
 /// <summary>
 /// Tradução local com o NLLB-200 (600M, quantizado) no ONNX Runtime, na CPU: codificador uma
 /// vez por frase e decodificador palavra por palavra (cerca de 45 ms cada), reaproveitando o
-/// cache de atenção.
+/// cache de atenção. A tradução rápida escolhe a palavra mais provável de cada vez; a cuidadosa
+/// acompanha <see cref="CarefulBeamWidth"/> caminhos no mesmo lote (busca em feixe).
 /// </summary>
 public sealed class NllbTranslator : IDisposable
 {
+    /// <summary>Caminhos acompanhados na tradução cuidadosa (o NLLB foi avaliado com 4 a 5).</summary>
+    public const int CarefulBeamWidth = 4;
+
     private const int MaxNewTokens = 200;
     private const string PastPrefix = "past_key_values";
     private const string PresentPrefix = "present";
@@ -95,7 +99,8 @@ public sealed class NllbTranslator : IDisposable
     }
 
     /// <param name="cancellationToken">Conferido a cada palavra: uma tradução provisória pode ser abandonada no meio.</param>
-    public string Translate(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken = default)
+    /// <param name="beamWidth">1 = rápida (a palavra mais provável de cada vez); mais = busca em feixe.</param>
+    public string Translate(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken = default, int beamWidth = 1)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -115,7 +120,10 @@ public sealed class NllbTranslator : IDisposable
             ]);
             var hidden = encoded.First(v => v.Name == "last_hidden_state").AsTensor<float>();
 
-            var output = Decode(hidden, mask, NllbVocabulary.LanguageId(targetLanguage), MaxTokens(source.Length), cancellationToken);
+            var language = NllbVocabulary.LanguageId(targetLanguage);
+            var output = beamWidth > 1
+                ? BeamDecode(hidden, mask, language, MaxTokens(source.Length), beamWidth, cancellationToken)
+                : Decode(hidden, mask, language, MaxTokens(source.Length), cancellationToken);
             return _vocabulary.Decode(output.Where(NllbVocabulary.IsText).Select(NllbVocabulary.ToPieceId)).Trim();
         }
     }
@@ -145,7 +153,7 @@ public sealed class NllbTranslator : IDisposable
 
     private static int MaxTokens(int sourceLength) => Math.Min(MaxNewTokens, (sourceLength * 3) + 10);
 
-    private List<long> Decode(Tensor<float> hidden, DenseTensor<long> mask, long targetLanguage, int maxTokens, CancellationToken cancellationToken)
+    private IReadOnlyList<long> Decode(Tensor<float> hidden, DenseTensor<long> mask, long targetLanguage, int maxTokens, CancellationToken cancellationToken)
     {
         var output = new List<long>();
         IDisposableReadOnlyCollection<DisposableNamedOnnxValue>? first = null;
@@ -202,6 +210,93 @@ public sealed class NllbTranslator : IDisposable
             first?.Dispose();
         }
         return output;
+    }
+
+    /// <summary>
+    /// Busca em feixe: o primeiro passo roda com um caminho só; depois os caminhos vão juntos, num
+    /// lote, e o cache de cada um é reordenado conforme o caminho de onde veio.
+    /// </summary>
+    private IReadOnlyList<long> BeamDecode(Tensor<float> hidden, DenseTensor<long> mask, long targetLanguage, int maxTokens, int width, CancellationToken cancellationToken)
+    {
+        var search = new BeamSearch(width, maxTokens);
+        var decoderPast = new Dictionary<string, DenseTensor<float>>();
+        var encoderPast = new Dictionary<string, DenseTensor<float>>();
+
+        var firstInputs = new List<NamedOnnxValue>
+        {
+            NamedOnnxValue.CreateFromTensor("input_ids", new DenseTensor<long>(new[] { NllbVocabulary.EndOfSentence, targetLanguage }, [1, 2])),
+            NamedOnnxValue.CreateFromTensor("encoder_attention_mask", mask),
+            NamedOnnxValue.CreateFromTensor("encoder_hidden_states", hidden),
+            NamedOnnxValue.CreateFromTensor("use_cache_branch", new DenseTensor<bool>(new[] { false }, [1])),
+        };
+        foreach (var name in _pastNames)
+        {
+            firstInputs.Add(NamedOnnxValue.CreateFromTensor(name, EmptyPast()));
+        }
+        using (var first = _decoder.Run(firstInputs))
+        {
+            var parents = search.Advance(Values(Output(first, "logits")), Output(first, "logits").Dimensions[1], Output(first, "logits").Dimensions[2]);
+            foreach (var name in _pastNames)
+            {
+                var present = Gather(Output(first, PresentPrefix + name[PastPrefix.Length..]), parents);
+                (IsEncoder(name) ? encoderPast : decoderPast)[name] = present;
+            }
+        }
+
+        var lanes = new int[width];
+        var expandedMask = new DenseTensor<long>(Enumerable.Repeat(1L, width * mask.Dimensions[1]).ToArray(), [width, mask.Dimensions[1]]);
+        var expandedHidden = Gather(hidden, lanes);
+        var useCache = new DenseTensor<bool>(new[] { true }, [1]);
+        while (!search.Done)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var inputs = new List<NamedOnnxValue>
+            {
+                NamedOnnxValue.CreateFromTensor("input_ids", new DenseTensor<long>(search.LastTokens(), [width, 1])),
+                NamedOnnxValue.CreateFromTensor("encoder_attention_mask", expandedMask),
+                NamedOnnxValue.CreateFromTensor("encoder_hidden_states", expandedHidden),
+                NamedOnnxValue.CreateFromTensor("use_cache_branch", useCache),
+            };
+            foreach (var name in _pastNames)
+            {
+                inputs.Add(NamedOnnxValue.CreateFromTensor(name, IsEncoder(name) ? encoderPast[name] : decoderPast[name]));
+            }
+            using var result = _decoder.Run(inputs);
+            var logits = Output(result, "logits");
+            var parents = search.Advance(Values(logits), logits.Dimensions[1], logits.Dimensions[2]);
+            if (search.Done)
+            {
+                break;
+            }
+            foreach (var name in _pastNames.Where(n => !IsEncoder(n)))
+            {
+                decoderPast[name] = Gather(Output(result, PresentPrefix + name[PastPrefix.Length..]), parents);
+            }
+        }
+        return search.Best();
+    }
+
+    private static bool IsEncoder(string pastName) => pastName.Contains(".encoder.", StringComparison.Ordinal);
+
+    private static Tensor<float> Output(IDisposableReadOnlyCollection<DisposableNamedOnnxValue> result, string name) =>
+        result.First(v => v.Name == name).AsTensor<float>();
+
+    private static ReadOnlySpan<float> Values(Tensor<float> tensor) =>
+        tensor is DenseTensor<float> dense ? dense.Buffer.Span : tensor.ToArray();
+
+    /// <summary>Monta um lote novo com as linhas pedidas (na ordem pedida) do lote de origem.</summary>
+    private static DenseTensor<float> Gather(Tensor<float> source, int[] rows)
+    {
+        var dimensions = source.Dimensions.ToArray();
+        var rowSize = (int)(source.Length / dimensions[0]);
+        dimensions[0] = rows.Length;
+        var values = Values(source);
+        var gathered = new float[rowSize * rows.Length];
+        for (var i = 0; i < rows.Length; i++)
+        {
+            values.Slice(rows[i] * rowSize, rowSize).CopyTo(gathered.AsSpan(i * rowSize, rowSize));
+        }
+        return new DenseTensor<float>(gathered, dimensions);
     }
 
     private DenseTensor<float> EmptyPast() => new(Array.Empty<float>(), [1, _heads, 0, _headSize]);

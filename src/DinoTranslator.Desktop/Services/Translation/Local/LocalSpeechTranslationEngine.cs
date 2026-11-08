@@ -17,8 +17,9 @@ public sealed class LocalSpeechTranslationEngine(Func<LocalSpeechRuntime> runtim
 
     public bool CanTranslateText => true;
 
+    /// <summary>Texto escrito sai com a tradução cuidadosa: ele fica na conversa como está.</summary>
     public Task<string?> TranslateTextAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken) =>
-        Task.Run<string?>(() => runtime().Translator.Translate(text, sourceLanguage, targetLanguage, cancellationToken), cancellationToken);
+        Task.Run<string?>(() => runtime().Translator.Translate(text, sourceLanguage, targetLanguage, cancellationToken, NllbTranslator.CarefulBeamWidth), cancellationToken);
 
     /// <summary>
     /// Fala de uma pessoa: o segmentador fecha os trechos pelo volume e a linha de montagem
@@ -34,8 +35,10 @@ public sealed class LocalSpeechTranslationEngine(Func<LocalSpeechRuntime> runtim
         {
             _recognizer = runtime.CreateRecognizer(options.SourceLanguage, options.Phrases);
             var translate = Languages.NeedsTranslation(options.SourceLanguage, options.TargetLanguage)
-                ? (text, token) => Task.Run(() => runtime.Translator.Translate(text, options.SourceLanguage, options.TargetLanguage, token), token)
-                : (Func<string, CancellationToken, Task<string>>?)null;
+                ? (text, careful, token) => Task.Run(
+                    () => runtime.Translator.Translate(text, options.SourceLanguage, options.TargetLanguage, token, careful ? NllbTranslator.CarefulBeamWidth : 1),
+                    token)
+                : (Func<string, bool, CancellationToken, Task<string>>?)null;
             _pipeline = new SpeechPipeline((segment, token) => runtime.TranscribeAsync(_recognizer, segment.Samples, segment.Final, token), translate);
             _pipeline.Updated += update => Updated?.Invoke(update);
             _pipeline.Failed += () => Failed?.Invoke("O motor local parou de responder. A chamada continua, sem legendas.");
