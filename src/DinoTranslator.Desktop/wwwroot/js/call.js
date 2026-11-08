@@ -9,6 +9,9 @@ const ICE_SERVERS = [
 ];
 const GATHER_TIMEOUT_MS = 4000;
 const STATS_INTERVAL_MS = 1000;
+// O ping mostrado é a mediana dos últimos segundos: uma medida isolada salta quando um quadro
+// grande de vídeo passa na frente, e não diz como a conversa está.
+const RTT_WINDOW = 5;
 const MAX_SIGNAL_LENGTH = 64 * 1024;
 const MAX_APP_MESSAGE_LENGTH = 16 * 1024;
 const AUDIO_MAX_BITRATE = 128_000;
@@ -132,6 +135,7 @@ export class CallPeer {
     this.quality = videoQuality();
     this.remoteStream = new MediaStream();
     this.statsTimer = null;
+    this.rttSamples = [];
 
     // Tela compartilhada: um transceptor só para ela, reaproveitado a cada compartilhamento,
     // e um fluxo de id fixo que o outro lado usa para separar a tela da câmera.
@@ -593,8 +597,13 @@ export class CallPeer {
         return;
       }
       const local = report.get(pair.localCandidateId);
-      const rtt = typeof pair.currentRoundTripTime === "number" ? Math.round(pair.currentRoundTripTime * 1000) : -1;
-      this.events.onStats?.(rtt, local?.candidateType ?? "desconhecido");
+      if (typeof pair.currentRoundTripTime === "number") {
+        this.rttSamples.push(Math.round(pair.currentRoundTripTime * 1000));
+        if (this.rttSamples.length > RTT_WINDOW) {
+          this.rttSamples.shift();
+        }
+      }
+      this.events.onStats?.(median(this.rttSamples), local?.candidateType ?? "desconhecido");
       await this.collectScreenStats();
     } catch {
       // Estatística é só informativa.
@@ -642,6 +651,15 @@ export class CallPeer {
     }
     this.pc.close();
   }
+}
+
+/** Mediana (-1 sem medidas). */
+export function median(values) {
+  if (values.length === 0) {
+    return -1;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
 }
 
 /** Impressão digital SHA-256 do certificado DTLS, em maiúsculas. */
