@@ -156,6 +156,28 @@ O app tem adaptadores por provedor. **Implementado: Azure Speech**, que reconhec
 - Medido numa GTX 1650 com i7-10700KF: 6,5 s de fala reconhecidos em 0,6 s (provisória) ou 1,1 s (final) com o turbo; frase traduzida em 0,4–1,4 s (rápida) ou 0,6–1,8 s (cuidadosa). A tradução completa aparece cerca de 1,5 s depois da pausa e a versão final, cuidadosa, cerca de 3,5 s depois.
 - Tradução na placa de vídeo (DirectML) foi medida e descartada por ora: o decodificador combinado gera texto errado no DirectML e, numa placa de 4 GB, divide a memória com o Whisper e deixa o reconhecimento 10 vezes mais lento.
 
+**Motores extras, escolhidos durante a chamada** (botão **Motores**, no computador que traduz). Nada do motor original foi trocado: ele é a combinação padrão, e as outras peças se somam a ele.
+
+- **Detector de fala:** volume (original) ou Silero VAD (rede neural, no próprio app).
+- **Fim da frase:** 0,5, 0,8 (original) ou 1,2 s de pausa.
+- **Reconhecimento:** Whisper turbo, small ou large-v3 (whisper.cpp, Vulkan); faster-whisper turbo (CTranslate2) na placa da NVIDIA (CUDA) ou no processador.
+- **Tradução:** NLLB-200 600M em ONNX (original); NLLB 600M e 1.3B e MarianMT (OPUS-MT, um modelo por grupo de idiomas, com etiqueta para o português do Brasil) no CTranslate2, na placa (CUDA) ou no processador. Texto com várias frases é traduzido frase a frase.
+- **Versão final:** cuidadosa (busca em feixe) ou rápida.
+- O painel mostra as médias das últimas frases: reconhecimento final, tradução final e da hora em que a pessoa parou de falar até a legenda final. Cada combinação aquece os modelos ao carregar.
+- faster-whisper e CTranslate2 rodam num processo auxiliar em Python (`Motor/motor.py`), porque as bibliotecas CUDA não convivem com o Vulkan no mesmo processo; o app e ele conversam pela entrada e saída padrão.
+
+Comparativo medido numa chamada de verdade (dois apps, GTX 1650 + i7-10700KF, fala em português, `tests/e2e/motores.ps1`), média até a legenda final depois da fala:
+
+| Combinação                                         | Reconhecimento | Tradução | Legenda final |
+|----------------------------------------------------|----------------|----------|---------------|
+| Original (volume, 0,8 s, Whisper turbo, NLLB 600M) | 1,3 s          | 1,4 s    | 3,5 s         |
+| Silero, 0,5 s, NLLB 600M                           | 1,3 s          | 1,7 s    | 3,5 s         |
+| Silero, 0,5 s, MarianMT na placa                   | 1,6 s          | 0,1 s    | 2,2 s         |
+| Silero, 0,5 s, NLLB 1.3B na placa                  | 1,3 s          | 0,6 s    | 2,5 s         |
+| Silero, 0,5 s, faster-whisper e MarianMT na placa  | 3,5 s          | 1,9 s    | 6,4 s         |
+
+Qualidade nas mesmas frases: o NLLB 1.3B acertou todas, inclusive gíria ("Tô morrendo de saudade" → "Я так скучаю"); o MarianMT é o mais rápido e o único em português do Brasil ("não pude te ligar"), mas trocou "português" por "russo" numa frase; o NLLB 600M erra gíria. Nesta placa o faster-whisper é mais lento que o Whisper do app (2 s contra 1,1 s por frase), e a pausa de 0,5 s corta frases faladas com vírgulas longas.
+
 | Etapa         | Serviços em nuvem (candidatos)                                      | No próprio computador                         |
 |---------------|---------------------------------------------------------------------|-----------------------------------------------|
 | VAD           | —                                                                   | Silero VAD (ONNX, CPU)                        |
@@ -268,6 +290,7 @@ Um canal de dados WebRTC confiável e ordenado, dentro da mesma conexão cifrada
 - **WiX Toolset (Burn)** com interface própria em WPF (C#), no mesmo visual do app.
   - **Instalar**: boas-vindas → pasta → atalhos → progresso → concluído ("abrir agora").
   - **Desinstalar** (pelo `Desinstalar.exe` da pasta do app ou por "Aplicativos instalados" do Windows): confirmação → manter ou apagar dados locais → progresso → concluído. Instalações antigas ou sem registro ganham o `Desinstalar.exe` e o registro ao abrir o app.
+  - **Motores e modelos de tradução** (opção marcada por padrão): o instalador baixa e instala todos, cerca de 10 GB, na pasta `extras` ao lado do app. O GitHub limita cada arquivo a 2 GB, então eles não cabem dentro do instalador: vêm da release `componentes-1` deste projeto (pacotes gerados por `tools/criar-extras.ps1`) e das versões fixas dos repositórios originais. Se o download falhar, o app fica instalado e os motores podem ser baixados depois em Ajustes › Tradução. Atualizar o app mantém a pasta `extras`; com os modelos lá, a tradução já começa ligada no motor local.
   - Verifica e instala o WebView2 Runtime se faltar.
 - App publicado **self-contained**: não exige .NET instalado.
 - **Assinatura de código** recomendada; sem ela, o SmartScreen mostra "editor desconhecido".
