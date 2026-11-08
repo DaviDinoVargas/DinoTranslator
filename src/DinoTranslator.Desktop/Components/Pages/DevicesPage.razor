@@ -9,7 +9,10 @@
 
 <main class="devices">
   <section class="devices__panel">
-    <p class="handshake__kicker">Antes da chamada</p>
+    <div class="handshake__top">
+      <span class="setting-row__icon setting-row__icon--verde"><Icon Name="fone" /></span>
+      <p class="handshake__kicker">Antes da chamada</p>
+    </div>
     <h1 class="handshake__step">Câmera, áudio e tradução</h1>
     <p class="handshake__hint">O que você escolher aqui vale para as próximas chamadas.</p>
 
@@ -72,7 +75,7 @@
             }
           </select>
         </label>
-        <button type="button" class="button" @onclick="PlaySoundAsync">Tocar som de teste</button>
+        <button type="button" class="button" @onclick="PlaySoundAsync"><Icon Name="som" />Tocar som de teste</button>
       </div>
     </div>
 
@@ -97,7 +100,7 @@
           </select>
         </label>
         <button type="button" class="button @(_testing ? "" : "button--primary")" @onclick="ToggleTestAsync" disabled="@_starting">
-          @(_starting ? "Carregando o motor…" : _testing ? "Parar o teste" : "Começar a falar")
+          <Icon Name="@(_testing ? "parar" : "microfone")" />@(_starting ? "Carregando o motor…" : _testing ? "Parar o teste" : "Começar a falar")
         </button>
       </div>
       <p class="handshake__hint">@TestHint</p>
@@ -123,10 +126,10 @@
     }
     @if (_error is not null)
     {
-      <p class="login__error" role="alert">@_error</p>
+      <p class="login__error" role="alert"><Icon Name="alerta" />@_error</p>
     }
 
-    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))">Voltar</button>
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))"><Icon Name="voltar" />Voltar</button>
   </section>
 </main>
 

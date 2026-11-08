@@ -8,54 +8,92 @@
 @if (Settings.Mode == ConnectionMode.Code)
 {
   <main class="home">
-    <section class="home__panel">
-      <p class="login__mark" aria-hidden="true">DT</p>
-      <h1 class="login__title">DinoTranslator</h1>
+    <div class="page__column">
+      <header class="hero">
+        <BrandMark Class="brand-mark--grande" />
+        <h1 class="hero__title">DinoTranslator</h1>
+        <p class="hero__subtitle">Videochamada com tradução simultânea, direto entre os dois computadores.</p>
+        <div class="hero__languages" aria-label="Idiomas">
+          @foreach (var language in Languages.All)
+          {
+            <span class="chip">@language.NativeName</span>
+          }
+        </div>
+      </header>
 
       @if (Profiles.Current is not { } profile || _editing)
       {
-        <p class="home__lead">
-          @(Profiles.Current is null ? "Antes da primeira chamada, conte quem você é." : "Editar perfil")
-        </p>
-        <ProfileForm OnSaved="() => _editing = false"
-                     OnCancel="@(Profiles.Current is null ? default(EventCallback) : EventCallback.Factory.Create(this, () => _editing = false))" />
+        <section class="group home__panel">
+          <div>
+            <h2 class="handshake__step">@(Profiles.Current is null ? "Antes da primeira chamada" : "Editar perfil")</h2>
+            <p class="home__lead">
+              @(Profiles.Current is null ? "O nome e o idioma vão no convite; o gênero e o tratamento ajudam a tradução a concordar." : "As mudanças valem a partir da próxima chamada.")
+            </p>
+          </div>
+          <ProfileForm OnSaved="() => _editing = false"
+                       OnCancel="@(Profiles.Current is null ? default(EventCallback) : EventCallback.Factory.Create(this, () => _editing = false))" />
+        </section>
       }
       else
       {
-        <div class="profile-card">
-          <p class="profile-card__name">@profile.Name</p>
-          <p class="profile-card__meta">
-            @Languages.Get(profile.Language).NativeName · @(profile.Formality == Formality.Formal ? "formal" : "informal")
-          </p>
-          <button type="button" class="button button--quiet" @onclick="() => _editing = true">Editar perfil</button>
-        </div>
+        <button type="button" class="profile-card" @onclick="() => _editing = true" title="Editar perfil">
+          <Avatar Name="@profile.Name" Mine="true" Class="avatar--large" />
+          <span class="profile-card__text">
+            <span class="profile-card__name">@profile.Name</span>
+            <span class="profile-card__meta">
+              @Languages.Get(profile.Language).NativeName · tratamento @(profile.Formality == Formality.Formal ? "formal" : "informal")
+            </span>
+          </span>
+          <Icon Name="seta" />
+        </button>
+
         @if (!Translation.Current.IsConfigured)
         {
           <div class="callout" role="note">
+            <Icon Name="alerta" />
             <p>A tradução ainda não está ligada neste computador. Sem ela em pelo menos um dos dois, a chamada fica sem legendas.</p>
-            <button type="button" class="button button--primary" @onclick="@(() => Navigation.NavigateTo("/configuracoes/traducao"))">Configurar a tradução</button>
+            <button type="button" class="button button--primary button--small" @onclick="@(() => Navigation.NavigateTo("/configuracoes/traducao"))">Configurar a tradução</button>
           </div>
         }
-        <button type="button" class="setting-row" @onclick="@(() => Navigation.NavigateTo("/configuracoes/traducao"))">
-          <span class="setting-row__label">Tradução</span>
-          <span class="setting-row__value">
-            @(Translation.Current.IsConfigured ? TranslationSettingsPage.Describe(Translation.Current) : "configurar")
-          </span>
-        </button>
-        <button type="button" class="setting-row" @onclick="@(() => Navigation.NavigateTo("/configuracoes/dispositivos"))">
-          <span class="setting-row__label">Câmera e áudio</span>
-          <span class="setting-row__value">testar antes da chamada</span>
-        </button>
-        <button type="button" class="setting-row" @onclick="@(() => Navigation.NavigateTo("/configuracoes/conexao"))">
-          <span class="setting-row__label">Conexão</span>
-          <span class="setting-row__value">@(Connection.Current.HasRelay ? "direta ou retransmitida" : "direta · testar rede")</span>
-        </button>
+
         <div class="home__actions">
-          <button type="button" class="button button--primary" @onclick="@(() => Navigation.NavigateTo("/chamada/convite"))">Nova chamada</button>
-          <button type="button" class="button" @onclick="@(() => Navigation.NavigateTo("/chamada/entrar"))">Entrar com código</button>
+          <button type="button" class="button button--primary" @onclick="@(() => Navigation.NavigateTo("/chamada/convite"))">
+            <Icon Name="nova-chamada" />Nova chamada
+          </button>
+          <button type="button" class="button" @onclick="@(() => Navigation.NavigateTo("/chamada/entrar"))">
+            <Icon Name="entrar" />Entrar com código
+          </button>
         </div>
+
+        <p class="group-title">Ajustes</p>
+        <nav class="group" aria-label="Ajustes">
+          <button type="button" class="setting-row" @onclick="@(() => Navigation.NavigateTo("/configuracoes/traducao"))">
+            <span class="setting-row__icon"><Icon Name="traducao" /></span>
+            <span class="setting-row__label">Tradução</span>
+            <span class="setting-row__value">
+              @(Translation.Current.IsConfigured ? TranslationSettingsPage.Describe(Translation.Current) : "Desligada")
+            </span>
+            <Icon Name="seta" />
+          </button>
+          <button type="button" class="setting-row" @onclick="@(() => Navigation.NavigateTo("/configuracoes/dispositivos"))">
+            <span class="setting-row__icon setting-row__icon--verde"><Icon Name="fone" /></span>
+            <span class="setting-row__label">Câmera e áudio</span>
+            <span class="setting-row__value">Testar</span>
+            <Icon Name="seta" />
+          </button>
+          <button type="button" class="setting-row" @onclick="@(() => Navigation.NavigateTo("/configuracoes/conexao"))">
+            <span class="setting-row__icon setting-row__icon--indigo"><Icon Name="rede" /></span>
+            <span class="setting-row__label">Conexão</span>
+            <span class="setting-row__value">@(Connection.Current.HasRelay ? "Com retransmissão" : "Direta")</span>
+            <Icon Name="seta" />
+          </button>
+        </nav>
+
+        <p class="home__footer">
+          <Icon Name="cadeado" Class="icon--inline" />Cifrada de ponta a ponta, sem servidor no meio.
+        </p>
       }
-    </section>
+    </div>
   </main>
 }
 
