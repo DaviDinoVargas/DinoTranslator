@@ -3,45 +3,65 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnMainWindowClose">
   <Application.Resources>
-    <SolidColorBrush x:Key="Tinta" Color="#12110F" />
-    <SolidColorBrush x:Key="Superficie" Color="#1B1916" />
-    <SolidColorBrush x:Key="Superficie2" Color="#24211D" />
-    <SolidColorBrush x:Key="Linha" Color="#34302A" />
-    <SolidColorBrush x:Key="Papel" Color="#F1ECE2" />
-    <SolidColorBrush x:Key="Papel2" Color="#A8A091" />
-    <SolidColorBrush x:Key="Ipe" Color="#F2B705" />
-    <SolidColorBrush x:Key="Gzhel" Color="#3D6FE0" />
-    <SolidColorBrush x:Key="Erro" Color="#D9534F" />
+    <!-- Mesmas cores do app: noite azul, vidro claro e cores de sistema. -->
+    <SolidColorBrush x:Key="Tinta" Color="#0B1124" />
+    <SolidColorBrush x:Key="Vidro" Color="#14FFFFFF" />
+    <SolidColorBrush x:Key="Vidro2" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="VidroBorda" Color="#24FFFFFF" />
+    <SolidColorBrush x:Key="Papel" Color="#F5F7FF" />
+    <SolidColorBrush x:Key="Papel2" Color="#A3ABC4" />
+    <SolidColorBrush x:Key="Azul" Color="#0A84FF" />
+    <SolidColorBrush x:Key="AzulClaro" Color="#409CFF" />
+    <SolidColorBrush x:Key="Erro" Color="#FF453A" />
+    <SolidColorBrush x:Key="Laranja" Color="#FF9F0A" />
+    <FontFamily x:Key="Fonte">Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="FonteTitulo">Segoe UI Variable Display, Segoe UI</FontFamily>
 
+    <!-- Papel de parede: noite azul com brilho dourado no canto de cima e azul no de baixo. -->
+    <LinearGradientBrush x:Key="Fundo" StartPoint="0,0" EndPoint="0,1">
+      <GradientStop Color="#0B1124" Offset="0" />
+      <GradientStop Color="#060912" Offset="1" />
+    </LinearGradientBrush>
+    <RadialGradientBrush x:Key="BrilhoDourado" Center="0,0" GradientOrigin="0,0" RadiusX="0.9" RadiusY="0.8">
+      <GradientStop Color="#2AF5B70A" Offset="0" />
+      <GradientStop Color="#00F5B70A" Offset="1" />
+    </RadialGradientBrush>
+    <RadialGradientBrush x:Key="BrilhoAzul" Center="1,1" GradientOrigin="1,1" RadiusX="1" RadiusY="0.9">
+      <GradientStop Color="#503D6FE0" Offset="0" />
+      <GradientStop Color="#003D6FE0" Offset="1" />
+    </RadialGradientBrush>
+
+    <!-- Sem cor fixa aqui: o texto herda a cor da janela ou do botão (os botões de texto são azuis). -->
     <Style TargetType="TextBlock">
-      <Setter Property="Foreground" Value="{StaticResource Papel}" />
-      <Setter Property="FontFamily" Value="Segoe UI" />
+      <Setter Property="FontFamily" Value="{StaticResource Fonte}" />
       <Setter Property="FontSize" Value="14" />
       <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
+    <!-- Botão de vidro em pílula. -->
     <Style x:Key="Botao" TargetType="Button">
-      <Setter Property="Height" Value="40" />
-      <Setter Property="Padding" Value="20,0" />
+      <Setter Property="Height" Value="46" />
+      <Setter Property="Padding" Value="22,0" />
       <Setter Property="Foreground" Value="{StaticResource Papel}" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="{StaticResource Linha}" />
-      <Setter Property="FontFamily" Value="Segoe UI" />
-      <Setter Property="FontSize" Value="14" />
+      <Setter Property="Background" Value="{StaticResource Vidro2}" />
+      <Setter Property="BorderBrush" Value="{StaticResource VidroBorda}" />
+      <Setter Property="FontFamily" Value="{StaticResource Fonte}" />
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
             <Border x:Name="Fundo" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="1" CornerRadius="2" Padding="{TemplateBinding Padding}">
+                    BorderThickness="1" CornerRadius="23" Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Fundo" Property="Opacity" Value="0.85" />
+                <Setter TargetName="Fundo" Property="Opacity" Value="0.88" />
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="Fundo" Property="Opacity" Value="0.5" />
+                <Setter TargetName="Fundo" Property="Opacity" Value="0.45" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -50,34 +70,74 @@
     </Style>
 
     <Style x:Key="BotaoPrincipal" TargetType="Button" BasedOn="{StaticResource Botao}">
-      <Setter Property="Background" Value="{StaticResource Ipe}" />
-      <Setter Property="BorderBrush" Value="{StaticResource Ipe}" />
-      <Setter Property="Foreground" Value="{StaticResource Tinta}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="BorderBrush" Value="#30FFFFFF" />
+      <Setter Property="Background">
+        <Setter.Value>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#2A95FF" Offset="0" />
+            <GradientStop Color="#0A84FF" Offset="1" />
+          </LinearGradientBrush>
+        </Setter.Value>
+      </Setter>
+      <Setter Property="Effect">
+        <Setter.Value>
+          <DropShadowEffect Color="#0A84FF" BlurRadius="24" ShadowDepth="6" Direction="270" Opacity="0.4" />
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Botão só de texto, em azul, como os do iPhone. -->
+    <Style x:Key="BotaoTexto" TargetType="Button" BasedOn="{StaticResource Botao}">
+      <Setter Property="Foreground" Value="{StaticResource AzulClaro}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Height" Value="38" />
+      <Setter Property="Padding" Value="14,0" />
     </Style>
 
     <Style TargetType="CheckBox">
-      <Setter Property="Foreground" Value="{StaticResource Papel2}" />
-      <Setter Property="FontFamily" Value="Segoe UI" />
+      <Setter Property="Foreground" Value="{StaticResource Papel}" />
+      <Setter Property="FontFamily" Value="{StaticResource Fonte}" />
       <Setter Property="FontSize" Value="14" />
-      <Setter Property="Margin" Value="0,6" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <StackPanel Orientation="Horizontal" Background="Transparent">
+              <Border x:Name="Caixa" Width="22" Height="22" CornerRadius="7" BorderThickness="1"
+                      Background="{StaticResource Vidro}" BorderBrush="{StaticResource VidroBorda}">
+                <Path x:Name="Marca" Data="M5.5 11.5 9.5 15.5 16.5 7.5" Stroke="White" StrokeThickness="2.2"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed"
+                      Width="22" Height="22" />
+              </Border>
+              <ContentPresenter Margin="10,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Caixa" Property="Background" Value="{StaticResource Azul}" />
+                <Setter TargetName="Caixa" Property="BorderBrush" Value="{StaticResource Azul}" />
+                <Setter TargetName="Marca" Property="Visibility" Value="Visible" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
 
     <Style x:Key="Fechar" TargetType="Button">
-      <Setter Property="Width" Value="46" />
-      <Setter Property="Height" Value="40" />
-      <Setter Property="Foreground" Value="{StaticResource Papel2}" />
-      <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
-      <Setter Property="FontSize" Value="10" />
+      <Setter Property="Width" Value="32" />
+      <Setter Property="Height" Value="32" />
+      <Setter Property="Cursor" Value="Hand" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Fundo" Background="Transparent">
+            <Border x:Name="Fundo" Background="{StaticResource Vidro}" CornerRadius="16">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Fundo" Property="Background" Value="{StaticResource Erro}" />
+                <Setter TargetName="Fundo" Property="Background" Value="{StaticResource Vidro2}" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -91,8 +151,15 @@
         <Setter.Value>
           <ControlTemplate TargetType="ProgressBar">
             <Grid>
-              <Border x:Name="PART_Track" Background="{StaticResource Superficie2}" />
-              <Border x:Name="PART_Indicator" Background="{StaticResource Ipe}" HorizontalAlignment="Left" />
+              <Border x:Name="PART_Track" Background="{StaticResource Vidro2}" CornerRadius="3" />
+              <Border x:Name="PART_Indicator" CornerRadius="3" HorizontalAlignment="Left">
+                <Border.Background>
+                  <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Color="#0A84FF" Offset="0" />
+                    <GradientStop Color="#40C8E0" Offset="1" />
+                  </LinearGradientBrush>
+                </Border.Background>
+              </Border>
             </Grid>
           </ControlTemplate>
         </Setter.Value>

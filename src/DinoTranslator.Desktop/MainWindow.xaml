@@ -4,7 +4,7 @@
         Title="DinoTranslator"
         Width="1280" Height="800" MinWidth="960" MinHeight="600"
         WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterScreen"
-        Background="{StaticResource Tinta}">
+        Icon="Assets/DinoTranslator.ico" Background="{StaticResource Tinta}">
 
   <WindowChrome.WindowChrome>
     <WindowChrome CaptionHeight="40" ResizeBorderThickness="6" GlassFrameThickness="0"
@@ -17,7 +17,8 @@
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
 
-    <Border Grid.Row="0" Background="{StaticResource Tinta}" BorderBrush="{StaticResource Linha}" BorderThickness="0,0,0,1">
+    <!-- Sem divisória: a barra continua no papel de parede da interface. -->
+    <Border Grid.Row="0" Background="{StaticResource Tinta}">
       <Grid>
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*" />
@@ -26,20 +27,21 @@
         </Grid.ColumnDefinitions>
 
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
-          <Border Width="22" Height="22" Background="{StaticResource Ipe}">
-            <TextBlock Text="DT" FontWeight="Bold" FontSize="11" Foreground="{StaticResource Tinta}"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </Border>
-          <TextBlock Text="DinoTranslator" Margin="10,0,0,0" FontSize="13"
-                     Foreground="{StaticResource Papel}" VerticalAlignment="Center" />
+          <Image Source="Assets/DinoTranslator.png" Width="20" Height="20" RenderOptions.BitmapScalingMode="HighQuality" />
+          <TextBlock Text="DinoTranslator" Margin="10,0,0,0" FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13"
+                     FontWeight="SemiBold" Foreground="{StaticResource Papel}" VerticalAlignment="Center" />
         </StackPanel>
 
-        <TextBlock x:Name="Clocks" Grid.Column="1" VerticalAlignment="Center"
-                   FontFamily="Consolas" FontSize="12" Foreground="{StaticResource Papel2}" />
+        <!-- Relógios numa pílula translúcida, no centro. -->
+        <Border Grid.Column="1" VerticalAlignment="Center" Padding="14,4" CornerRadius="12"
+                Background="{StaticResource Vidro}" BorderBrush="{StaticResource VidroBorda}" BorderThickness="1">
+          <TextBlock x:Name="Clocks" FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="12" FontWeight="SemiBold"
+                     Foreground="{StaticResource Papel2}" />
+        </Border>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
           <TextBlock x:Name="Status" VerticalAlignment="Center" Margin="0,0,16,0"
-                     FontFamily="Consolas" FontSize="12" Foreground="{StaticResource Papel2}" />
+                     FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="12" Foreground="{StaticResource Papel2}" />
           <Button Style="{StaticResource CaptionButton}" Content="&#xE921;" ToolTip="Minimizar"
                   WindowChrome.IsHitTestVisibleInChrome="True" Click="OnMinimize" />
           <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}" Content="&#xE922;" ToolTip="Maximizar"

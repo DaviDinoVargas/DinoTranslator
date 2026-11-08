@@ -8,7 +8,14 @@
     <RootNamespace>DinoTranslator.Setup</RootNamespace>
     <AssemblyName>DinoTranslatorSetup</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\DinoTranslator.Desktop\Assets\DinoTranslator.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <!-- Mesmo ícone do app (gerado por tools/gerar-icone.ps1). -->
+  <ItemGroup>
+    <Resource Include="..\..\DinoTranslator.Desktop\Assets\DinoTranslator.ico" Link="DinoTranslator.ico" />
+    <Resource Include="..\..\DinoTranslator.Desktop\Assets\DinoTranslator.png" Link="DinoTranslator.png" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\DinoTranslator.Installation\DinoTranslator.Installation.csproj" />
