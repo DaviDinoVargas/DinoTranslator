@@ -8,7 +8,8 @@
 <main class="call @(_conversation ? "call--chat" : "")">
 
     <section class="call__stage @(Call.RemoteScreen ? "call__stage--screen" : "")" aria-label="Vídeo da chamada">
-      <figure class="screen-tile">
+      @* Os vídeos ficam sempre na página (cada um preso ao seu fluxo); a disposição só troca as classes. *@
+      <figure class="stage-tile screen-tile @TileClass(StageSource.PeerScreen)">
         <video @ref="_remoteScreen" autoplay playsinline muted></video>
         <figcaption>
           Tela de @Call.Peer?.Name
@@ -17,12 +18,25 @@
             <span> · @received</span>
           }
         </figcaption>
+        <StagePick Source="StageSource.PeerScreen" Layout="Layout" Label="@($"Ver a tela de {Call.Peer?.Name} em destaque")" OnPick="Choose" />
       </figure>
-      <figure class="video-tile tile--other">
+      <figure class="stage-tile screen-tile screen-tile--mine @TileClass(StageSource.MyScreen)">
+        <video @ref="_localScreen" autoplay playsinline muted></video>
+        <figcaption>
+          Sua tela
+          @if (Call.SharingScreen && Call.ScreenStats is { } sentStats)
+          {
+            <span> · @sentStats</span>
+          }
+        </figcaption>
+        <StagePick Source="StageSource.MyScreen" Layout="Layout" Label="Ver a sua tela em destaque" OnPick="Choose" />
+      </figure>
+      <figure class="stage-tile video-tile tile--other @TileClass(StageSource.PeerCamera)">
         <video @ref="_remoteVideo" autoplay playsinline></video>
         <figcaption>@Call.Peer?.Name@(_sound ? "" : " · som desligado")</figcaption>
+        <StagePick Source="StageSource.PeerCamera" Layout="Layout" Label="@($"Ver {Call.Peer?.Name} em destaque")" OnPick="Choose" />
       </figure>
-      <figure class="video-tile tile--me @(_camera ? "" : "video-tile--off")">
+      <figure class="stage-tile video-tile tile--me stage-tile--thumb stage-tile--slot-@Layout.Thumbnails.Count @(_camera ? "" : "video-tile--off")">
         <video @ref="_localVideo" autoplay playsinline muted></video>
         <figcaption>Você@(Profiles.Current is { } me ? $" · {Languages.Get(me.Language).Tag}" : "")@(_microphone ? "" : " · mudo")</figcaption>
       </figure>
@@ -155,6 +169,9 @@
     private ElementReference _localVideo;
     private ElementReference _remoteVideo;
     private ElementReference _remoteScreen;
+    private ElementReference _localScreen;
+    private StageSource? _chosen;
+    private bool _peerWasSharing;
     private bool _microphone = true;
     private bool _camera = true;
     private bool _sound = true;
@@ -165,6 +182,21 @@
     private string? _floatingText;
 
     private bool Live => Call.Stage == CallStage.Connected;
+
+    private StageLayout Layout => StageLayout.For(_chosen, Call.RemoteScreen, Call.SharingScreen);
+
+    private string TileClass(StageSource source)
+    {
+        var layout = Layout;
+        if (layout.Main == source)
+        {
+            return "stage-tile--main";
+        }
+        var slot = layout.SlotOf(source);
+        return slot >= 0 ? $"stage-tile--thumb stage-tile--slot-{slot}" : "stage-tile--hidden";
+    }
+
+    private void Choose(StageSource source) => _chosen = source;
 
     /// <summary>Barras de sinal pela latência: 4 até 100 ms, 1 acima de 400 ms.</summary>
     private static int SignalLevel(int roundTripMs) => roundTripMs switch
@@ -192,7 +224,7 @@
             return;
         }
         _mediaStarted = true;
-        await Call.BindRemoteScreenAsync(_remoteScreen);
+        await Call.BindScreensAsync(_remoteScreen, _localScreen);
         try
         {
             var media = await Call.StartMediaAsync(_localVideo, _remoteVideo, highFidelity: false);
@@ -281,6 +313,13 @@
 
     private void OnCallChanged() => InvokeAsync(async () =>
     {
+        // A outra pessoa começou a mostrar a tela: ela vai para o destaque, mesmo que antes
+        // você tivesse escolhido outra coisa.
+        if (Call.RemoteScreen && !_peerWasSharing)
+        {
+            _chosen = null;
+        }
+        _peerWasSharing = Call.RemoteScreen;
         StateHasChanged();
         try
         {
