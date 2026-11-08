@@ -46,12 +46,21 @@ public partial class UninstallWindow : Window
                 DeleteUserData();
             }
             Installer.Unregister(_folder);
-            Installer.DeleteFolderAfterExit(_folder);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             ShowError("Parte dos arquivos estava em uso e não foi removida. Feche outros programas e tente de novo.");
             return;
+        }
+
+        try
+        {
+            // A pasta só é apagada depois que esta janela fechar (o app inteiro sai junto).
+            Installer.DeleteFolderAfterExit(_folder);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            DoneText.Text = $"Não deu para apagar a pasta do app sozinho. Depois de fechar esta janela, apague a pasta {_folder}.";
         }
 
         ConfirmPanel.Visibility = Visibility.Collapsed;

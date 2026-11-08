@@ -130,6 +130,71 @@ public sealed class InstallerTests : IDisposable
         Assert.False(File.Exists(_at.DesktopShortcut));
     }
 
+    [Fact]
+    public void Pasta_so_e_apagada_depois_que_o_desinstalador_fecha()
+    {
+        Install(Folder);
+        var extras = Path.Combine(Folder, ExtrasInstaller.FolderName, "ct2", "model.bin");
+        Directory.CreateDirectory(Path.GetDirectoryName(extras)!);
+        File.WriteAllText(extras, "pesos");
+        // Faz o papel do Desinstalar.exe: continua aberto até o teste fechar.
+        using var uninstaller = StartWaiting();
+
+        using var cleanup = Installer.DeleteFolderAfterExit(Folder, uninstaller.Id);
+        Assert.NotNull(cleanup);
+        Assert.False(cleanup.WaitForExit(4000));
+        Assert.True(File.Exists(Path.Combine(Folder, Installer.AppExecutable)));
+        Assert.True(File.Exists(extras));
+
+        uninstaller.Kill();
+        Assert.True(cleanup.WaitForExit(30000));
+        Assert.False(Directory.Exists(Folder));
+    }
+
+    [Fact]
+    public void Limpeza_nao_entra_em_juncoes_para_fora_da_pasta()
+    {
+        Install(Folder);
+        var outside = Path.Combine(_root, "Fora");
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "importante.txt"), "não apagar");
+        var junction = Path.Combine(Folder, ExtrasInstaller.FolderName, "modelos");
+        Directory.CreateDirectory(Path.GetDirectoryName(junction)!);
+        using (var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/d /c mklink /J \"{junction}\" \"{outside}\"") { CreateNoWindow = true, UseShellExecute = false })!)
+        {
+            mklink.WaitForExit();
+        }
+        Assert.True(Directory.Exists(junction));
+        using var finished = StartWaiting();
+        finished.Kill();
+        finished.WaitForExit();
+
+        using var cleanup = Installer.DeleteFolderAfterExit(Folder, finished.Id);
+        Assert.True(cleanup!.WaitForExit(30000));
+
+        Assert.False(Directory.Exists(Folder));
+        Assert.True(File.Exists(Path.Combine(outside, "importante.txt")));
+    }
+
+    [Fact]
+    public void Limpeza_recusa_pasta_que_nao_e_do_app()
+    {
+        var other = Path.Combine(_root, "Documentos");
+        Directory.CreateDirectory(other);
+        File.WriteAllText(Path.Combine(other, "texto.txt"), "x");
+
+        Assert.Null(Installer.DeleteFolderAfterExit(other, Environment.ProcessId));
+        Assert.True(File.Exists(Path.Combine(other, "texto.txt")));
+    }
+
+    private static System.Diagnostics.Process StartWaiting() =>
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", "/d /c ping -n 60 127.0.0.1 >nul")
+        {
+            CreateNoWindow = true,
+            UseShellExecute = false,
+            WorkingDirectory = Path.GetTempPath(),
+        })!;
+
     [Theory]
     [InlineData(@"D:\DinoTranslator\Desinstalar.exe", true)]
     [InlineData(@"D:\DinoTranslator\desinstalar.EXE", true)]

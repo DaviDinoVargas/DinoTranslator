@@ -222,24 +222,42 @@ public static class Installer
     }
 
     /// <summary>
-    /// O próprio app está rodando de dentro da pasta: um processo do sistema espera ele fechar
-    /// e apaga a pasta da instalação (e só ela).
+    /// Espera o processo fechar e então apaga a pasta da instalação (e só ela). Os testes passam o
+    /// processo a esperar e esperam a limpeza terminar.
     /// </summary>
-    public static void DeleteFolderAfterExit(string folder)
+    /// <remarks>
+    /// O desinstalador roda de dentro da pasta: apagar antes de ele fechar leva arquivos que o
+    /// .NET ainda usa ao encerrar, e ele quebra ao fechar a janela. Por isso a limpeza espera o
+    /// processo terminar de verdade (PowerShell, Wait-Process) e tenta de novo enquanto algum
+    /// arquivo ainda estiver preso. O rmdir do cmd apaga junções sem entrar nelas. O caminho e o
+    /// processo vão por variáveis de ambiente, nunca montados no comando.
+    /// </remarks>
+    public static Process? DeleteFolderAfterExit(string folder, int? processId = null)
     {
         var target = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar);
-        if (!File.Exists(Path.Combine(target, AppExecutable)) || target.Contains('"'))
+        if (!File.Exists(Path.Combine(target, AppExecutable)) || target.Contains('"') || Path.GetPathRoot(target) == target)
         {
-            return;
+            return null;
         }
-        Process.Start(new ProcessStartInfo
+        const string Script =
+            "Wait-Process -Id $env:DINO_PROCESSO -ErrorAction SilentlyContinue; " +
+            "for ($i = 0; $i -lt 30 -and (Test-Path -LiteralPath $env:DINO_PASTA); $i++) { " +
+            "& \"$env:SystemRoot\\System32\\cmd.exe\" /d /c 'rmdir /s /q \"%DINO_PASTA%\"' 2>$null; " +
+            "if (Test-Path -LiteralPath $env:DINO_PASTA) { Start-Sleep -Seconds 1 } }";
+        var start = new ProcessStartInfo
         {
-            FileName = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
-            Arguments = $"/d /c ping 127.0.0.1 -n 4 >nul & rmdir /s /q \"{target}\"",
+            FileName = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe"),
             CreateNoWindow = true,
             UseShellExecute = false,
             WorkingDirectory = Path.GetTempPath(),
-        });
+        };
+        foreach (var argument in new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", Script })
+        {
+            start.ArgumentList.Add(argument);
+        }
+        start.Environment["DINO_PROCESSO"] = (processId ?? Environment.ProcessId).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        start.Environment["DINO_PASTA"] = target;
+        return Process.Start(start);
     }
 
     /// <summary>
