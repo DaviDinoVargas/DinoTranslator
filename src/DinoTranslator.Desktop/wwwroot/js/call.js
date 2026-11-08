@@ -146,6 +146,8 @@ export class CallPeer {
     this.remoteScreenStreamId = null;
     this.remoteScreen = new MediaStream();
     this.remoteScreenReceiver = null;
+    // Prévia da própria tela, para a pessoa ver o que está mostrando.
+    this.localScreenView = null;
 
     // Captura da fala para a tradução (só no computador que traduz).
     this.audioContext = null;
@@ -471,6 +473,7 @@ export class CallPeer {
     // Parar pelo próprio Windows também encerra o compartilhamento.
     track.onended = () => this.stopScreenShare();
     this.screenTrack = track;
+    this.showLocalScreen();
     this.setScreenMode(mode);
 
     this.sendSignal({ screen: { streamId: this.screenStream.id } });
@@ -496,6 +499,7 @@ export class CallPeer {
     }
     const track = this.screenTrack;
     this.screenTrack = null;
+    this.showLocalScreen();
     track.onended = null;
     track.stop();
     if (this.screenTransceiver && this.pc.signalingState !== "closed") {
@@ -504,6 +508,13 @@ export class CallPeer {
     }
     this.sendSignal({ screen: null });
     this.events.onLocalScreen?.(false);
+  }
+
+  showLocalScreen() {
+    if (this.localScreenView) {
+      this.localScreenView.muted = true;
+      this.localScreenView.srcObject = this.screenTrack ? new MediaStream([this.screenTrack]) : null;
+    }
   }
 
   setScreenMode(mode) {
@@ -787,6 +798,11 @@ export const shareStream = (stream, mode) => current.startScreenShare({ mode, st
 export function bindRemoteScreen(video) {
   video.muted = true;
   video.srcObject = current.remoteScreen;
+}
+
+export function bindLocalScreen(video) {
+  current.localScreenView = video;
+  current.showLocalScreen();
 }
 
 let remoteElement = null;

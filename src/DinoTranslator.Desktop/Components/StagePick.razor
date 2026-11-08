@@ -1,0 +1,22 @@
+@using DinoTranslator.Desktop.Services
+@* Miniatura do palco vira botão: um clique põe a fonte em destaque. *@
+@if (Layout.SlotOf(Source) >= 0)
+{
+  <button type="button" class="stage-tile__pick" @onclick="() => OnPick.InvokeAsync(Source)" aria-label="@Label" title="@Label">
+    <Icon Name="ampliar" />
+  </button>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public StageSource Source { get; set; }
+
+    [Parameter, EditorRequired]
+    public StageLayout Layout { get; set; } = StageLayout.For(null, false, false);
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = "";
+
+    [Parameter]
+    public EventCallback<StageSource> OnPick { get; set; }
+}

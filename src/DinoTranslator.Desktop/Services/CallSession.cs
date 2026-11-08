@@ -363,11 +363,13 @@ public sealed class CallSession(
         Notify();
     }
 
-    public async Task BindRemoteScreenAsync(ElementReference video)
+    /// <summary>Liga os vídeos das telas: a da outra pessoa e a prévia da sua.</summary>
+    public async Task BindScreensAsync(ElementReference remote, ElementReference local)
     {
         if (_module is not null && Stage == CallStage.Connected)
         {
-            await _module.InvokeVoidAsync("bindRemoteScreen", video);
+            await _module.InvokeVoidAsync("bindRemoteScreen", remote);
+            await _module.InvokeVoidAsync("bindLocalScreen", local);
         }
     }
 

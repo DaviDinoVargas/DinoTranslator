@@ -111,6 +111,8 @@ try {
 
   await new Promise((r) => setTimeout(r, 4000));
   result.faixas_remotas_b = await b.evaluate(`document.querySelector('.tile--other video')?.srcObject?.getTracks().map(t => t.kind).join(',') || ''`);
+  // A prévia da própria câmera nunca toca o microfone (senão a pessoa se ouve e vira eco).
+  result.previa_muda_a = await a.evaluate(`(() => { const v = document.querySelector('.tile--me video'); return v.muted === true && v.srcObject?.getAudioTracks().length === 0 && v.srcObject?.getVideoTracks().length === 1; })()`);
 
   // Tradução: só o Dino (anfitrião) tem motor, o simulado; a Anna recebe tudo pela chamada.
   const captionText = (selector) => `document.querySelector('${selector}')?.textContent.replace(/\\s+/g, ' ').trim() || null`;
@@ -190,10 +192,44 @@ try {
   await waitFor(b, `!!document.querySelector('.call__stage--screen')`, "palco com a tela (B)");
   result.tela_banner_a = await waitFor(a, `document.querySelector('.call__sharing')?.textContent.replace(/\\s+/g, ' ').trim()`, "faixa de compartilhamento (A)");
   result.tela_recebida_b = await waitFor(b, `(() => { const t = document.querySelector('.screen-tile figcaption')?.textContent.replace(/\\s+/g, ' ').trim(); return t && t.includes('2560×1440') ? t : null; })()`, "tela 2560×1440 recebida (B)", 40000);
+  // Quem compartilha vê a própria tela numa miniatura e pode pô-la em destaque.
+  const tile = (selector) => `(() => { const f = document.querySelector('${selector}'); const v = f?.querySelector('video'); return f ? { classe: [...f.classList].find(c => c.startsWith('stage-tile--')), video: v.videoWidth + 'x' + v.videoHeight } : null; })()`;
+  result.tela_propria_a = await waitFor(a, `(() => { const v = document.querySelector('.screen-tile--mine video'); return v.videoWidth > 0 && v.closest('figure').classList.contains('stage-tile--thumb') ? v.videoWidth + 'x' + v.videoHeight : null; })()`, "prévia da própria tela (A)", 10000).catch(() => null);
   if (process.env.E2E_SHOTS) {
     await b.screenshot(`${process.env.E2E_SHOTS}-tela-recebida.png`);
     await a.screenshot(`${process.env.E2E_SHOTS}-tela-enviada.png`);
   }
+  await a.evaluate(`document.querySelector('.screen-tile--mine .stage-tile__pick').click()`);
+  result.tela_propria_destaque_a = await waitFor(a, `document.querySelector('.screen-tile--mine').classList.contains('stage-tile--main')`, "própria tela em destaque (A)", 5000).catch(() => false);
+
+  // As duas pessoas mostrando a tela ao mesmo tempo: a nova vai para o destaque e dá para escolher.
+  await b.evaluate(`(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1280;
+    canvas.height = 720;
+    const context = canvas.getContext('2d');
+    window.__telaSinteticaB = setInterval(() => {
+      context.fillStyle = '#0a3a6a';
+      context.fillRect(0, 0, 1280, 720);
+      context.fillStyle = '#fff';
+      context.font = '64px sans-serif';
+      context.fillText('tela da Anna ' + Date.now(), 80, 200);
+    }, 33);
+    const media = await import('./js/call.js');
+    await media.shareStream(canvas.captureStream(30), 'detail');
+    return true;
+  })()`);
+  result.duas_telas_a = await waitFor(a, `(() => { const outra = document.querySelector('.screen-tile:not(.screen-tile--mine)'); const minha = document.querySelector('.screen-tile--mine'); return outra.classList.contains('stage-tile--main') && minha.classList.contains('stage-tile--thumb') && outra.querySelector('video').videoWidth > 0; })()`, "tela da Anna em destaque com as duas (A)", 20000).catch(() => false);
+  result.palco_duas_telas_a = { outra: await a.evaluate(tile('.screen-tile:not(.screen-tile--mine)')), minha: await a.evaluate(tile('.screen-tile--mine')), camera: await a.evaluate(tile('.tile--other')), voce: await a.evaluate(tile('.tile--me')) };
+  await b.evaluate(`document.querySelector('.tile--other .stage-tile__pick').click()`);
+  result.camera_escolhida_b = await waitFor(b, `document.querySelector('.tile--other').classList.contains('stage-tile--main') && document.querySelector('.screen-tile--mine').classList.contains('stage-tile--thumb')`, "câmera do Dino em destaque (B)", 5000).catch(() => false);
+  if (process.env.E2E_SHOTS) {
+    await a.screenshot(`${process.env.E2E_SHOTS}-duas-telas-dino.png`);
+    await b.screenshot(`${process.env.E2E_SHOTS}-duas-telas-anna.png`);
+  }
+  await waitFor(b, click("Parar"), "parar tela (B)");
+  await b.evaluate(`clearInterval(window.__telaSinteticaB)`);
+  await waitFor(a, `document.querySelector('.screen-tile:not(.screen-tile--mine)').classList.contains('stage-tile--hidden')`, "tela da Anna saiu (A)", 10000);
   await waitFor(a, click("Fluida"), "modo fluido");
   result.tela_modo_fluido = await waitFor(a, `[...document.querySelectorAll('.segmented__option')].find(b => b.textContent.includes('Fluida'))?.getAttribute('aria-pressed') === 'true'`, "modo fluido marcado");
   await waitFor(a, click("Parar"), "parar tela");
@@ -211,6 +247,11 @@ try {
     result.b_aviso_encerramento = await waitFor(b, `document.querySelector('.call__problem')?.textContent.includes('encerrou') && document.querySelector('.call__problem').textContent.trim()`, "aviso de encerramento (B)").catch(async (error) => { result.b_depois_de_encerrar = await b.evaluate(`({ url: location.pathname, problema: document.querySelector('.call__problem')?.textContent.trim() || null, botoes: [...document.querySelectorAll('.call__dock button')].map(x => x.textContent.trim() + (x.disabled ? ' (off)' : '')).join(' | ') })`); result.a_depois_de_encerrar = await a.evaluate(`location.pathname`); throw error; });
   }
   result.ok = result.codigos_iguais
+    && result.previa_muda_a === true
+    && result.tela_propria_a !== null
+    && result.tela_propria_destaque_a === true
+    && result.duas_telas_a === true
+    && result.camera_escolhida_b === true
     && result.conversa_bolhas_b >= 2
     && !result.layout_760?.rolagem
     && result.qualidade_a === "Baixa"

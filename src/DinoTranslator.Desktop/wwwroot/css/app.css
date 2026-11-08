@@ -1225,7 +1225,10 @@ h2.handshake__step {
    cede o espaço da direita — o vídeo nunca fica escondido atrás do painel. */
 .call__stage {
   --margem: 16px;
-  --miniatura: clamp(140px, 20cqw, 280px);
+  /* Até 3 miniaturas empilhadas: a largura acompanha a largura e a altura do palco. */
+  --miniatura: clamp(120px, min(20cqw, 36cqh), 280px);
+  --topo-miniaturas: 84px;
+  --passo-miniaturas: calc(var(--miniatura) * 9 / 16 + 12px);
   position: absolute;
   top: 12px;
   right: 12px;
@@ -1244,36 +1247,33 @@ h2.handshake__step {
   right: calc(var(--largura-conversa) + 24px);
 }
 
-.video-tile,
-.screen-tile {
+/* Fontes do palco: uma em destaque (a tela inteira do palco) e as outras em miniaturas na
+   coluna da direita, de cima para baixo; a sua câmera é sempre a última. */
+.stage-tile {
   position: absolute;
   margin: 0;
   overflow: hidden;
   background: transparent;
 }
 
-.video-tile video,
-.screen-tile video {
+.stage-tile video {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.tile--other {
-  inset: 0;
-}
-
-.tile--other video {
   object-fit: contain;
 }
 
-.tile--other figcaption {
+.stage-tile--main {
+  inset: 0;
+}
+
+.stage-tile--hidden {
   display: none;
 }
 
-.tile--me {
+.stage-tile--thumb {
   z-index: 2;
-  top: 84px;
+  top: var(--topo-miniaturas);
   right: var(--margem);
   width: var(--miniatura);
   aspect-ratio: 16 / 9;
@@ -1283,16 +1283,78 @@ h2.handshake__step {
   box-shadow: 0 16px 40px rgba(0, 0, 0, .55);
 }
 
-.tile--me video {
+.stage-tile--slot-1 { top: calc(var(--topo-miniaturas) + var(--passo-miniaturas)); }
+.stage-tile--slot-2 { top: calc(var(--topo-miniaturas) + var(--passo-miniaturas) * 2); }
+.stage-tile--slot-3 { top: calc(var(--topo-miniaturas) + var(--passo-miniaturas) * 3); }
+
+/* Câmeras em miniatura preenchem o quadro; telas aparecem inteiras. */
+.video-tile.stage-tile--thumb video {
   object-fit: cover;
+}
+
+.tile--me video {
   transform: scaleX(-1);
 }
 
-.tile--me figcaption {
+.stage-tile figcaption {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.stage-tile--thumb figcaption {
   bottom: 8px;
   left: 8px;
+  max-width: calc(100% - 16px);
   padding: 2px 9px;
   font-size: 11px;
+  white-space: nowrap;
+}
+
+/* Na miniatura, só o nome; resolução e quadros por segundo aparecem em destaque. */
+.stage-tile--thumb figcaption span {
+  display: none;
+}
+
+/* A câmera da outra pessoa em destaque dispensa legenda (o nome está na barra de cima). */
+.tile--other.stage-tile--main figcaption {
+  display: none;
+}
+
+.screen-tile.stage-tile--main figcaption {
+  top: 84px;
+  bottom: auto;
+  left: var(--margem);
+}
+
+.stage-tile__pick {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--rapido) var(--curva), background-color var(--rapido) var(--curva);
+}
+
+.stage-tile__pick:hover,
+.stage-tile__pick:focus-visible {
+  background: rgba(4, 6, 12, .35);
+  opacity: 1;
+}
+
+.stage-tile__pick .icon {
+  width: 40px;
+  height: 40px;
+  padding: 10px;
+  border: 1px solid var(--vidro-borda);
+  border-radius: 50%;
+  background: rgba(20, 24, 40, .55);
+  -webkit-backdrop-filter: var(--vidro-desfoque);
+  backdrop-filter: var(--vidro-desfoque);
 }
 
 .video-tile--off video {
@@ -1307,53 +1369,6 @@ h2.handshake__step {
   color: var(--texto-2);
   content: "câmera desligada";
   font-size: 12px;
-}
-
-.screen-tile {
-  display: none;
-  inset: 0;
-}
-
-.screen-tile video {
-  object-fit: contain;
-}
-
-.screen-tile figcaption {
-  top: 84px;
-  bottom: auto;
-}
-
-.call__stage--screen .screen-tile {
-  display: block;
-}
-
-.call__stage--screen .tile--other {
-  z-index: 2;
-  inset: auto;
-  top: 84px;
-  right: var(--margem);
-  width: var(--miniatura);
-  aspect-ratio: 16 / 9;
-  border: 1px solid rgba(255, 255, 255, .22);
-  border-radius: 20px;
-  background: #0b1020;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, .55);
-}
-
-.call__stage--screen .tile--other video {
-  object-fit: cover;
-}
-
-.call__stage--screen .tile--other figcaption {
-  display: inline-flex;
-  bottom: 8px;
-  left: 8px;
-  padding: 2px 9px;
-  font-size: 11px;
-}
-
-.call__stage--screen .tile--me {
-  top: calc(84px + var(--margem) + var(--miniatura) * 9 / 16);
 }
 
 /* Barra de cima: pílula de vidro centralizada sobre o vídeo. */
