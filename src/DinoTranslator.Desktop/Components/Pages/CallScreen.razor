@@ -148,6 +148,10 @@
               aria-pressed="@(_conversation ? "true" : "false")" title="Painel com a conversa traduzida">
         <Icon Name="conversa" /><span>Conversa</span>
       </button>
+      <button type="button" class="dock-button @(_engines ? "dock-button--active" : "")" @onclick="() => _engines = !_engines"
+              aria-pressed="@(_engines ? "true" : "false")" title="Escolher e comparar os motores da tradução">
+        <Icon Name="motor" /><span>Motores</span>
+      </button>
       <button type="button" class="dock-button @(Call.Floating ? "dock-button--active" : "")" @onclick="ToggleFloatingAsync"
               disabled="@(!Live)" aria-pressed="@(Call.Floating ? "true" : "false")" title="Janela sempre por cima, que pode ir para outro monitor">
         <Icon Name="flutuante" /><span>Janela flutuante</span>
@@ -156,6 +160,10 @@
         <Icon Name="desligar" /><span>Encerrar</span>
       </button>
     </footer>
+    @if (_engines)
+    {
+      <EnginePanel OnClose="() => _engines = false" />
+    }
     </section>
 
   @if (_conversation)
@@ -178,6 +186,7 @@
     private bool _hasMicrophone = true;
     private bool _hasCamera = true;
     private bool _conversation = true;
+    private bool _engines;
     private bool _mediaStarted;
     private string? _floatingText;
 

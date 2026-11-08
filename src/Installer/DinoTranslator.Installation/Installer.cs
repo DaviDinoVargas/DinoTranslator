@@ -129,7 +129,7 @@ public static class Installer
         var target = Path.GetFullPath(folder);
         if (Directory.Exists(target) && File.Exists(Path.Combine(target, AppExecutable)))
         {
-            Directory.Delete(target, recursive: true);
+            ClearPreviousVersion(target);
         }
         Directory.CreateDirectory(target);
 
@@ -240,6 +240,25 @@ public static class Installer
             UseShellExecute = false,
             WorkingDirectory = Path.GetTempPath(),
         });
+    }
+
+    /// <summary>
+    /// Apaga a versão anterior do app, menos os motores extras (vários GB baixados uma vez, que
+    /// valem para as próximas versões).
+    /// </summary>
+    private static void ClearPreviousVersion(string target)
+    {
+        foreach (var directory in Directory.EnumerateDirectories(target))
+        {
+            if (!string.Equals(Path.GetFileName(directory), ExtrasInstaller.FolderName, StringComparison.OrdinalIgnoreCase))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+        foreach (var file in Directory.EnumerateFiles(target))
+        {
+            File.Delete(file);
+        }
     }
 
     private static void Register(string folder, string version, InstallLocations at)

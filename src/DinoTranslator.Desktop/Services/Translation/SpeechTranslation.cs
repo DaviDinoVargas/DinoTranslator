@@ -1,3 +1,4 @@
+using DinoTranslator.Desktop.Services.Translation.Extras;
 using DinoTranslator.Desktop.Services.Translation.Local;
 
 namespace DinoTranslator.Desktop.Services.Translation;
@@ -5,8 +6,14 @@ namespace DinoTranslator.Desktop.Services.Translation;
 /// <param name="Phrases">Glossário: nomes e termos que o reconhecimento deve preferir.</param>
 public sealed record SpeechStreamOptions(string SourceLanguage, string TargetLanguage, IReadOnlyList<string> Phrases);
 
-/// <summary>Atualização de um trecho: provisória (vai se ajustando) ou final.</summary>
-public sealed record SpeechUpdate(int Segment, int Revision, string SourceText, string? TranslatedText, bool Final);
+/// <summary>Atualização de um trecho: provisória (vai se ajustando) ou final (com os tempos medidos).</summary>
+public sealed record SpeechUpdate(int Segment, int Revision, string SourceText, string? TranslatedText, bool Final, SpeechTiming? Timing = null);
+
+/// <summary>
+/// Tempos de uma frase no motor local: o reconhecimento e a tradução da versão final, e da hora em
+/// que a pessoa parou de falar até a legenda final.
+/// </summary>
+public sealed record SpeechTiming(int RecognitionMs, int TranslationMs, int AfterSpeechMs);
 
 /// <summary>Fala de uma pessoa: entra áudio PCM 16 kHz mono 16 bits, saem legendas.</summary>
 public interface ISpeechTranslationStream : IAsyncDisposable
@@ -33,30 +40,55 @@ public interface ISpeechTranslationEngine
 }
 
 /// <summary>
-/// Cria o motor configurado. Os modelos locais ficam carregados entre uma chamada e outra:
-/// carregá-los leva alguns segundos.
+/// Cria o motor configurado e guarda as peças do motor local carregadas entre uma chamada e outra
+/// (carregá-las leva alguns segundos). Durante a chamada, a combinação pode ser trocada: as peças
+/// que saem da combinação são liberadas, para não ocupar a memória da placa de vídeo.
 /// </summary>
-public sealed class SpeechEngineFactory(ModelFolder defaultModels) : IDisposable
+public sealed class SpeechEngineFactory(ModelFolder defaultModels, ExtrasFolder? extras = null) : IDisposable
 {
     private readonly Lock _gate = new();
-    private LocalSpeechRuntime? _local;
-    private string? _localFolder;
+    private readonly SemaphoreSlim _pythonGate = new(1, 1);
+    private WhisperCppEngine? _whisper;
+    private string? _whisperFolder;
+    private NllbTranslator? _nllb;
+    private string? _nllbFolder;
+    private SileroModel? _silero;
+    private PythonEngine? _python;
 
     /// <summary>%LOCALAPPDATA%\DinoTranslator\modelos.</summary>
     public ModelFolder DefaultModels { get; } = defaultModels;
 
+    public ExtrasFolder Extras { get; } = extras ?? ExtrasFolder.Default();
+
     public ModelFolder ModelsFor(TranslationSettings settings) =>
         settings.ModelsFolder is { } path ? new ModelFolder(path) : DefaultModels;
 
-    /// <summary>O motor configurado pode ser usado agora (no local: modelos baixados).</summary>
+    /// <summary>A pasta que tem o arquivo: a configurada (ou a padrão) e, depois, a dos extras do instalador.</summary>
+    public ModelFolder FolderFor(TranslationSettings settings, ModelFile file)
+    {
+        var configured = ModelsFor(settings);
+        if (configured.IsInstalled(file))
+        {
+            return configured;
+        }
+        var bundled = new ModelFolder(Extras.Models);
+        return bundled.IsInstalled(file) ? bundled : configured;
+    }
+
+    /// <summary>O motor configurado pode ser usado agora (no local: o Whisper escolhido e o NLLB baixados).</summary>
     public bool IsReady(TranslationSettings settings) => settings.Provider switch
     {
-        TranslationProvider.Local => settings.LocalModel is { } model && ModelsFor(settings).IsInstalled(model),
+        TranslationProvider.Local => settings.LocalModel is { } model
+            && LocalModels.Required(model).All(file => FolderFor(settings, file).IsInstalled(file)),
         TranslationProvider.None => false,
         _ => true,
     };
 
-    public ISpeechTranslationEngine? Create(TranslationSettings settings)
+    /// <summary>O que dá para escolher na chamada, com os modelos e componentes instalados.</summary>
+    public EngineAvailability Availability(TranslationSettings settings) =>
+        EngineAvailability.Check(new MergedFolder(this, settings), Extras);
+
+    public ISpeechTranslationEngine? Create(TranslationSettings settings, EngineChoice? choice = null)
     {
         if (!IsReady(settings))
         {
@@ -65,7 +97,7 @@ public sealed class SpeechEngineFactory(ModelFolder defaultModels) : IDisposable
         return settings.Provider switch
         {
             TranslationProvider.AzureSpeech => new AzureSpeechTranslationEngine(settings.Region!, settings.Key!),
-            TranslationProvider.Local => new LocalSpeechTranslationEngine(() => LocalRuntime(ModelsFor(settings), settings.LocalModel!.Value)),
+            TranslationProvider.Local => new ComposedSpeechTranslationEngine(this, settings, choice ?? EngineChoice.For(settings)),
 #if DEBUG
             TranslationProvider.Simulated => new SimulatedSpeechTranslationEngine(),
 #endif
@@ -73,31 +105,217 @@ public sealed class SpeechEngineFactory(ModelFolder defaultModels) : IDisposable
         };
     }
 
+    internal async Task<IRecognitionPart> RecognitionAsync(
+        TranslationSettings settings, EngineChoice choice, string language, IReadOnlyList<string> glossary, CancellationToken cancellationToken)
+    {
+        if (choice.UsesWhisperCpp)
+        {
+            var engine = await Task.Run(() => WhisperCpp(settings, choice.WhisperCppModel), cancellationToken);
+            return new WhisperCppPart(engine, engine.CreateRecognizer(language, glossary), choice.Careful);
+        }
+        var python = await PythonAsync(cancellationToken);
+        var gpu = choice.Recognizer == RecognizerOption.FasterWhisperGpu;
+        var key = RecognizerKey(choice.Recognizer);
+        await python.LoadAsync(key, "whisper", Extras.FasterWhisperTurbo, gpu, cancellationToken);
+        return new FasterWhisperPart(python, key, language, glossary.Count > 0 ? string.Join(", ", glossary) : null, choice.Careful);
+    }
+
+    internal async Task<ITranslationPart> TranslationAsync(TranslationSettings settings, EngineChoice choice, CancellationToken cancellationToken)
+    {
+        if (choice.Translator == TranslatorOption.Nllb600)
+        {
+            return new NllbOnnxPart(await Task.Run(() => NllbOnnx(settings), cancellationToken));
+        }
+        var python = await PythonAsync(cancellationToken);
+        var gpu = choice.Translator is TranslatorOption.Nllb600Gpu or TranslatorOption.Nllb13Gpu or TranslatorOption.OpusGpu;
+        if (choice.Translator is TranslatorOption.OpusGpu or TranslatorOption.OpusCpu)
+        {
+            // OPUS-MT: um modelo por grupo de idiomas, carregado quando o par aparece; sem modelo, o NLLB original.
+            var fallback = LocalModels.Translator.All(file => FolderFor(settings, file).IsInstalled(file))
+                ? new NllbOnnxPart(await Task.Run(() => NllbOnnx(settings), cancellationToken))
+                : null;
+            return new Ct2Part(python, async (source, target, token) =>
+            {
+                if (OpusModels.For(source, target) is not { } name || !Extras.HasModel(Extras.Ct2(name)))
+                {
+                    return null;
+                }
+                var key = $"{name}-{(gpu ? "gpu" : "cpu")}";
+                await python.LoadAsync(key, "marian", Extras.Ct2(name), gpu, token);
+                return key;
+            }, fallback);
+        }
+        var model = choice.Translator == TranslatorOption.Nllb600Gpu ? "nllb-600m" : "nllb-1.3b";
+        var nllbKey = $"{model}-{(gpu ? "gpu" : "cpu")}";
+        await python.LoadAsync(nllbKey, "nllb", Extras.Ct2(model), gpu, cancellationToken);
+        return new Ct2Part(python, (_, _, _) => Task.FromResult<string?>(nllbKey), fallback: null);
+    }
+
+    internal async Task<SileroModel> SileroAsync(CancellationToken cancellationToken) =>
+        await Task.Run(() =>
+        {
+            lock (_gate)
+            {
+                return _silero ??= new SileroModel(Extras.Silero);
+            }
+        }, cancellationToken);
+
+    /// <summary>Libera as peças que não fazem parte da combinação (a placa de vídeo tem só 4 GB em muitos computadores).</summary>
+    public async Task RetainAsync(EngineChoice choice)
+    {
+        lock (_gate)
+        {
+            if (!choice.UsesWhisperCpp)
+            {
+                _whisper?.Dispose();
+                _whisper = null;
+            }
+            if (choice.Translator is not (TranslatorOption.Nllb600 or TranslatorOption.OpusCpu or TranslatorOption.OpusGpu))
+            {
+                _nllb?.Dispose();
+                _nllb = null;
+            }
+        }
+        if (_python is { Running: true } python)
+        {
+            var keep = new HashSet<string>();
+            if (!choice.UsesWhisperCpp)
+            {
+                keep.Add(RecognizerKey(choice.Recognizer));
+            }
+            var gpu = choice.Translator is TranslatorOption.Nllb600Gpu or TranslatorOption.Nllb13Gpu or TranslatorOption.OpusGpu;
+            var suffix = gpu ? "gpu" : "cpu";
+            switch (choice.Translator)
+            {
+                case TranslatorOption.Nllb600Gpu:
+                    keep.Add($"nllb-600m-{suffix}");
+                    break;
+                case TranslatorOption.Nllb13Gpu or TranslatorOption.Nllb13Cpu:
+                    keep.Add($"nllb-1.3b-{suffix}");
+                    break;
+                case TranslatorOption.OpusGpu or TranslatorOption.OpusCpu:
+                    keep.UnionWith(OpusModels.All.Select(name => $"{name}-{suffix}"));
+                    break;
+            }
+            try
+            {
+                await python.KeepOnlyAsync(keep);
+            }
+            catch (PythonEngineException)
+            {
+                // Motor auxiliar parado: nada a liberar.
+            }
+        }
+    }
+
+    /// <summary>Fecha o motor auxiliar e o Silero (antes de substituir os arquivos dos extras).</summary>
+    public async Task StopExtrasAsync()
+    {
+        if (_python is { } python)
+        {
+            _python = null;
+            await python.DisposeAsync();
+        }
+        lock (_gate)
+        {
+            _silero?.Dispose();
+            _silero = null;
+        }
+    }
+
     /// <summary>Libera os modelos locais (ex.: antes de apagá-los do disco).</summary>
     public void ReleaseLocal()
     {
         lock (_gate)
         {
-            _local?.Dispose();
-            _local = null;
-            _localFolder = null;
+            _whisper?.Dispose();
+            _whisper = null;
+            _whisperFolder = null;
+            _nllb?.Dispose();
+            _nllb = null;
+            _nllbFolder = null;
         }
     }
 
-    public void Dispose() => ReleaseLocal();
+    public void Dispose()
+    {
+        ReleaseLocal();
+        lock (_gate)
+        {
+            _silero?.Dispose();
+            _silero = null;
+        }
+        if (_python is { } python)
+        {
+            _python = null;
+            python.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
+        }
+    }
 
-    private LocalSpeechRuntime LocalRuntime(ModelFolder folder, WhisperModel model)
+    private static string RecognizerKey(RecognizerOption option) =>
+        option == RecognizerOption.FasterWhisperGpu ? "fw-turbo-gpu" : "fw-turbo-cpu";
+
+    private WhisperCppEngine WhisperCpp(TranslationSettings settings, WhisperModel model)
     {
         lock (_gate)
         {
-            if (_local is null || _local.Model != model || _localFolder != folder.Path)
+            var folder = FolderFor(settings, LocalModels.Whisper(model));
+            if (_whisper is null || _whisper.Model != model || _whisperFolder != folder.Path)
             {
-                _local?.Dispose();
-                _local = null;
-                _local = LocalSpeechRuntime.Load(folder, model);
-                _localFolder = folder.Path;
+                _whisper?.Dispose();
+                _whisper = null;
+                _whisper = WhisperCppEngine.Load(folder, model);
+                _whisperFolder = folder.Path;
             }
-            return _local;
+            return _whisper;
         }
+    }
+
+    private NllbTranslator NllbOnnx(TranslationSettings settings)
+    {
+        lock (_gate)
+        {
+            var folder = FolderFor(settings, LocalModels.TranslatorDecoder);
+            if (_nllb is null || _nllbFolder != folder.Path)
+            {
+                _nllb?.Dispose();
+                _nllb = null;
+                _nllb = LocalSpeechRuntime.LoadNllb(folder);
+                _nllbFolder = folder.Path;
+            }
+            return _nllb;
+        }
+    }
+
+    private async Task<PythonEngine> PythonAsync(CancellationToken cancellationToken)
+    {
+        await _pythonGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_python is { Running: true } running)
+            {
+                return running;
+            }
+            if (_python is { } stopped)
+            {
+                await stopped.DisposeAsync();
+            }
+            if (!Extras.HasPython)
+            {
+                throw new PythonEngineException("Os motores extras não estão instalados neste computador.");
+            }
+            _python = await PythonEngine.StartAsync(Extras, cancellationToken);
+            return _python;
+        }
+        finally
+        {
+            _pythonGate.Release();
+        }
+    }
+
+    /// <summary>Visão das duas pastas de modelos (a configurada e a dos extras) para conferir o que está instalado.</summary>
+    private sealed class MergedFolder(SpeechEngineFactory factory, TranslationSettings settings) : IModelFiles
+    {
+        public bool IsInstalled(ModelFile file) => factory.FolderFor(settings, file).IsInstalled(file);
     }
 }

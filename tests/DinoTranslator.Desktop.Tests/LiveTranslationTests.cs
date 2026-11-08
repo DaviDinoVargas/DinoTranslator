@@ -154,6 +154,25 @@ public class LiveTranslationTests
         Assert.True(AppMessages.IsDisplayableText(cleaned));
     }
 
+    [Fact]
+    public async Task Traducao_recomecada_nao_repete_os_ids_dos_trechos()
+    {
+        var engine = new FakeEngine();
+        await using var first = new LiveTranslation(engine, Dino, Anna, TimeProvider.System);
+        await using var second = new LiveTranslation(engine, Dino, Anna, TimeProvider.System, generation: 2);
+        var captions = new List<Caption>();
+        first.CaptionReady += captions.Add;
+        second.CaptionReady += captions.Add;
+        await first.StartAsync([], CancellationToken.None);
+        await second.StartAsync([], CancellationToken.None);
+
+        engine.Streams[0].Stream.Emit(new SpeechUpdate(0, 0, "Oi", "Привет", Final: true));
+        engine.Streams[2].Stream.Emit(new SpeechUpdate(0, 0, "Oi de novo", "Снова привет", Final: true));
+
+        Assert.Equal(["s0", "s2-0"], captions.Select(c => c.SegmentId));
+        Assert.All(captions, c => Assert.Matches("^[a-z0-9-]{1,40}$", c.SegmentId));
+    }
+
     private sealed class FakeEngine : ISpeechTranslationEngine
     {
         public List<(SpeechStreamOptions Options, FakeStream Stream)> Streams { get; } = [];

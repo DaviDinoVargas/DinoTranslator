@@ -49,6 +49,9 @@
               </DockPanel>
               <Border Height="1" Margin="0,12" Background="{StaticResource Vidro}" />
               <CheckBox x:Name="DesktopShortcut" IsChecked="True" Content="Criar atalho na área de trabalho" />
+              <CheckBox x:Name="ExtrasCheck" IsChecked="True" Margin="0,10,0,0">
+                <TextBlock x:Name="ExtrasText" TextWrapping="Wrap" Text="Instalar os motores e modelos de tradução" />
+              </CheckBox>
             </StackPanel>
           </Border>
 
@@ -73,7 +76,7 @@
       <!-- Progresso -->
       <StackPanel x:Name="ProgressPanel" Visibility="Collapsed" VerticalAlignment="Center">
         <Image Source="DinoTranslator.png" Width="72" Height="72" RenderOptions.BitmapScalingMode="HighQuality" />
-        <TextBlock Margin="0,18,0,0" FontFamily="{StaticResource FonteTitulo}" FontSize="22" FontWeight="Bold"
+        <TextBlock x:Name="ProgressHeading" Margin="0,18,0,0" FontFamily="{StaticResource FonteTitulo}" FontSize="22" FontWeight="Bold"
                    TextAlignment="Center" Text="Instalando…" />
         <ProgressBar x:Name="Progress" Margin="24,22,24,0" Minimum="0" Maximum="100" />
         <TextBlock x:Name="ProgressText" Margin="0,10,0,0" FontSize="12" Foreground="{StaticResource Papel2}"
@@ -92,6 +95,7 @@
                      TextAlignment="Center" Text="Tudo pronto" />
           <TextBlock Margin="0,6,0,0" Foreground="{StaticResource Papel2}" TextAlignment="Center"
                      Text="O DinoTranslator está no menu Iniciar. Para remover, abra o Desinstalar.exe na pasta do app ou use Configurações › Aplicativos › Aplicativos instalados." />
+          <TextBlock x:Name="ExtrasNote" Visibility="Collapsed" Margin="0,14,0,0" Foreground="#FFD9B0" TextAlignment="Center" />
           <CheckBox x:Name="OpenNow" Margin="0,22,0,0" HorizontalAlignment="Center" IsChecked="True" Content="Abrir o DinoTranslator agora" />
         </StackPanel>
         <Button DockPanel.Dock="Bottom" Style="{StaticResource BotaoPrincipal}" Content="Concluir" VerticalAlignment="Bottom" Click="OnFinish" />

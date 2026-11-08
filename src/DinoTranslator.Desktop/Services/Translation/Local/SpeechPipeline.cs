@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Threading.Channels;
@@ -31,15 +32,28 @@ public sealed class SpeechPipeline : IAsyncDisposable
     private (int Segment, string Key, string Translation, bool Careful)? _cache;
     private CancellationTokenSource? _inFlight;
     private (int Segment, string Key)? _inFlightText;
+    private readonly bool _carefulFinals;
+    private readonly int _pauseMs;
+    private readonly Dictionary<int, long> _closedAt = [];
+    private readonly Dictionary<int, int> _recognitionMs = [];
+    private readonly Dictionary<int, int> _translationMs = [];
     private int _pendingSegments;
     private int _pendingJobs;
 
     /// <param name="recognize">Recebe o trecho inteiro: a versão final pode ser reconhecida com mais cuidado.</param>
     /// <param name="translate">(texto, cuidadosa, cancelamento); <c>null</c> quando os dois falam o mesmo idioma.</param>
-    public SpeechPipeline(Func<SpeechSegment, CancellationToken, Task<string>> recognize, Func<string, bool, CancellationToken, Task<string>>? translate)
+    /// <param name="carefulFinals">A versão final é traduzida com cuidado (busca em feixe); senão, reaproveita a rápida.</param>
+    /// <param name="pauseMs">Pausa que fechou a frase, somada ao tempo medido até a legenda final.</param>
+    public SpeechPipeline(
+        Func<SpeechSegment, CancellationToken, Task<string>> recognize,
+        Func<string, bool, CancellationToken, Task<string>>? translate,
+        bool carefulFinals = true,
+        int pauseMs = 0)
     {
         _recognize = recognize;
         _translate = translate;
+        _carefulFinals = carefulFinals;
+        _pauseMs = pauseMs;
         _recognition = Task.Run(RecognizeLoopAsync);
         _translation = translate is null ? Task.CompletedTask : Task.Run(TranslateLoopAsync);
     }
@@ -51,6 +65,13 @@ public sealed class SpeechPipeline : IAsyncDisposable
 
     public void Enqueue(SpeechSegment segment)
     {
+        if (segment.Final)
+        {
+            lock (_emit)
+            {
+                _closedAt[segment.Index] = Stopwatch.GetTimestamp();
+            }
+        }
         if (_segments.Writer.TryWrite(segment))
         {
             Interlocked.Increment(ref _pendingSegments);
@@ -102,7 +123,15 @@ public sealed class SpeechPipeline : IAsyncDisposable
                 {
                     continue;
                 }
+                var started = Stopwatch.GetTimestamp();
                 var text = await _recognize(segment, _stop.Token);
+                if (segment.Final)
+                {
+                    lock (_emit)
+                    {
+                        _recognitionMs[segment.Index] = (int)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                    }
+                }
                 if (text.Length == 0)
                 {
                     string? last;
@@ -182,9 +211,11 @@ public sealed class SpeechPipeline : IAsyncDisposable
                     continue;
                 }
                 var key = Key(job.Text);
+                var careful = job.Final && _carefulFinals;
+                var started = Stopwatch.GetTimestamp();
                 string translation;
-                // A provisória aproveita qualquer tradução do mesmo texto; a final, só a cuidadosa.
-                if (_cache is { } cached && cached.Segment == job.Segment && cached.Key == key && (cached.Careful || !job.Final))
+                // A provisória aproveita qualquer tradução do mesmo texto; a final cuidadosa, só a cuidadosa.
+                if (_cache is { } cached && cached.Segment == job.Segment && cached.Key == key && (cached.Careful || !careful))
                 {
                     translation = cached.Translation;
                 }
@@ -198,7 +229,7 @@ public sealed class SpeechPipeline : IAsyncDisposable
                     }
                     try
                     {
-                        translation = await _translate!(job.Text, job.Final, attempt?.Token ?? _stop.Token);
+                        translation = await _translate!(job.Text, careful, attempt?.Token ?? _stop.Token);
                     }
                     catch (OperationCanceledException) when (!_stop.IsCancellationRequested)
                     {
@@ -213,7 +244,14 @@ public sealed class SpeechPipeline : IAsyncDisposable
                             _inFlightText = null;
                         }
                     }
-                    _cache = (job.Segment, key, translation, job.Final);
+                    _cache = (job.Segment, key, translation, careful);
+                }
+                if (job.Final)
+                {
+                    lock (_emit)
+                    {
+                        _translationMs[job.Segment] = (int)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                    }
                 }
                 Emit(job.Segment, job.Text, translation, job.Final);
             }
@@ -261,11 +299,21 @@ public sealed class SpeechPipeline : IAsyncDisposable
                 revision,
                 final ? text : _latestText.GetValueOrDefault(segment, text),
                 _translate is null ? null : _latestTranslation.GetValueOrDefault(segment),
-                final);
+                final,
+                final ? Timing(segment) : null);
             Forget(segment);
         }
         Updated?.Invoke(update);
     }
+
+    /// <summary>Tempos da frase que acabou de fechar (chamado com o lock tomado).</summary>
+    private SpeechTiming? Timing(int segment) =>
+        _closedAt.TryGetValue(segment, out var closed)
+            ? new SpeechTiming(
+                _recognitionMs.GetValueOrDefault(segment),
+                _translationMs.GetValueOrDefault(segment),
+                _pauseMs + (int)Stopwatch.GetElapsedTime(closed).TotalMilliseconds)
+            : null;
 
     /// <summary>Guarda só os trechos recentes.</summary>
     private void Forget(int current)
@@ -276,6 +324,9 @@ public sealed class SpeechPipeline : IAsyncDisposable
             _latestText.Remove(old);
             _latestTranslation.Remove(old);
             _finished.Remove(old);
+            _closedAt.Remove(old);
+            _recognitionMs.Remove(old);
+            _translationMs.Remove(old);
         }
     }
 

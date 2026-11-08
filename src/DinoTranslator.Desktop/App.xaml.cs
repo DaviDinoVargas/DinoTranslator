@@ -41,10 +41,30 @@ public partial class App : Application
 #endif
         services.AddDesktopServices(settings);
         _services = services.BuildServiceProvider();
+        UseBundledModels(_services);
 
         MainWindow = new MainWindow(_services, settings);
         MainWindow.Show();
         RepairInstallation();
+    }
+
+    /// <summary>
+    /// Modelos trazidos pelo instalador (na pasta dos extras) e tradução ainda desligada: começa com
+    /// o motor local, sem a pessoa precisar baixar nada de novo.
+    /// </summary>
+    private static void UseBundledModels(IServiceProvider services)
+    {
+        var store = services.GetRequiredService<Services.Translation.TranslationSettingsStore>();
+        if (store.Current.IsConfigured)
+        {
+            return;
+        }
+        var local = new Services.Translation.TranslationSettings(
+            Services.Translation.TranslationProvider.Local, null, null, Services.Translation.Local.WhisperModel.Turbo);
+        if (services.GetRequiredService<Services.Translation.SpeechEngineFactory>().IsReady(local))
+        {
+            store.Save(local);
+        }
     }
 
     /// <summary>

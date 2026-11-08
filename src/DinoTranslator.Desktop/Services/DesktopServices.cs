@@ -25,6 +25,7 @@ public static class DesktopServices
         services.AddSingleton(new TranslationSettingsStore(settings.TranslationFile));
         services.AddSingleton(new ConnectionSettingsStore(settings.ConnectionFile));
         services.AddSingleton(new SpeechEngineFactory(new ModelFolder(settings.ModelsFolder)));
+        services.AddSingleton(new EngineChoiceStore(settings.EngineChoiceFile));
 
         if (settings.Mode == ConnectionMode.Code)
         {

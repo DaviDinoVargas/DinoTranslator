@@ -46,6 +46,22 @@ public sealed class InstallerTests : IDisposable
     }
 
     [Fact]
+    public void Atualizacao_mantem_os_motores_extras()
+    {
+        Install(Folder);
+        var model = Path.Combine(Folder, ExtrasInstaller.FolderName, "ct2", "opus-pt-zle", "model.bin");
+        Directory.CreateDirectory(Path.GetDirectoryName(model)!);
+        File.WriteAllText(model, "pesos");
+        File.WriteAllText(Path.Combine(Folder, "sobra-da-versao-anterior.dll"), "x");
+
+        Install(Folder);
+
+        Assert.True(File.Exists(model));
+        Assert.False(File.Exists(Path.Combine(Folder, "sobra-da-versao-anterior.dll")));
+        Assert.True(File.Exists(Path.Combine(Folder, Installer.AppExecutable)));
+    }
+
+    [Fact]
     public void Atalho_que_falha_nao_impede_o_registro()
     {
         // A "pasta" da área de trabalho é um arquivo: o atalho não tem onde ficar.

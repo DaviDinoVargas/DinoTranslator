@@ -6,10 +6,10 @@ using Whisper.net.LibraryLoader;
 namespace DinoTranslator.Desktop.Services.Translation.Local;
 
 /// <summary>
-/// Modelos locais carregados uma única vez: o Whisper na placa de vídeo (Vulkan, com a CPU
-/// como reserva) e o NLLB na CPU. A placa de vídeo atende um trecho por vez.
+/// Whisper (whisper.cpp) na placa de vídeo, por Vulkan, com a CPU como reserva. Carregado uma vez e
+/// compartilhado pelas duas pessoas; a placa atende um trecho por vez.
 /// </summary>
-public sealed partial class LocalSpeechRuntime : IDisposable
+public sealed partial class WhisperCppEngine : IDisposable
 {
     /// <summary>Caminhos comparados na versão final (o padrão do Whisper).</summary>
     public const int FinalBeamSize = 5;
@@ -23,16 +23,13 @@ public sealed partial class LocalSpeechRuntime : IDisposable
 
     private readonly WhisperFactory _whisper;
 
-    private LocalSpeechRuntime(WhisperFactory whisper, NllbTranslator translator, WhisperModel model)
+    private WhisperCppEngine(WhisperFactory whisper, WhisperModel model)
     {
         _whisper = whisper;
-        Translator = translator;
         Model = model;
     }
 
     public WhisperModel Model { get; }
-
-    public NllbTranslator Translator { get; }
 
     /// <summary>Uma transcrição por vez: duas na mesma placa só disputariam memória.</summary>
     public SemaphoreSlim RecognitionGate { get; } = new(1, 1);
@@ -40,30 +37,12 @@ public sealed partial class LocalSpeechRuntime : IDisposable
     /// <summary>"Vulkan" ou "Cpu": onde o reconhecimento está rodando.</summary>
     public string Device => RuntimeOptions.LoadedLibrary?.ToString() ?? "desconhecido";
 
-    public static LocalSpeechRuntime Load(ModelFolder folder, WhisperModel model)
+    public static WhisperCppEngine Load(ModelFolder folder, WhisperModel model)
     {
-        foreach (var file in LocalModels.Required(model))
-        {
-            folder.Verify(file);
-        }
-
+        folder.Verify(LocalModels.Whisper(model));
         RuntimeOptions.RuntimeLibraryOrder = [RuntimeLibrary.Vulkan, RuntimeLibrary.Cpu];
         var whisper = WhisperFactory.FromPath(folder.PathOf(LocalModels.Whisper(model)), new WhisperFactoryOptions { UseGpu = true, UseFlashAttention = true });
-        try
-        {
-            var threads = Math.Clamp(Environment.ProcessorCount / 2, 2, 8);
-            var translator = new NllbTranslator(
-                folder.PathOf(LocalModels.TranslatorEncoder),
-                folder.PathOf(LocalModels.TranslatorDecoder),
-                folder.PathOf(LocalModels.TranslatorVocabulary),
-                threads);
-            return new LocalSpeechRuntime(whisper, translator, model);
-        }
-        catch
-        {
-            whisper.Dispose();
-            throw;
-        }
+        return new WhisperCppEngine(whisper, model);
     }
 
     /// <summary>
@@ -108,22 +87,11 @@ public sealed partial class LocalSpeechRuntime : IDisposable
 
     public void Dispose()
     {
-        Translator.Dispose();
         _whisper.Dispose();
         RecognitionGate.Dispose();
     }
 
     public static string WhisperLanguage(string language) => language[..2];
-
-    private WhisperProcessorBuilder Builder(string language, IReadOnlyList<string> glossary)
-    {
-        var builder = _whisper.CreateBuilder()
-            .WithLanguage(WhisperLanguage(language))
-            .WithNoContext()
-            .WithSingleSegment()
-            .WithThreads(Math.Clamp(Environment.ProcessorCount / 2, 2, 8));
-        return glossary.Count > 0 ? builder.WithPrompt(string.Join(", ", glossary)) : builder;
-    }
 
     /// <summary>
     /// O Whisper às vezes "ouve" créditos de legenda em ruído (vício dos dados de treino);
@@ -136,7 +104,7 @@ public sealed partial class LocalSpeechRuntime : IDisposable
     }
 
     /// <summary>O Whisper precisa de pelo menos 1 s de áudio; o resto é completado com silêncio.</summary>
-    private static float[] PadToMinimum(float[] samples)
+    public static float[] PadToMinimum(float[] samples)
     {
         const int minimum = SpeechSegmenter.SampleRate * 11 / 10;
         if (samples.Length >= minimum)
@@ -148,6 +116,16 @@ public sealed partial class LocalSpeechRuntime : IDisposable
         return padded;
     }
 
+    private WhisperProcessorBuilder Builder(string language, IReadOnlyList<string> glossary)
+    {
+        var builder = _whisper.CreateBuilder()
+            .WithLanguage(WhisperLanguage(language))
+            .WithNoContext()
+            .WithSingleSegment()
+            .WithThreads(Math.Clamp(Environment.ProcessorCount / 2, 2, 8));
+        return glossary.Count > 0 ? builder.WithPrompt(string.Join(", ", glossary)) : builder;
+    }
+
     [GeneratedRegex(@"amara\.org|субтитр|подписывайтесь|продолжение следует|legendas? (pela|por)|subt[ií]tulos (realizados|por)|subtitles by", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SubtitleCredits();
 
@@ -155,7 +133,77 @@ public sealed partial class LocalSpeechRuntime : IDisposable
     private static partial Regex BracketedNoise();
 }
 
-/// <summary>Os dois reconhecedores de uma pessoa (veja <see cref="LocalSpeechRuntime.CreateRecognizer"/>).</summary>
+/// <summary>
+/// O motor local padrão: Whisper (whisper.cpp) na placa de vídeo e NLLB-200 600M (ONNX) no
+/// processador. As outras combinações montam as peças separadamente (veja <see cref="EngineChoice"/>).
+/// </summary>
+public sealed class LocalSpeechRuntime : IDisposable
+{
+    public const int FinalBeamSize = WhisperCppEngine.FinalBeamSize;
+    public const int QuickAudioContext = WhisperCppEngine.QuickAudioContext;
+
+    private LocalSpeechRuntime(WhisperCppEngine whisper, NllbTranslator translator)
+    {
+        Whisper = whisper;
+        Translator = translator;
+    }
+
+    public WhisperCppEngine Whisper { get; }
+
+    public NllbTranslator Translator { get; }
+
+    public WhisperModel Model => Whisper.Model;
+
+    public SemaphoreSlim RecognitionGate => Whisper.RecognitionGate;
+
+    public string Device => Whisper.Device;
+
+    public static LocalSpeechRuntime Load(ModelFolder folder, WhisperModel model)
+    {
+        var whisper = WhisperCppEngine.Load(folder, model);
+        try
+        {
+            return new LocalSpeechRuntime(whisper, LoadNllb(folder));
+        }
+        catch
+        {
+            whisper.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>NLLB-200 600M (ONNX, int8) no processador, conferido pelo SHA-256 antes de carregar.</summary>
+    public static NllbTranslator LoadNllb(ModelFolder folder)
+    {
+        foreach (var file in LocalModels.Translator)
+        {
+            folder.Verify(file);
+        }
+        return new NllbTranslator(
+            folder.PathOf(LocalModels.TranslatorEncoder),
+            folder.PathOf(LocalModels.TranslatorDecoder),
+            folder.PathOf(LocalModels.TranslatorVocabulary),
+            Math.Clamp(Environment.ProcessorCount / 2, 2, 8));
+    }
+
+    public SpeechRecognizer CreateRecognizer(string language, IReadOnlyList<string> glossary) =>
+        Whisper.CreateRecognizer(language, glossary);
+
+    public Task<string> TranscribeAsync(SpeechRecognizer recognizer, float[] samples, bool final, CancellationToken cancellationToken) =>
+        Whisper.TranscribeAsync(recognizer, samples, final, cancellationToken);
+
+    public static string WhisperLanguage(string language) => WhisperCppEngine.WhisperLanguage(language);
+
+    public static string RemoveArtifacts(string text) => WhisperCppEngine.RemoveArtifacts(text);
+
+    public void Dispose()
+    {
+        Translator.Dispose();
+        Whisper.Dispose();
+    }
+}
+
+/// <summary>Os dois reconhecedores de uma pessoa (veja <see cref="WhisperCppEngine.CreateRecognizer"/>).</summary>
 public sealed class SpeechRecognizer(WhisperProcessor quick, WhisperProcessor careful) : IAsyncDisposable
 {
     public WhisperProcessor For(bool final) => final ? careful : quick;

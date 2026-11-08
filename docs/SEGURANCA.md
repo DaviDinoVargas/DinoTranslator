@@ -56,6 +56,8 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 - Chat escrito e correções: mensagens de tipo próprio (texto com id `e-…`, correção de um trecho), com texto exibível de até 2.000 caracteres e ao menos uma letra ou número. Quem traduz aceita no máximo 40 por minuto da outra pessoa (cada uma custa uma tradução) e só corrige trechos que são dela — ninguém muda a fala dos outros.
 - O motor simulado e a variável que o liga existem só no build Debug.
 - Motor local: modelos baixados por HTTPS de versões fixas dos repositórios, conferidos por tamanho e SHA-256 ao baixar e de novo ao carregar (a pasta pode estar em outro disco); arquivo diferente é recusado. A pasta só pode ficar num disco fixo deste computador, e apagar os modelos remove só os arquivos do catálogo.
+- Motores extras: cada pacote tem endereço HTTPS, tamanho e SHA-256 fixos no código (instalador e app); o que chega diferente é apagado antes de ser aberto, e a extração recusa qualquer entrada que tente sair da pasta do componente. Ficam na pasta `extras` do próprio app, com a mesma confiança dos arquivos do app.
+- Motor auxiliar (Python): processo filho que conversa só pela entrada e saída padrão, em modo isolado (`-I`: sem variáveis PYTHON* nem pacotes do usuário), com o acesso à internet do Hugging Face desligado; não abre portas, recebe só caminhos e textos do app, limita o áudio a 30 s e o texto a 2.000 caracteres, e termina quando o app fecha a entrada.
 
 ### 3.4 Dados locais
 
