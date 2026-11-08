@@ -124,15 +124,65 @@ public sealed class LocalModelsIntegrationTests(ITestOutputHelper output)
     {
         using var runtime = LocalSpeechRuntime.Load(LocalModelsFactAttribute.Folder, model);
         await using var recognizer = runtime.CreateRecognizer(Languages.PortugueseBrazil, ["Anna"]);
-        var samples = ToFloat(Speak(Sentence));
-        await runtime.TranscribeAsync(recognizer, samples[..16_000], CancellationToken.None);
+        var warmup = ToFloat(Speak(Sentence));
+        await runtime.TranscribeAsync(recognizer, warmup[..16_000], final: false, CancellationToken.None);
+        await runtime.TranscribeAsync(recognizer, warmup[..16_000], final: true, CancellationToken.None);
 
-        var watch = Stopwatch.StartNew();
-        var text = await runtime.TranscribeAsync(recognizer, samples, CancellationToken.None);
+        // Frases de conversa, com nomes, números e sons difíceis (s, ch, lh, nh, r).
+        string[] sentences =
+        [
+            Sentence,
+            "Amanhã de manhã eu vou chegar às sete e meia, então me liga antes de sair.",
+            "A minha filha está estudando russo há três meses e já consegue conversar um pouco.",
+            "Você prefere conversar em português ou em inglês enquanto a tradução não melhora?",
+        ];
+        foreach (var final in new[] { false, true })
+        {
+            var errors = 0;
+            var words = 0;
+            long elapsed = 0;
+            foreach (var sentence in sentences)
+            {
+                var samples = ToFloat(Speak(sentence));
+                var watch = Stopwatch.StartNew();
+                var text = await runtime.TranscribeAsync(recognizer, samples, final, CancellationToken.None);
+                elapsed += watch.ElapsedMilliseconds;
+                var (wrong, total) = WordErrors(sentence, text);
+                errors += wrong;
+                words += total;
+                output.WriteLine($"{(final ? "cuidadoso" : "rápido")} {watch.ElapsedMilliseconds} ms ({samples.Length / 16} ms de áudio): {text}");
+            }
+            output.WriteLine($"{model} {(final ? "cuidadoso" : "rápido")} em {runtime.Device}: {errors}/{words} palavras erradas ({100.0 * errors / words:0.0}%), {elapsed} ms no total");
+        }
 
-        output.WriteLine($"{model} em {runtime.Device}: {samples.Length / 16} ms de áudio reconhecidos em {watch.ElapsedMilliseconds} ms: {text}");
-        Assert.Contains("praia", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Paulo", text, StringComparison.OrdinalIgnoreCase);
+        var check = await runtime.TranscribeAsync(recognizer, ToFloat(Speak(Sentence)), final: true, CancellationToken.None);
+        Assert.Contains("praia", check, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Paulo", check, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Distância de edição entre as palavras (sem pontuação nem maiúsculas) e o total da referência.</summary>
+    private static (int Errors, int Words) WordErrors(string reference, string hypothesis)
+    {
+        var expected = SpeechPipeline.Key(reference).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var actual = SpeechPipeline.Key(hypothesis).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var distance = new int[expected.Length + 1, actual.Length + 1];
+        for (var i = 0; i <= expected.Length; i++)
+        {
+            distance[i, 0] = i;
+        }
+        for (var j = 0; j <= actual.Length; j++)
+        {
+            distance[0, j] = j;
+        }
+        for (var i = 1; i <= expected.Length; i++)
+        {
+            for (var j = 1; j <= actual.Length; j++)
+            {
+                var substitution = distance[i - 1, j - 1] + (expected[i - 1] == actual[j - 1] ? 0 : 1);
+                distance[i, j] = Math.Min(substitution, Math.Min(distance[i - 1, j], distance[i, j - 1]) + 1);
+            }
+        }
+        return (distance[expected.Length, actual.Length], expected.Length);
     }
 
     /// <summary>Voz do próprio Windows em português, em PCM 16 kHz mono 16 bits.</summary>

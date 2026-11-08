@@ -9,6 +9,9 @@ const ICE_SERVERS = [
 ];
 const GATHER_TIMEOUT_MS = 4000;
 const STATS_INTERVAL_MS = 1000;
+// O ping mostrado é a mediana dos últimos segundos: uma medida isolada salta quando um quadro
+// grande de vídeo passa na frente, e não diz como a conversa está.
+const RTT_WINDOW = 5;
 const MAX_SIGNAL_LENGTH = 64 * 1024;
 const MAX_APP_MESSAGE_LENGTH = 16 * 1024;
 const AUDIO_MAX_BITRATE = 128_000;
@@ -74,6 +77,29 @@ export function mediaConstraints(quality = videoQuality(), { highFidelity = fals
   };
 }
 
+/**
+ * Mostra a própria câmera só com a imagem. O atributo "muted" do HTML não basta: o Chromium só o
+ * respeita quando vem do HTML lido da página, não quando o Blazor cria o elemento — e aí o vídeo
+ * tocava o som do próprio microfone (a pessoa se ouvia, e o microfone captava de novo: eco).
+ */
+export function showPreview(element, stream) {
+  element.muted = true;
+  element.defaultMuted = true;
+  element.srcObject = stream ? new MediaStream(stream.getVideoTracks()) : null;
+}
+
+/**
+ * Áudio para o reconhecimento já em 16 kHz: o próprio navegador converte a fala com o filtro
+ * dele, de boa qualidade. Se não der, a captura (pcm-capture.js) filtra e converte sozinha.
+ */
+export function speechContext() {
+  try {
+    return new AudioContext({ sampleRate: 16000 });
+  } catch {
+    return new AudioContext();
+  }
+}
+
 /** Saída de som escolhida no teste de dispositivos (alto-falante ou fone). */
 export async function applySpeaker(element) {
   const speaker = preference("speaker");
@@ -109,6 +135,7 @@ export class CallPeer {
     this.quality = videoQuality();
     this.remoteStream = new MediaStream();
     this.statsTimer = null;
+    this.rttSamples = [];
 
     // Tela compartilhada: um transceptor só para ela, reaproveitado a cada compartilhamento,
     // e um fluxo de id fixo que o outro lado usa para separar a tela da câmera.
@@ -388,7 +415,7 @@ export class CallPeer {
   async enableSpeechCapture(onAudio) {
     this.onSpeechAudio = onAudio;
     if (!this.audioContext) {
-      this.audioContext = new AudioContext();
+      this.audioContext = speechContext();
       await this.audioContext.audioWorklet.addModule(new URL("./pcm-capture.js", import.meta.url));
       // Mantém o grafo de áudio ativo sem tocar nada de novo: saída com volume zero.
       this.silentSink = this.audioContext.createGain();
@@ -570,8 +597,13 @@ export class CallPeer {
         return;
       }
       const local = report.get(pair.localCandidateId);
-      const rtt = typeof pair.currentRoundTripTime === "number" ? Math.round(pair.currentRoundTripTime * 1000) : -1;
-      this.events.onStats?.(rtt, local?.candidateType ?? "desconhecido");
+      if (typeof pair.currentRoundTripTime === "number") {
+        this.rttSamples.push(Math.round(pair.currentRoundTripTime * 1000));
+        if (this.rttSamples.length > RTT_WINDOW) {
+          this.rttSamples.shift();
+        }
+      }
+      this.events.onStats?.(median(this.rttSamples), local?.candidateType ?? "desconhecido");
       await this.collectScreenStats();
     } catch {
       // Estatística é só informativa.
@@ -619,6 +651,15 @@ export class CallPeer {
     }
     this.pc.close();
   }
+}
+
+/** Mediana (-1 sem medidas). */
+export function median(values) {
+  if (values.length === 0) {
+    return -1;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
 }
 
 /** Impressão digital SHA-256 do certificado DTLS, em maiúsculas. */
@@ -744,6 +785,7 @@ export const setScreenMode = (mode) => current?.setScreenMode(mode);
 export const shareStream = (stream, mode) => current.startScreenShare({ mode, stream });
 
 export function bindRemoteScreen(video) {
+  video.muted = true;
   video.srcObject = current.remoteScreen;
 }
 
@@ -755,7 +797,7 @@ export async function startMedia(localVideo, remoteVideo, highFidelity) {
   remoteVideo.srcObject = current.remoteStream;
   await applySpeaker(remoteVideo);
   const stream = await current.startLocalMedia({ highFidelity });
-  localVideo.srcObject = stream;
+  showPreview(localVideo, stream);
   return { camera: current.hasLocalTrack("video"), microphone: current.hasLocalTrack("audio") };
 }
 

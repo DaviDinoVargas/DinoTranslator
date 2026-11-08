@@ -168,11 +168,11 @@ public sealed class SpeechPipelineTests
         Assert.Equal(expected, SpeechPipeline.Key(text));
     }
 
-    private static Func<float[], CancellationToken, Task<string>> Recognize() =>
-        async (samples, token) =>
+    private static Func<SpeechSegment, CancellationToken, Task<string>> Recognize() =>
+        async (segment, token) =>
         {
             await Task.Delay(5, token);
-            return Texts[(int)samples[0]];
+            return Texts[(int)segment.Samples[0]];
         };
 
     private static SpeechSegment Segment(int index, int text, bool final) => new(index, [text], final);

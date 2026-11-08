@@ -12,7 +12,12 @@ public sealed record SpeechSegment(int Index, float[] Samples, bool Final);
 public sealed class SpeechSegmenter
 {
     public const int SampleRate = 16_000;
-    public const int PauseToCloseMs = 600;
+
+    /// <summary>
+    /// Pausa que fecha a frase. Pausas menores (respirar, pensar no meio da frase) não cortam:
+    /// frase picotada é traduzida pedaço por pedaço, sem o sentido do todo.
+    /// </summary>
+    public const int PauseToCloseMs = 800;
     public const int MaxSegmentMs = 12_000;
     public const int PartialEveryMs = 1_000;
     public const int MinVoiceMs = 300;

@@ -1,5 +1,4 @@
 using DinoTranslator.Shared;
-using Whisper.net;
 
 namespace DinoTranslator.Desktop.Services.Translation.Local;
 
@@ -22,7 +21,7 @@ public sealed class LocalSpeechTranslationEngine(Func<LocalSpeechRuntime> runtim
     /// </summary>
     private sealed class Stream : ISpeechTranslationStream
     {
-        private readonly WhisperProcessor _recognizer;
+        private readonly SpeechRecognizer _recognizer;
         private readonly SpeechSegmenter _segmenter = new();
         private readonly SpeechPipeline _pipeline;
 
@@ -32,7 +31,7 @@ public sealed class LocalSpeechTranslationEngine(Func<LocalSpeechRuntime> runtim
             var translate = Languages.NeedsTranslation(options.SourceLanguage, options.TargetLanguage)
                 ? (text, token) => Task.Run(() => runtime.Translator.Translate(text, options.SourceLanguage, options.TargetLanguage, token), token)
                 : (Func<string, CancellationToken, Task<string>>?)null;
-            _pipeline = new SpeechPipeline((samples, token) => runtime.TranscribeAsync(_recognizer, samples, token), translate);
+            _pipeline = new SpeechPipeline((segment, token) => runtime.TranscribeAsync(_recognizer, segment.Samples, segment.Final, token), translate);
             _pipeline.Updated += update => Updated?.Invoke(update);
             _pipeline.Failed += () => Failed?.Invoke("O motor local parou de responder. A chamada continua, sem legendas.");
         }
