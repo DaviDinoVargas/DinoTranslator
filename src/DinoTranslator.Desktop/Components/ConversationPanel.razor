@@ -6,17 +6,20 @@
    (com o original menor), e as suas à direita, com o que ela está lendo. *@
 <aside class="conversation" aria-label="Conversa traduzida">
   <header class="conversation__head">
-    <p class="conversation__title">Conversa</p>
-    <p class="conversation__where">@Where</p>
-    <button type="button" class="conversation__copy button button--quiet" @onclick="Copy" disabled="@(Call.Captions.Transcript.Count == 0)">
-      @(_copied ? "Copiada" : "Copiar")
+    <Icon Name="conversa" />
+    <div class="conversation__titles">
+      <p class="conversation__title">Conversa</p>
+      <p class="conversation__where">@Where</p>
+    </div>
+    <button type="button" class="conversation__copy button button--quiet" @onclick="Copy" disabled="@(Call.Captions.Transcript.Count == 0)" title="Copiar a conversa">
+      <Icon Name="@(_copied ? "ok" : "copiar")" />@(_copied ? "Copiada" : "Copiar")
     </button>
-    <button type="button" class="conversation__close" @onclick="OnClose" aria-label="Fechar a conversa" title="Fechar">✕</button>
+    <button type="button" class="conversation__close" @onclick="OnClose" aria-label="Fechar a conversa" title="Fechar"><Icon Name="fechar" /></button>
   </header>
 
   @if (Call.TranslationNotice is { } notice)
   {
-    <p class="conversation__notice" role="status">@notice</p>
+    <p class="conversation__notice" role="status"><Icon Name="info" />@notice</p>
   }
 
   @* Lista invertida: o mais recente fica embaixo e a rolagem acompanha sozinha. *@
@@ -31,7 +34,7 @@
     }
     @if (Call.Captions.Transcript.Count == 0 && Call.TranslationNotice is null)
     {
-      <li class="conversation__empty">As falas aparecem aqui, traduzidas, enquanto vocês conversam.</li>
+      <li class="conversation__empty"><Icon Name="traducao" />As falas aparecem aqui, traduzidas, enquanto vocês conversam.</li>
     }
   </ol>
 </aside>

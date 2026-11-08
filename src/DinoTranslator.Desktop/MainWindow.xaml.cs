@@ -35,10 +35,10 @@ public partial class MainWindow : Window
     private void UpdateClocks()
     {
         var now = DateTimeOffset.UtcNow;
-        var text = $"VOCÊ {FormatTime(now, _titleBar.LocalTimeZone)}";
+        var text = $"Você {FormatTime(now, _titleBar.LocalTimeZone)}";
         if (_titleBar.PeerName is { } peerName && _titleBar.PeerTimeZone is { } peerZone)
         {
-            text += $"   ·   {peerName.ToUpperInvariant()} {FormatTime(now, peerZone)}";
+            text += $"   ·   {peerName} {FormatTime(now, peerZone)}";
         }
         Clocks.Text = text;
         Status.Text = _titleBar.Status ?? string.Empty;

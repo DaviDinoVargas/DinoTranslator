@@ -1,0 +1,29 @@
+@* Marca do DinoTranslator: dois balões de conversa que se encontram — o dourado do ipê com
+   o "A" (você) e o azul Gzhel com o "Я" (a outra pessoa). O azul recorta o dourado com a cor
+   do fundo, como peças que se encaixam. *@
+<svg class="brand-mark @Class" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="@($"{_id}-ipe")" gradientUnits="userSpaceOnUse" x1="8" y1="9" x2="46" y2="45">
+      <stop offset="0" stop-color="#FFE15A" />
+      <stop offset="1" stop-color="#FF9F0A" />
+    </linearGradient>
+    <linearGradient id="@($"{_id}-gzhel")" gradientUnits="userSpaceOnUse" x1="20" y1="25" x2="56" y2="61">
+      <stop offset="0" stop-color="#5AB0FF" />
+      <stop offset="1" stop-color="#0A6FE0" />
+    </linearGradient>
+  </defs>
+  <path d="M18 9H36A10 10 0 0 1 46 19V27A10 10 0 0 1 36 37H21.5L12 44L13.5 35.9A10 10 0 0 1 8 27V19A10 10 0 0 1 18 9Z"
+        fill="@($"url(#{_id}-ipe)")" />
+  <path class="brand-mark__cut" d="M30 25H46A10 10 0 0 1 56 35V43A10 10 0 0 1 50.5 51.9L52 60L42.5 53H30A10 10 0 0 1 20 43V35A10 10 0 0 1 30 25Z"
+        fill="@($"url(#{_id}-gzhel)")" stroke-width="3.5" stroke-linejoin="round" />
+  <text x="25.5" y="22.6" text-anchor="middle" font-family="Inter, Segoe UI, sans-serif" font-weight="800" font-size="11" fill="#0A0F1F">A</text>
+  <text x="38" y="43.4" text-anchor="middle" font-family="Inter, Segoe UI, sans-serif" font-weight="800" font-size="11" fill="#FFFFFF">Я</text>
+</svg>
+
+@code {
+    // Cada marca na tela tem os próprios gradientes (ids únicos no documento).
+    private readonly string _id = "marca-" + Guid.NewGuid().ToString("N")[..8];
+
+    [Parameter]
+    public string? Class { get; set; }
+}

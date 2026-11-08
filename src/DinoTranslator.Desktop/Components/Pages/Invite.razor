@@ -6,24 +6,35 @@
 
 <main class="handshake">
   <section class="handshake__panel">
-    <p class="handshake__kicker">Nova chamada</p>
+    <div class="handshake__top">
+      <BrandMark />
+      <p class="handshake__kicker">Nova chamada</p>
+    </div>
+    <ol class="stepper" aria-label="Andamento">
+      <li class="stepper__item @(Call.Stage is CallStage.WaitingAnswer or CallStage.Idle ? "stepper__item--now" : "stepper__item--done")" data-step="1">Convite</li>
+      <li class="stepper__item @(Call.Stage == CallStage.Connecting ? "stepper__item--now" : "")" data-step="2">Resposta</li>
+      <li class="stepper__item" data-step="3">Chamada</li>
+    </ol>
 
     @if (Call.Stage == CallStage.Ended)
     {
       <h1 class="handshake__step">A chamada não conectou</h1>
-      <p class="login__error" role="alert">@Call.Problem</p>
+      <p class="login__error" role="alert"><Icon Name="alerta" />@Call.Problem</p>
       <div class="form__actions">
-        <button type="button" class="button button--primary" @onclick="NewInviteAsync">Criar novo convite</button>
+        <button type="button" class="button button--primary" @onclick="NewInviteAsync"><Icon Name="repetir" />Criar novo convite</button>
       </div>
     }
     else if (Call.Stage == CallStage.Connecting)
     {
-      <h1 class="handshake__step">Conectando com @Call.Peer?.Name<span class="connecting" aria-hidden="true"></span></h1>
-      <p class="handshake__hint">Os dois computadores estão se procurando pela internet. Costuma levar poucos segundos.</p>
+      <div class="handshake__connecting">
+        <div class="radar"><Avatar Name="@Call.Peer?.Name" /></div>
+        <h1 class="handshake__step">Conectando com @Call.Peer?.Name<span class="connecting" aria-hidden="true"></span></h1>
+        <p class="handshake__hint">Os dois computadores estão se procurando pela internet. Costuma levar poucos segundos.</p>
+      </div>
     }
     else
     {
-      <h1 class="handshake__step">1 · Envie o convite</h1>
+      <h1 class="handshake__step">Envie o convite</h1>
       @if (_invite is null)
       {
         <p class="handshake__hint">@(_error is null ? "Preparando o convite…" : "")</p>
@@ -35,7 +46,7 @@
         </p>
         <textarea class="code-box" readonly rows="4" aria-label="Código de convite">@_invite</textarea>
         <button type="button" class="button button--primary" @onclick="CopyInvite">
-          @(_copied ? "Convite copiado" : "Copiar convite")
+          <Icon Name="@(_copied ? "ok" : "copiar")" />@(_copied ? "Convite copiado" : "Copiar convite")
         </button>
 
         @if (Call.AutoConnect == AutoConnect.Listening)
@@ -46,12 +57,12 @@
         }
 
         <details class="handshake__manual" open="@(Call.AutoConnect != AutoConnect.Listening)">
-          <summary>@(Call.AutoConnect == AutoConnect.Listening ? "Não conectou sozinho? Cole a resposta" : "2 · Cole a resposta")</summary>
+          <summary>@(Call.AutoConnect == AutoConnect.Listening ? "Não conectou sozinho? Cole a resposta" : "Cole a resposta")</summary>
           <p class="handshake__hint">Se a outra pessoa mandar o código de resposta pelo mensageiro, cole aqui.</p>
           <textarea class="code-box" rows="4" placeholder="DT1.…" spellcheck="false" aria-label="Código de resposta"
                     @bind="_answer" @bind:event="oninput"></textarea>
           <div class="form__actions">
-            <button type="button" class="button" @onclick="PasteAnswer">Colar</button>
+            <button type="button" class="button" @onclick="PasteAnswer"><Icon Name="colar" />Colar</button>
             <button type="button" class="button button--primary" @onclick="ConnectAsync"
                     disabled="@string.IsNullOrWhiteSpace(_answer)">Conectar</button>
           </div>
@@ -61,10 +72,10 @@
 
     @if (_error is not null && Call.Stage != CallStage.Ended)
     {
-      <p class="login__error" role="alert">@_error</p>
+      <p class="login__error" role="alert"><Icon Name="alerta" />@_error</p>
     }
 
-    <button type="button" class="button button--quiet handshake__cancel" @onclick="CancelAsync">
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="CancelAsync"><Icon Name="voltar" />
       @(Call.Stage == CallStage.Ended ? "Voltar ao início" : "Cancelar")
     </button>
   </section>

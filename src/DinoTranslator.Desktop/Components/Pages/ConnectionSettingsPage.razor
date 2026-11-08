@@ -6,13 +6,16 @@
 
 <main class="handshake">
   <section class="handshake__panel">
-    <p class="handshake__kicker">Configurações</p>
+    <div class="handshake__top">
+      <span class="setting-row__icon setting-row__icon--indigo"><Icon Name="rede" /></span>
+      <p class="handshake__kicker">Configurações</p>
+    </div>
     <h1 class="handshake__step">Conexão</h1>
     <p class="handshake__hint">
       A chamada liga os dois computadores direto, sem servidor no meio. Teste se a sua rede deixa a ligação direta passar.
     </p>
 
-    <button type="button" class="button" @onclick="DiagnoseAsync" disabled="@_testing">
+    <button type="button" class="button button--primary" @onclick="DiagnoseAsync" disabled="@_testing"><Icon Name="rede" />
       @(_testing ? "Testando a rede…" : "Testar minha rede")
     </button>
 
@@ -40,7 +43,7 @@
     }
     @if (_testError is not null)
     {
-      <p class="login__error" role="alert">@_testError</p>
+      <p class="login__error" role="alert"><Icon Name="alerta" />@_testError</p>
     }
 
     <h2 class="handshake__step">Retransmissão (opcional)</h2>
@@ -66,7 +69,7 @@
       </label>
       @if (_error is not null)
       {
-        <p class="login__error" role="alert">@_error</p>
+        <p class="login__error" role="alert"><Icon Name="alerta" />@_error</p>
       }
       @if (_saved)
       {
@@ -75,13 +78,13 @@
       <div class="form__actions">
         @if (Store.Current.HasRelay)
         {
-          <button type="button" class="button button--quiet" @onclick="Remove">Remover</button>
+          <button type="button" class="button button--quiet" @onclick="Remove"><Icon Name="lixeira" />Remover</button>
         }
         <button type="button" class="button button--primary" @onclick="Save">Salvar</button>
       </div>
     </div>
 
-    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))">Voltar</button>
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))"><Icon Name="voltar" />Voltar</button>
   </section>
 </main>
 

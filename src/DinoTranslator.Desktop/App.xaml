@@ -3,13 +3,18 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnMainWindowClose">
   <Application.Resources>
-    <SolidColorBrush x:Key="Tinta" Color="#12110F" />
-    <SolidColorBrush x:Key="Superficie2" Color="#24211D" />
-    <SolidColorBrush x:Key="Linha" Color="#34302A" />
-    <SolidColorBrush x:Key="Papel" Color="#F1ECE2" />
-    <SolidColorBrush x:Key="Papel2" Color="#A8A091" />
-    <SolidColorBrush x:Key="Ipe" Color="#F2B705" />
-    <SolidColorBrush x:Key="Erro" Color="#D9534F" />
+    <!-- Mesmas cores da interface (wwwroot/css/app.css): noite azul, vidro claro e cores de sistema. -->
+    <SolidColorBrush x:Key="Tinta" Color="#0B1124" />
+    <SolidColorBrush x:Key="Superficie" Color="#151B30" />
+    <SolidColorBrush x:Key="Superficie2" Color="#1F2740" />
+    <SolidColorBrush x:Key="Vidro" Color="#16FFFFFF" />
+    <SolidColorBrush x:Key="VidroBorda" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="Linha" Color="#262E48" />
+    <SolidColorBrush x:Key="Papel" Color="#F5F7FF" />
+    <SolidColorBrush x:Key="Papel2" Color="#A3ABC4" />
+    <SolidColorBrush x:Key="Azul" Color="#0A84FF" />
+    <SolidColorBrush x:Key="Ipe" Color="#0A84FF" />
+    <SolidColorBrush x:Key="Erro" Color="#FF453A" />
 
     <Style x:Key="CaptionButton" TargetType="Button">
       <Setter Property="Width" Value="46" />
@@ -19,6 +24,7 @@
       <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
       <Setter Property="FontSize" Value="10" />
       <Setter Property="Focusable" Value="False" />
+      <Setter Property="Margin" Value="0" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
@@ -27,7 +33,7 @@
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Surface" Property="Background" Value="{StaticResource Superficie2}" />
+                <Setter TargetName="Surface" Property="Background" Value="{StaticResource Vidro}" />
                 <Setter Property="Foreground" Value="{StaticResource Papel}" />
               </Trigger>
             </ControlTemplate.Triggers>

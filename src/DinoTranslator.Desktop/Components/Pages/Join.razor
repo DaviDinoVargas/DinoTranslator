@@ -6,24 +6,32 @@
 
 <main class="handshake">
   <section class="handshake__panel">
-    <p class="handshake__kicker">Entrar com código</p>
+    <div class="handshake__top">
+      <BrandMark />
+      <p class="handshake__kicker">Entrar com código</p>
+    </div>
+    <ol class="stepper" aria-label="Andamento">
+      <li class="stepper__item @(_answerCode is null ? "stepper__item--now" : "stepper__item--done")" data-step="1">Convite</li>
+      <li class="stepper__item @(_answerCode is not null && Call.Stage == CallStage.Connecting ? "stepper__item--now" : "")" data-step="2">Resposta</li>
+      <li class="stepper__item" data-step="3">Chamada</li>
+    </ol>
 
     @if (_answerCode is not null && Call.Stage == CallStage.Ended)
     {
       <h1 class="handshake__step">A chamada não conectou</h1>
-      <p class="login__error" role="alert">@Call.Problem</p>
+      <p class="login__error" role="alert"><Icon Name="alerta" />@Call.Problem</p>
       <div class="form__actions">
-        <button type="button" class="button button--primary" @onclick="StartOver">Colar outro convite</button>
+        <button type="button" class="button button--primary" @onclick="StartOver"><Icon Name="repetir" />Colar outro convite</button>
       </div>
     }
     else if (_answerCode is null)
     {
-      <h1 class="handshake__step">1 · Cole o convite</h1>
+      <h1 class="handshake__step">Cole o convite</h1>
       <p class="handshake__hint">Cole o código de convite que você recebeu pelo mensageiro.</p>
       <textarea class="code-box" rows="4" placeholder="DT1.…" spellcheck="false" aria-label="Código de convite"
                 @bind="_invite" @bind:event="oninput" disabled="@_busy"></textarea>
       <div class="form__actions">
-        <button type="button" class="button" @onclick="PasteInvite" disabled="@_busy">Colar</button>
+        <button type="button" class="button" @onclick="PasteInvite" disabled="@_busy"><Icon Name="colar" />Colar</button>
         <button type="button" class="button button--primary" @onclick="AnswerAsync"
                 disabled="@(_busy || string.IsNullOrWhiteSpace(_invite))">
           @(_busy ? "Preparando…" : "Entrar na chamada")
@@ -32,25 +40,28 @@
     }
     else
     {
-      <h1 class="handshake__step">Conectando com @Call.Peer?.Name<span class="connecting" aria-hidden="true"></span></h1>
-      <p class="handshake__hint">@AutoConnectHint</p>
+      <div class="handshake__connecting">
+        <div class="radar"><Avatar Name="@Call.Peer?.Name" /></div>
+        <h1 class="handshake__step">Conectando com @Call.Peer?.Name<span class="connecting" aria-hidden="true"></span></h1>
+        <p class="handshake__hint">@AutoConnectHint</p>
+      </div>
 
       <details class="handshake__manual" open="@ManualOpen">
         <summary>@(ManualOpen ? "Mande a resposta pelo mensageiro" : "Não conectou em um minuto? Mande a resposta")</summary>
         <p class="handshake__hint">Copie e mande para <strong>@Call.Peer?.Name</strong>, que cola no convite que criou.</p>
         <textarea class="code-box" readonly rows="4" aria-label="Código de resposta">@_answerCode</textarea>
         <button type="button" class="button button--primary" @onclick="CopyAnswer">
-          @(_copied ? "Resposta copiada" : "Copiar resposta")
+          <Icon Name="@(_copied ? "ok" : "copiar")" />@(_copied ? "Resposta copiada" : "Copiar resposta")
         </button>
       </details>
     }
 
     @if (_error is not null)
     {
-      <p class="login__error" role="alert">@_error</p>
+      <p class="login__error" role="alert"><Icon Name="alerta" />@_error</p>
     }
 
-    <button type="button" class="button button--quiet handshake__cancel" @onclick="CancelAsync">
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="CancelAsync"><Icon Name="voltar" />
       @(Call.Stage == CallStage.Ended ? "Voltar ao início" : "Cancelar")
     </button>
   </section>

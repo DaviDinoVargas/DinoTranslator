@@ -1,0 +1,24 @@
+@* Iniciais da pessoa num círculo com a cor dela: ipê para você, Gzhel para a outra pessoa. *@
+<span class="avatar @(Mine ? "avatar--me" : "") @Class" aria-hidden="true">@Initials(Name)</span>
+
+@code {
+    [Parameter]
+    public string? Name { get; set; }
+
+    [Parameter]
+    public bool Mine { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    public static string Initials(string? name)
+    {
+        var words = (name ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return words switch
+        {
+            [] => "?",
+            [var only] => char.ToUpperInvariant(only[0]).ToString(),
+            [var first, .., var last] => $"{char.ToUpperInvariant(first[0])}{char.ToUpperInvariant(last[0])}",
+        };
+    }
+}

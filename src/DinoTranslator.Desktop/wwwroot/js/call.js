@@ -776,6 +776,8 @@ export function setRemoteAudio(enabled) {
 
 const FLOATING_SIZE = { width: 1280, height: 720 };
 const FLOATING_FPS = 30;
+const FLOATING_MAIN_FONT = "500 44px 'Golos Text', 'Segoe UI', sans-serif";
+const FLOATING_SECONDARY_FONT = "30px 'Golos Text', 'Segoe UI', sans-serif";
 
 let floating = null;
 
@@ -830,7 +832,7 @@ function drawFloating() {
   }
   const { canvas, source } = state;
   const context = canvas.getContext("2d");
-  context.fillStyle = "#000";
+  context.fillStyle = "#060a16";
   context.fillRect(0, 0, canvas.width, canvas.height);
   if (source.videoWidth > 0) {
     // Imagem inteira, sem corte (faixas pretas se a proporção for outra).
@@ -842,31 +844,41 @@ function drawFloating() {
   if (!state.main) {
     return;
   }
-  const margin = 40;
-  const maxWidth = canvas.width - margin * 2;
-  context.font = "500 46px 'Segoe UI', sans-serif";
+  // Cartão de vidro arredondado com a faixa azul da outra pessoa, como na janela principal.
+  const margin = 48;
+  const padding = 28;
+  const maxWidth = canvas.width - margin * 2 - padding * 2 - 8;
+  context.font = FLOATING_MAIN_FONT;
   const mainLines = wrapText(context, state.main, maxWidth, 3);
-  context.font = "30px 'Segoe UI', sans-serif";
+  context.font = FLOATING_SECONDARY_FONT;
   const secondaryLines = state.secondary ? wrapText(context, state.secondary, maxWidth, 2) : [];
-  const height = mainLines.length * 56 + secondaryLines.length * 38 + 40;
-  const gradient = context.createLinearGradient(0, canvas.height - height - 40, 0, canvas.height);
-  gradient.addColorStop(0, "rgba(18, 17, 15, 0)");
-  gradient.addColorStop(0.35, "rgba(18, 17, 15, .88)");
-  gradient.addColorStop(1, "rgba(18, 17, 15, .92)");
-  context.fillStyle = gradient;
-  context.fillRect(0, canvas.height - height - 40, canvas.width, height + 40);
-  context.textAlign = "center";
+  const boxHeight = padding * 2 + mainLines.length * 56 + secondaryLines.length * 38 - 10;
+  const boxTop = canvas.height - boxHeight - 36;
+  context.fillStyle = "rgba(13, 20, 40, .86)";
+  context.beginPath();
+  context.roundRect(margin, boxTop, canvas.width - margin * 2, boxHeight, 28);
+  context.fill();
+  context.strokeStyle = "rgba(255, 255, 255, .08)";
+  context.lineWidth = 2;
+  context.stroke();
+  context.fillStyle = "#3d6fe0";
+  context.beginPath();
+  context.roundRect(margin, boxTop, 8, boxHeight, [28, 0, 0, 28]);
+  context.fill();
+  context.textAlign = "left";
   context.textBaseline = "top";
-  let y = canvas.height - height + 8;
-  context.fillStyle = "#a8a091";
+  let y = boxTop + padding;
+  const x = margin + padding + 8;
+  context.font = FLOATING_SECONDARY_FONT;
+  context.fillStyle = "#a6afca";
   for (const line of secondaryLines) {
-    context.fillText(line, canvas.width / 2, y);
+    context.fillText(line, x, y);
     y += 38;
   }
-  context.font = "500 46px 'Segoe UI', sans-serif";
-  context.fillStyle = "#f1ece2";
+  context.font = FLOATING_MAIN_FONT;
+  context.fillStyle = "#eef1fa";
   for (const line of mainLines) {
-    context.fillText(line, canvas.width / 2, y);
+    context.fillText(line, x, y);
     y += 56;
   }
 }

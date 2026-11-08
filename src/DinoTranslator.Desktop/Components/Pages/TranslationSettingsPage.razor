@@ -9,7 +9,10 @@
 
 <main class="handshake">
   <section class="handshake__panel">
-    <p class="handshake__kicker">Configurações</p>
+    <div class="handshake__top">
+      <span class="setting-row__icon"><Icon Name="traducao" /></span>
+      <p class="handshake__kicker">Configurações</p>
+    </div>
     <h1 class="handshake__step">Tradução</h1>
     <p class="handshake__hint">
       Basta um dos dois configurar: as legendas chegam à outra pessoa pela própria chamada.
@@ -17,12 +20,14 @@
 
     @if (Store.Current.IsConfigured && !_editing)
     {
-      <div class="profile-card">
-        <p class="profile-card__name">@Describe(Store.Current)</p>
-        <p class="profile-card__meta">@StatusOf(Store.Current)</p>
+      <div class="profile-card profile-card--stack">
+        <div class="profile-card__text">
+          <p class="profile-card__name">@Describe(Store.Current)</p>
+          <p class="profile-card__meta"><span class="chip chip--dot @(Engines.IsReady(Store.Current) ? "chip--ok" : "chip--warn")">@StatusOf(Store.Current)</span></p>
+        </div>
         <div class="form__actions">
-          <button type="button" class="button button--quiet" @onclick="StartEditing">Trocar</button>
-          <button type="button" class="button button--quiet" @onclick="Remove">Desligar tradução</button>
+          <button type="button" class="button" @onclick="StartEditing"><Icon Name="editar" />Trocar</button>
+          <button type="button" class="button button--quiet" @onclick="Remove"><Icon Name="fechar" />Desligar tradução</button>
         </div>
       </div>
     }
@@ -57,9 +62,9 @@
 
           <div class="field">
             <span class="field__label">Pasta dos modelos</span>
-            <p class="folder-path">@Folder.Path</p>
+            <p class="folder-path"><Icon Name="pasta" />@Folder.Path</p>
             <div class="form__actions">
-              <button type="button" class="button button--quiet" @onclick="ChooseFolder" disabled="@Downloading">Escolher pasta…</button>
+              <button type="button" class="button button--quiet" @onclick="ChooseFolder" disabled="@Downloading"><Icon Name="pasta" />Escolher pasta…</button>
               @if (_modelsFolder is not null)
               {
                 <button type="button" class="button button--quiet" @onclick="() => _modelsFolder = null" disabled="@Downloading">Usar a pasta padrão</button>
@@ -83,7 +88,7 @@
           }
           else
           {
-            <button type="button" class="button" @onclick="DownloadAsync">
+            <button type="button" class="button button--primary" @onclick="DownloadAsync"><Icon Name="baixar" />
               Baixar modelos (@Size(LocalModels.DownloadSize(_localModel)))
             </button>
           }
@@ -106,7 +111,7 @@
 
         @if (_error is not null)
         {
-          <p class="login__error" role="alert">@_error</p>
+          <p class="login__error" role="alert"><Icon Name="alerta" />@_error</p>
         }
 
         <div class="form__actions">
@@ -119,14 +124,14 @@
 
         @if (_provider == TranslationProvider.Local && Folder.IsInstalled(_localModel) && !Downloading)
         {
-          <button type="button" class="button button--quiet handshake__cancel" @onclick="RemoveModels">
+          <button type="button" class="button button--quiet handshake__cancel" @onclick="RemoveModels"><Icon Name="lixeira" />
             Apagar os modelos baixados
           </button>
         }
       </div>
     }
 
-    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))" disabled="@Downloading">Voltar</button>
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))" disabled="@Downloading"><Icon Name="voltar" />Voltar</button>
   </section>
 </main>
 

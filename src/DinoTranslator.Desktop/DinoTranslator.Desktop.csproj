@@ -9,6 +9,7 @@
     <RootNamespace>DinoTranslator.Desktop</RootNamespace>
     <AssemblyName>DinoTranslator</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\DinoTranslator.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,6 +32,11 @@
     <None Remove="appsettings.json" />
     <Content Remove="appsettings.json" />
     <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\DinoTranslator.ico" />
+    <Resource Include="Assets\DinoTranslator.png" />
   </ItemGroup>
 
   <ItemGroup>

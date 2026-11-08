@@ -5,76 +5,8 @@
 @inject ProfileStore Profiles
 @inject NavigationManager Navigation
 
-<main class="call">
-  <header class="call__bar">
-    <p class="call__peer">
-      @Call.Peer?.Name
-      @if (Call.Peer is { } peer)
-      {
-        <span class="tag tag--other">@Languages.Get(peer.Language).Tag</span>
-      }
-    </p>
-    @if (Call.SecurityCode is { } securityCode)
-    {
-      <p class="call__security" title="Os dois devem ver o mesmo número. Se for diferente, encerrem a chamada.">
-        código de segurança <span class="call__digits">@securityCode</span>
-      </p>
-    }
-    <p class="call__route">
-      @if (Call.RoundTripMs is { } rtt)
-      {
-        <span>@rtt ms</span>
-      }
-      @if (Call.Route is { } route)
-      {
-        <span> · conexão @route</span>
-      }
-    </p>
-    <label class="call__quality">
-      <span>Vídeo</span>
-      <select value="@Call.VideoQuality" @onchange="ChangeQualityAsync" disabled="@(!Live)" aria-label="Qualidade do vídeo enviado">
-        <option value="@VideoQuality.Maxima">Máxima · 1080p</option>
-        <option value="@VideoQuality.Alta">Alta · 720p</option>
-        <option value="@VideoQuality.Media">Média · 480p</option>
-        <option value="@VideoQuality.Baixa">Baixa · 360p</option>
-      </select>
-    </label>
-  </header>
+<main class="call @(_conversation ? "call--chat" : "")">
 
-  @if (Call.Problem is { } problem)
-  {
-    <p class="call__problem" role="alert">
-      @problem
-      @if (Call.Stage is CallStage.Ended or CallStage.Idle)
-      {
-        <button type="button" class="button button--quiet" @onclick="BackHome">Voltar ao início</button>
-      }
-    </p>
-  }
-
-  @if (Call.SharingScreen)
-  {
-    <div class="call__sharing" role="status">
-      <span class="call__sharing-label">Você está compartilhando a tela</span>
-      @if (Call.ScreenStats is { } sent)
-      {
-        <span class="call__sharing-stats">enviando @sent</span>
-      }
-      <div class="segmented" role="group" aria-label="Qualidade da tela">
-        <button type="button" class="segmented__option @(Call.ScreenMode == ScreenMode.Detail ? "segmented__option--on" : "")"
-                aria-pressed="@(Call.ScreenMode == ScreenMode.Detail ? "true" : "false")" @onclick="() => Call.SetScreenModeAsync(ScreenMode.Detail)">
-          Nítida · texto
-        </button>
-        <button type="button" class="segmented__option @(Call.ScreenMode == ScreenMode.Motion ? "segmented__option--on" : "")"
-                aria-pressed="@(Call.ScreenMode == ScreenMode.Motion ? "true" : "false")" @onclick="() => Call.SetScreenModeAsync(ScreenMode.Motion)">
-          Fluida · vídeo
-        </button>
-      </div>
-      <button type="button" class="button button--quiet" @onclick="Call.StopScreenShareAsync">Parar</button>
-    </div>
-  }
-
-  <div class="call__body">
     <section class="call__stage @(Call.RemoteScreen ? "call__stage--screen" : "")" aria-label="Vídeo da chamada">
       <figure class="screen-tile">
         <video @ref="_remoteScreen" autoplay playsinline muted></video>
@@ -96,44 +28,127 @@
       </figure>
       @if (Call.Floating)
       {
-        <p class="call__floating-note">A imagem de @Call.Peer?.Name está na janela flutuante.</p>
+        <p class="call__floating-note"><Icon Name="flutuante" />A imagem de @Call.Peer?.Name está na janela flutuante.</p>
       }
       <CaptionStrip />
+    <header class="call__bar">
+      <div class="call__who">
+        <Avatar Name="@Call.Peer?.Name" />
+        <div>
+          <p class="call__peer">
+            @Call.Peer?.Name
+            @if (Call.Peer is { } peer)
+            {
+              <span class="tag tag--other">@Languages.Get(peer.Language).Tag</span>
+            }
+          </p>
+          @if (Call.Peer is { } speaker)
+          {
+            <p class="call__subline">fala @Languages.Get(speaker.Language).NativeName</p>
+          }
+        </div>
+      </div>
+      @if (Call.SecurityCode is { } securityCode)
+      {
+        <p class="call__security" title="Os dois devem ver o mesmo número. Se for diferente, encerrem a chamada.">
+          <Icon Name="escudo" /><span class="call__security-label">código de segurança</span> <span class="call__digits">@securityCode</span>
+        </p>
+      }
+      @if (Call.RoundTripMs is { } rtt)
+      {
+        <p class="call__route" title="Tempo de ida e volta até o outro computador">
+          <span class="signal signal--@SignalLevel(rtt)" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span>@rtt ms</span>
+          @if (Call.Route is { } route)
+          {
+            <span class="call__route-path"> · conexão @route</span>
+          }
+        </p>
+      }
+      else
+      {
+        <p class="call__route"></p>
+      }
+      <label class="call__quality">
+        <span>Vídeo</span>
+        <select value="@Call.VideoQuality" @onchange="ChangeQualityAsync" disabled="@(!Live)" aria-label="Qualidade do vídeo enviado">
+          <option value="@VideoQuality.Maxima">Máxima · 1080p</option>
+          <option value="@VideoQuality.Alta">Alta · 720p</option>
+          <option value="@VideoQuality.Media">Média · 480p</option>
+          <option value="@VideoQuality.Baixa">Baixa · 360p</option>
+        </select>
+      </label>
+    </header>
+    @if (Call.Problem is { } problem)
+    {
+      <p class="call__problem" role="alert">
+        <Icon Name="alerta" />@problem
+        @if (Call.Stage is CallStage.Ended or CallStage.Idle)
+        {
+          <button type="button" class="button button--quiet" @onclick="BackHome">Voltar ao início</button>
+        }
+      </p>
+    }
+
+    @if (Call.SharingScreen)
+    {
+      <div class="call__sharing" role="status">
+        <Icon Name="tela" /><span class="call__sharing-label">Você está compartilhando a tela</span>
+        @if (Call.ScreenStats is { } sent)
+        {
+          <span class="call__sharing-stats">enviando @sent</span>
+        }
+        <div class="segmented" role="group" aria-label="Qualidade da tela">
+          <button type="button" class="segmented__option @(Call.ScreenMode == ScreenMode.Detail ? "segmented__option--on" : "")"
+                  aria-pressed="@(Call.ScreenMode == ScreenMode.Detail ? "true" : "false")" @onclick="() => Call.SetScreenModeAsync(ScreenMode.Detail)">
+            Nítida · texto
+          </button>
+          <button type="button" class="segmented__option @(Call.ScreenMode == ScreenMode.Motion ? "segmented__option--on" : "")"
+                  aria-pressed="@(Call.ScreenMode == ScreenMode.Motion ? "true" : "false")" @onclick="() => Call.SetScreenModeAsync(ScreenMode.Motion)">
+            Fluida · vídeo
+          </button>
+        </div>
+        <button type="button" class="button button--quiet" @onclick="Call.StopScreenShareAsync">Parar</button>
+      </div>
+    }
+
+    <footer class="call__dock">
+      <button type="button" class="dock-button @(_microphone ? "dock-button--on" : "dock-button--muted")" @onclick="ToggleMicrophoneAsync"
+              disabled="@(!Live || !_hasMicrophone)" aria-pressed="@(_microphone ? "true" : "false")" title="Seu microfone">
+        <Icon Name="@(_microphone ? "microfone" : "microfone-mudo")" /><span>@(_microphone ? "Microfone" : "Microfone mudo")</span>
+      </button>
+      <button type="button" class="dock-button @(_camera ? "dock-button--on" : "dock-button--muted")" @onclick="ToggleCameraAsync"
+              disabled="@(!Live || !_hasCamera)" aria-pressed="@(_camera ? "true" : "false")" title="Sua câmera">
+        <Icon Name="@(_camera ? "camera" : "camera-desligada")" /><span>@(_camera ? "Câmera" : "Câmera desligada")</span>
+      </button>
+      <button type="button" class="dock-button @(_sound ? "dock-button--on" : "dock-button--muted")" @onclick="ToggleSoundAsync"
+              disabled="@(!Live)" aria-pressed="@(_sound ? "true" : "false")" title="Som da outra pessoa neste computador">
+        <Icon Name="@(_sound ? "som" : "som-mudo")" /><span>@(_sound ? "Som da chamada" : "Som desligado")</span>
+      </button>
+      <span class="dock__divider" aria-hidden="true"></span>
+      <button type="button" class="dock-button @(Call.SharingScreen ? "dock-button--active" : "")" @onclick="ToggleScreenAsync"
+              disabled="@(!Live)" aria-pressed="@(Call.SharingScreen ? "true" : "false")" title="Mostrar uma tela ou janela">
+        <Icon Name="tela" /><span>@(Call.SharingScreen ? "Parar tela" : "Compartilhar tela")</span>
+      </button>
+      <button type="button" class="dock-button @(_conversation ? "dock-button--active" : "")" @onclick="() => _conversation = !_conversation"
+              aria-pressed="@(_conversation ? "true" : "false")" title="Painel com a conversa traduzida">
+        <Icon Name="conversa" /><span>Conversa</span>
+      </button>
+      <button type="button" class="dock-button @(Call.Floating ? "dock-button--active" : "")" @onclick="ToggleFloatingAsync"
+              disabled="@(!Live)" aria-pressed="@(Call.Floating ? "true" : "false")" title="Janela sempre por cima, que pode ir para outro monitor">
+        <Icon Name="flutuante" /><span>Janela flutuante</span>
+      </button>
+      <button type="button" class="dock-button dock-button--end" @onclick="HangUpAsync" title="Encerrar a chamada">
+        <Icon Name="desligar" /><span>Encerrar</span>
+      </button>
+    </footer>
     </section>
 
-    @if (_conversation)
-    {
-      <ConversationPanel OnClose="() => _conversation = false" />
-    }
-  </div>
+  @if (_conversation)
+  {
+    <ConversationPanel OnClose="() => _conversation = false" />
+  }
 
-  <footer class="call__dock">
-    <button type="button" class="dock-button @(_microphone ? "dock-button--on" : "dock-button--muted")" @onclick="ToggleMicrophoneAsync"
-            disabled="@(!Live || !_hasMicrophone)" aria-pressed="@(_microphone ? "true" : "false")" title="Seu microfone">
-      @(_microphone ? "Microfone" : "Microfone mudo")
-    </button>
-    <button type="button" class="dock-button @(_camera ? "dock-button--on" : "dock-button--muted")" @onclick="ToggleCameraAsync"
-            disabled="@(!Live || !_hasCamera)" aria-pressed="@(_camera ? "true" : "false")" title="Sua câmera">
-      @(_camera ? "Câmera" : "Câmera desligada")
-    </button>
-    <button type="button" class="dock-button @(_sound ? "dock-button--on" : "dock-button--muted")" @onclick="ToggleSoundAsync"
-            disabled="@(!Live)" aria-pressed="@(_sound ? "true" : "false")" title="Som da outra pessoa neste computador">
-      @(_sound ? "Som da chamada" : "Som desligado")
-    </button>
-    <button type="button" class="dock-button @(Call.SharingScreen ? "dock-button--on" : "")" @onclick="ToggleScreenAsync"
-            disabled="@(!Live)" aria-pressed="@(Call.SharingScreen ? "true" : "false")">
-      @(Call.SharingScreen ? "Parar tela" : "Compartilhar tela")
-    </button>
-    <button type="button" class="dock-button @(_conversation ? "dock-button--on" : "")" @onclick="() => _conversation = !_conversation"
-            aria-pressed="@(_conversation ? "true" : "false")" title="Painel com a conversa traduzida">
-      Conversa
-    </button>
-    <button type="button" class="dock-button @(Call.Floating ? "dock-button--on" : "")" @onclick="ToggleFloatingAsync"
-            disabled="@(!Live)" aria-pressed="@(Call.Floating ? "true" : "false")" title="Janela sempre por cima, que pode ir para outro monitor">
-      Janela flutuante
-    </button>
-    <button type="button" class="dock-button dock-button--end" @onclick="HangUpAsync">Encerrar</button>
-  </footer>
 </main>
 
 @code {
@@ -150,6 +165,15 @@
     private string? _floatingText;
 
     private bool Live => Call.Stage == CallStage.Connected;
+
+    /// <summary>Barras de sinal pela latência: 4 até 100 ms, 1 acima de 400 ms.</summary>
+    private static int SignalLevel(int roundTripMs) => roundTripMs switch
+    {
+        < 100 => 4,
+        < 200 => 3,
+        < 400 => 2,
+        _ => 1,
+    };
 
     protected override void OnInitialized()
     {

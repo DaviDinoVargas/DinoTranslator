@@ -1,71 +1,55 @@
 # DinoTranslator — Identidade visual
 
-## 1. Conceito: Ipê e Gzhel
+## 1. Conceito: vidro sobre a noite
 
-Dois símbolos culturais, sem bandeiras: o **ipê-amarelo**, árvore brasileira, e a **porcelana Gzhel**, o azul-cobalto da tradição russa. Na tela de cada um, **você é ipê e a outra pessoa é Gzhel**, seja qual for o idioma de cada um; tudo o que a pessoa diz — legenda, mensagem, quadro de câmera — leva essa cor. Quem olha a tela sabe de quem é cada frase sem ler o nome.
+Um app de chamada que parece nativo de um telefone moderno: **limpo, centralizado e em vidro**. O fundo é um papel de parede azul-noite com o padrão da porcelana **Gzhel** (azul russo) bem sutil nas bordas, um brilho dourado de **ipê** (amarelo brasileiro) no canto de cima e um azul no de baixo. Por cima dele, tudo é feito de **vidro fosco**: painéis translúcidos que desfocam o fundo, com borda fina clara e um reflexo no alto.
 
-O fundo é escuro, cor de tinta; a tipografia é editorial; as divisões são linhas finas e os cantos são retos. A sensação desejada é a de uma cabine de interpretação, não a de um template.
+A marca são dois balões de conversa que se encontram: o **dourado com o "A"** atrás e o **azul com o "Я"** na frente — o português e o russo, as duas pessoas da chamada.
 
-## 2. Regras para não ficar genérico
+## 2. Princípios
 
-- Sem gradientes coloridos, sem vidro fosco, sem cartões flutuando com sombra grande.
-- Sem emojis como ícones: ícones próprios em traço de 1,5 px, com cantos retos.
-- Sem fonte padrão do sistema: tipografia própria embutida no app.
-- Raio de canto de 2 px (no máximo 4 px). Separação por linhas, não por sombras.
-- Layout assimétrico: palco grande e trilho lateral; hierarquia pela tipografia, não por caixas.
+- **Centralizado e alinhado**: colunas de 540–580 px no meio da tela; títulos e textos curtos centralizados; formulários alinhados à esquerda dentro dos cartões.
+- **Vidro, não caixa**: superfícies translúcidas com desfoque (`backdrop-filter: blur(28px) saturate(170%)`), borda `rgba(255,255,255,.13)`, brilho `inset 0 1px 0 rgba(255,255,255,.12)` e reflexo diagonal.
+- **Redondo**: pílulas em botões, campos com 14 px, cartões com 22 px, folhas com 30 px; controles da chamada em círculos.
+- **Pouco texto, ícones claros**: ícones próprios em traço de 1,8 px com pontas arredondadas, embutidos no app.
+- **Nada da internet**: fontes, ícones e imagens vão dentro do app (a política de segurança da página só aceita o que é do próprio app).
 
-## 3. Cores — tema escuro (padrão)
+## 3. Cores (modo escuro)
 
-| Token            | Hex       | Uso                                              |
-|------------------|-----------|--------------------------------------------------|
-| `--tinta`        | `#12110F` | fundo                                            |
-| `--superficie`   | `#1B1916` | painéis                                          |
-| `--superficie-2` | `#24211D` | campos, hover                                    |
-| `--linha`        | `#34302A` | divisórias                                       |
-| `--papel`        | `#F1ECE2` | texto principal                                  |
-| `--papel-2`      | `#A8A091` | texto secundário                                 |
-| `--ipe`          | `#F2B705` | você: bordas, marcadores, texto de destaque      |
-| `--ipe-fundo`    | `#3A2E0B` | fundos com a sua cor                             |
-| `--gzhel`        | `#3D6FE0` | a outra pessoa: bordas e marcadores              |
-| `--gzhel-texto`  | `#86A6F2` | a outra pessoa: texto de destaque (contraste ≥ 4,5:1) |
-| `--gzhel-fundo`  | `#16264D` | fundos com a cor da outra pessoa                 |
-| `--urucum`       | `#E0662F` | alertas, conexão instável                        |
-| `--ok`           | `#4FA36C` | conectado                                        |
-| `--erro`         | `#D9534F` | erro                                             |
-
-Um tema claro ("porcelana": fundo `#F4F1EA`, texto `#1A1814`) entra na Fase 4.
+| Token            | Valor                       | Uso                                         |
+|------------------|-----------------------------|---------------------------------------------|
+| fundo            | `#0B1124` → `#060912`       | papel de parede, com brilhos e padrão Gzhel |
+| `--vidro`        | `rgba(255,255,255,.075)`    | cartões, folhas, listas                     |
+| `--vidro-2`/`-3` | `.11` / `.17`               | botões de vidro, hover                      |
+| `--preenchimento`| `rgba(120,128,160,.2)`      | campos de texto, trilhos                    |
+| `--texto`        | `#F5F7FF`                   | texto principal                             |
+| `--texto-2`/`-3` | 64% / 40% de opacidade      | secundário / terciário                      |
+| `--azul`         | `#0A84FF`                   | ação principal, seus balões na conversa     |
+| `--verde`        | `#30D158`                   | conectado, código de segurança              |
+| `--laranja`      | `#FF9F0A`                   | avisos, conexão instável                    |
+| `--vermelho`     | `#FF453A`                   | encerrar, erros                             |
+| `--amarelo`      | `#FFD60A`                   | destaque de aviso                           |
+| ipê / Gzhel      | `#FFE15A→#FF9F0A` / `#5AB0FF→#0A6FE0` | marca                             |
 
 ## 4. Tipografia
 
-Todas com cirílico e acentos do português, licença OFL, embutidas no app (nada carregado da internet):
-
-| Fonte          | Uso                                                  |
-|----------------|------------------------------------------------------|
-| Unbounded      | marca e títulos                                      |
-| Golos Text     | interface, legendas e chats                          |
-| JetBrains Mono | números: ping, relógios, horários das mensagens      |
-
-Escala: 12 · 14 · 16 · 20 · 28 · 40 px. Legenda traduzida em 26 px; original em 16 px.
+**Inter** (OFL), embutida em `wwwroot/fonts`, com latim e cirílico completos (português, inglês, espanhol, russo e ucraniano). Títulos grandes em 700 com espaçamento −0,02 em (26–34 px); interface em 15 px; números alinhados (`tabular-nums`). Códigos em Cascadia Mono/Consolas. Nas janelas nativas (barra de título, instalador), Segoe UI Variable.
 
 ## 5. Componentes
 
-- **Barra de título**: marca "DT" em Unbounded; relógios duplos em mono — `SÃO PAULO 15:40 · МОСКВА 21:40`; ping com 4 barras (ok / urucum / erro).
-- **Quadro de câmera**: borda superior de 2 px na cor da pessoa; etiqueta `RU · ru-RU` em mono no canto; a borda pulsa com o nível de voz quando a pessoa fala.
-- **Legenda**: faixa sob o palco; original pequeno em `--papel-2`, tradução grande em `--papel`; trecho provisório com 60% de opacidade.
-- **Painel Falas**: lista com régua vertical na cor de quem falou (não balões); hora em mono; tradução precedida de `›`.
-- **Chat**: régua de cor por autor; o campo de texto mostra o idioma de destino (`→ RU`, `→ UK`, `→ EN`, `→ ES`, `→ PT`).
-- **Dock de controles**: botões quadrados de 44 px com rótulo abaixo; ativo = preenchido na cor do usuário.
-- **Código de segurança**: 12 dígitos em mono, em grupos de 4, num selo discreto na barra de título.
-- **Instalador**: mesma paleta e tipografia; ilustração em linha de um galho de ipê com um padrão Gzhel.
+- **Tela inicial**: marca, título grande, idiomas em pílulas, cartão do perfil (toque para editar), aviso quando a tradução está desligada, ações em pílula larga e os **Ajustes em lista agrupada** com ícones em quadradinhos coloridos (tradução azul, câmera e áudio verde, conexão índigo).
+- **Convite e entrada**: folha de vidro centralizada; andamento em três barras (Convite · Resposta · Chamada); ao conectar, o avatar com ondas.
+- **Chamada (como no FaceTime)**: o vídeo é um cartão arredondado flutuando sobre o papel de parede; por cima dele, uma **pílula de vidro** no topo (pessoa, código de segurança, sinal e qualidade) e outra embaixo com **controles redondos** (desligado = círculo branco; encerrar = vermelho). Sua câmera numa miniatura arredondada. Legendas em cartões de vidro acima dos controles. A barra de cima encolhe por etapas conforme a largura do vídeo.
+- **Conversa**: painel de vidro ao lado do vídeo (nunca por cima dele, exceto em janela estreita), com balões no estilo das mensagens do iPhone — os seus em azul à direita, os da outra pessoa em vidro à esquerda; tradução e original no mesmo balão.
+- **Janela flutuante**: o vídeo com a legenda num cartão de vidro arredondado desenhado junto.
+- **Barra de título**: ícone do app, relógios numa pílula translúcida no centro, sem divisória.
+- **Ícone do app**: quadrado arredondado azul (do azul de sistema ao índigo) com o balão dourado e o branco — gerado em vetor por `tools/gerar-icone.ps1`.
+- **Instalador e desinstalador**: o mesmo papel de parede, ícone em destaque, cartão de vidro e botões em pílula.
 
 ## 6. Movimento
 
-120–180 ms, curva `cubic-bezier(.2, 0, 0, 1)`, sem efeito elástico. Respeita a opção "mostrar animações" do Windows.
+160 ms com `cubic-bezier(.25,.8,.25,1)`; botões encolhem levemente ao clicar; o palco desliza quando a conversa abre. Tudo some com "reduzir animações" do Windows.
 
 ## 7. Acessibilidade
 
-Contraste mínimo de 4,5:1 em texto; navegação completa por teclado; foco visível (contorno de 2 px na cor do usuário); tamanho da legenda ajustável.
-
-## 8. Validação
-
-Mockups de login, sala, sala com tela compartilhada, configurações e instalador serão aprovados pelos dois antes do acabamento final (Fase 4).
+Contraste mínimo de 4,5:1 no texto; foco visível em azul; navegação por teclado; rótulos de texto em todos os controles (nos botões só com ícone, como dica e para leitores de tela).
