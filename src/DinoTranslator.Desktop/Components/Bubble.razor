@@ -2,26 +2,102 @@
 
 @{
     var mine = Caption.Owner == CaptionOwner.Me;
-    var ending = Caption.Final ? "" : "…";
-    // Da outra pessoa: o principal é a tradução (no seu idioma). Sua: o que você falou.
-    var main = mine ? Caption.SourceText : Caption.TranslatedText ?? Caption.SourceText;
-    var mainLanguage = mine || Caption.TranslatedText is null ? Caption.SourceLanguage : Caption.TargetLanguage;
-    var secondary = mine ? Caption.TranslatedText : Caption.TranslatedText is null ? null : Caption.SourceText;
+    // Correção sua esperando a nova tradução: o texto novo já aparece.
+    var source = Pending ?? Caption.SourceText;
+    var translated = Pending is null ? Caption.TranslatedText : null;
+    var waiting = Pending is not null || (Caption.Written && !Caption.Final);
+    var ending = Caption.Final || Caption.Written ? "" : "…";
+    // Da outra pessoa: o principal é a tradução (no seu idioma). Sua: o que você falou ou escreveu.
+    var main = mine ? source : translated ?? source;
+    var mainLanguage = mine || translated is null ? Caption.SourceLanguage : Caption.TargetLanguage;
+    var secondary = mine ? translated : translated is null ? null : source;
     var secondaryLanguage = mine ? Caption.TargetLanguage : Caption.SourceLanguage;
 }
-<li class="bubble bubble--@(mine ? "me" : "other") @(Caption.Final ? "" : "bubble--partial")">
-  <p class="bubble__main" lang="@mainLanguage">@main@ending</p>
-  @if (secondary is not null)
+<li class="bubble bubble--@(mine ? "me" : "other") @(Caption.Final && Pending is null ? "" : "bubble--partial") @(_editing ? "bubble--editing" : "")">
+  @if (_editing)
   {
-    <p class="bubble__secondary" lang="@secondaryLanguage">@secondary@ending</p>
+    <form class="bubble__edit" @onsubmit="SaveAsync">
+      <textarea class="bubble__input" @bind="_draft" @bind:event="oninput" rows="3" maxlength="@CaptionMessage.MaxTextLength"
+                aria-label="Texto corrigido" lang="@Caption.SourceLanguage"></textarea>
+      <div class="bubble__actions">
+        <button type="button" class="bubble__cancel" @onclick="Cancel">Cancelar</button>
+        <button type="submit" class="bubble__save" disabled="@(!CanSave)">Corrigir</button>
+      </div>
+    </form>
   }
-  @if (Caption.Final)
+  else
   {
-    <time class="bubble__time">@Caption.UpdatedAt.ToLocalTime().ToString("HH:mm")</time>
+    <p class="bubble__main" lang="@mainLanguage">@main@ending</p>
+    @if (secondary is not null)
+    {
+      <p class="bubble__secondary" lang="@secondaryLanguage">@secondary@ending</p>
+    }
+    else if (waiting && ExpectsTranslation)
+    {
+      <p class="bubble__secondary bubble__secondary--waiting">traduzindo…</p>
+    }
+    @if (Caption.Final)
+    {
+      <p class="bubble__meta">
+        @if (Caption.Written)
+        {
+          <span>escrita</span>
+        }
+        @if (Caption.Edited)
+        {
+          <span>editada</span>
+        }
+        <time>@Caption.UpdatedAt.ToLocalTime().ToString("HH:mm")</time>
+        @if (CanEdit && Pending is null)
+        {
+          <button type="button" class="bubble__edit-button" @onclick="Edit" aria-label="Corrigir o texto desta fala" title="Corrigir">
+            <Icon Name="editar" />
+          </button>
+        }
+      </p>
+    }
   }
 </li>
 
 @code {
+    private bool _editing;
+    private string _draft = "";
+
     [Parameter, EditorRequired]
     public Caption Caption { get; set; } = default!;
+
+    /// <summary>Só as suas falas finais podem ser corrigidas, e só com a chamada conectada.</summary>
+    [Parameter]
+    public bool CanEdit { get; set; }
+
+    /// <summary>Texto corrigido que ainda espera a nova tradução.</summary>
+    [Parameter]
+    public string? Pending { get; set; }
+
+    /// <summary>Há tradução nesta chamada: o balão esperando mostra "traduzindo…".</summary>
+    [Parameter]
+    public bool ExpectsTranslation { get; set; }
+
+    [Parameter]
+    public EventCallback<(string SegmentId, string Text)> OnCorrect { get; set; }
+
+    private bool CanSave => !string.IsNullOrWhiteSpace(_draft) && _draft.Trim() != Caption.SourceText;
+
+    private void Edit()
+    {
+        _draft = Caption.SourceText;
+        _editing = true;
+    }
+
+    private void Cancel() => _editing = false;
+
+    private async Task SaveAsync()
+    {
+        if (!CanSave)
+        {
+            return;
+        }
+        _editing = false;
+        await OnCorrect.InvokeAsync((Caption.SegmentId, _draft));
+    }
 }

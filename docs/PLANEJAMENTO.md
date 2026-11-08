@@ -267,7 +267,7 @@ Um canal de dados WebRTC confiável e ordenado, dentro da mesma conexão cifrada
 
 - **WiX Toolset (Burn)** com interface própria em WPF (C#), no mesmo visual do app.
   - **Instalar**: boas-vindas → pasta → atalhos → progresso → concluído ("abrir agora").
-  - **Desinstalar** (pela mesma interface, a partir de "Aplicativos instalados" do Windows): confirmação → manter ou apagar dados locais → progresso → concluído.
+  - **Desinstalar** (pelo `Desinstalar.exe` da pasta do app ou por "Aplicativos instalados" do Windows): confirmação → manter ou apagar dados locais → progresso → concluído. Instalações antigas ou sem registro ganham o `Desinstalar.exe` e o registro ao abrir o app.
   - Verifica e instala o WebView2 Runtime se faltar.
 - App publicado **self-contained**: não exige .NET instalado.
 - **Assinatura de código** recomendada; sem ela, o SmartScreen mostra "editor desconhecido".

@@ -7,7 +7,8 @@ public enum CaptionOwner
     Other,
 }
 
-/// <param name="TranslatedText"><c>null</c> quando os dois falam o mesmo idioma.</param>
+/// <param name="TranslatedText"><c>null</c> quando os dois falam o mesmo idioma (ou não há tradução).</param>
+/// <param name="Edited">A pessoa corrigiu o texto depois que o trecho ficou final.</param>
 public sealed record Caption(
     CaptionOwner Owner,
     string SegmentId,
@@ -17,7 +18,12 @@ public sealed record Caption(
     string TargetLanguage,
     string? TranslatedText,
     bool Final,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    bool Edited = false)
+{
+    /// <summary>Mensagem escrita no chat (e não falada).</summary>
+    public bool Written => SegmentId.StartsWith(TextMessage.IdPrefix, StringComparison.Ordinal);
+}
 
 /// <summary>
 /// Legendas da chamada: a fala em andamento e as recentes de cada pessoa, mais a lista de
@@ -37,9 +43,16 @@ public sealed class CaptionBoard(TimeProvider time)
 
     public IReadOnlyList<Caption> Transcript => _transcript;
 
-    /// <summary>Aplica uma atualização; revisões antigas e qualquer coisa depois do final são ignoradas.</summary>
+    /// <summary>
+    /// Aplica uma atualização; revisões antigas e qualquer coisa depois do final são ignoradas,
+    /// menos a correção de um trecho final (que substitui o texto no histórico).
+    /// </summary>
     public bool Apply(Caption update)
     {
+        if (update.Edited)
+        {
+            return ApplyCorrection(update);
+        }
         var now = time.GetUtcNow();
         var key = (update.Owner, update.SegmentId);
         if (_segments.TryGetValue(key, out var current) && (current.Final || update.Revision <= current.Revision))
@@ -77,10 +90,53 @@ public sealed class CaptionBoard(TimeProvider time)
             .ToList();
     }
 
+    /// <summary>O trecho final de uma pessoa no histórico, se ainda estiver lá.</summary>
+    public Caption? Find(CaptionOwner owner, string segmentId)
+    {
+        for (var i = _transcript.Count - 1; i >= 0; i--)
+        {
+            if (_transcript[i].Owner == owner && _transcript[i].SegmentId == segmentId)
+            {
+                return _transcript[i];
+            }
+        }
+        return null;
+    }
+
     public void Clear()
     {
         _segments.Clear();
         _transcript.Clear();
+    }
+
+    private bool ApplyCorrection(Caption update)
+    {
+        if (!update.Final)
+        {
+            return false;
+        }
+        for (var i = _transcript.Count - 1; i >= 0; i--)
+        {
+            var current = _transcript[i];
+            if (current.Owner != update.Owner || current.SegmentId != update.SegmentId)
+            {
+                continue;
+            }
+            if (update.Revision <= current.Revision)
+            {
+                return false;
+            }
+            // Fica no mesmo lugar da conversa, com o horário em que foi dito.
+            var corrected = update with { UpdatedAt = current.UpdatedAt };
+            _transcript[i] = corrected;
+            var key = (update.Owner, update.SegmentId);
+            if (_segments.ContainsKey(key))
+            {
+                _segments[key] = corrected;
+            }
+            return true;
+        }
+        return false;
     }
 
     /// <summary>Legenda recebida de quem traduz, trazida para o ponto de vista de quem recebe.</summary>
@@ -93,7 +149,8 @@ public sealed class CaptionBoard(TimeProvider time)
         message.TargetLanguage,
         message.TranslatedText,
         message.Final,
-        now);
+        now,
+        message.Edited);
 
     /// <summary>Legenda feita neste computador, no ponto de vista de quem vai recebê-la.</summary>
     public static CaptionMessage ToMessage(Caption caption) => new(
@@ -104,5 +161,6 @@ public sealed class CaptionBoard(TimeProvider time)
         caption.SourceText,
         caption.TargetLanguage,
         caption.TranslatedText,
-        caption.Final);
+        caption.Final,
+        caption.Edited);
 }

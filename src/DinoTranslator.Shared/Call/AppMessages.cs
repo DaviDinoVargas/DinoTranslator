@@ -10,6 +10,8 @@ namespace DinoTranslator.Shared.Call;
 [JsonDerivedType(typeof(HelloMessage), "hello")]
 [JsonDerivedType(typeof(CaptionMessage), "caption")]
 [JsonDerivedType(typeof(ByeMessage), "bye")]
+[JsonDerivedType(typeof(TextMessage), "text")]
+[JsonDerivedType(typeof(CorrectionMessage), "correction")]
 public abstract record AppMessage;
 
 /// <summary>Primeira mensagem de cada lado: diz se este computador tem motor de tradução.</summary>
@@ -29,7 +31,10 @@ public enum CaptionSpeaker
     Receiver = 2,
 }
 
-/// <summary>Legenda provisória ou final de um trecho falado, enviada por quem traduz.</summary>
+/// <summary>
+/// Legenda provisória ou final de um trecho falado ou escrito, enviada por quem traduz.
+/// <paramref name="Edited"/>: a pessoa corrigiu o texto de um trecho que já era final.
+/// </summary>
 public sealed record CaptionMessage(
     CaptionSpeaker Speaker,
     string SegmentId,
@@ -38,10 +43,23 @@ public sealed record CaptionMessage(
     string SourceText,
     string TargetLanguage,
     string? TranslatedText,
-    bool Final) : AppMessage
+    bool Final,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Edited = false) : AppMessage
 {
     public const int MaxTextLength = 2_000;
 }
+
+/// <summary>
+/// Mensagem escrita no chat, para quem traduz devolver como legenda (com a tradução). O id é
+/// escolhido por quem escreve e começa com "e-".
+/// </summary>
+public sealed record TextMessage(string Id, string Text) : AppMessage
+{
+    public const string IdPrefix = "e-";
+}
+
+/// <summary>A pessoa corrigiu o texto de uma fala (ou mensagem) dela; quem traduz refaz a tradução.</summary>
+public sealed record CorrectionMessage(string SegmentId, string Text) : AppMessage;
 
 public static partial class AppMessages
 {
@@ -82,8 +100,19 @@ public static partial class AppMessages
     {
         HelloMessage or ByeMessage => true,
         CaptionMessage caption => IsValid(caption),
+        TextMessage text => text.Id is not null
+            && text.Id.StartsWith(TextMessage.IdPrefix, StringComparison.Ordinal)
+            && SegmentIdPattern().IsMatch(text.Id)
+            && IsWrittenText(text.Text),
+        CorrectionMessage correction => correction.SegmentId is not null
+            && SegmentIdPattern().IsMatch(correction.SegmentId)
+            && IsWrittenText(correction.Text),
         _ => false,
     };
+
+    /// <summary>Texto escrito por uma pessoa: exibível e com alguma letra ou número.</summary>
+    public static bool IsWrittenText(string? text) =>
+        IsDisplayableText(text) && text!.Any(char.IsLetterOrDigit);
 
     private static bool IsValid(CaptionMessage caption) =>
         Enum.IsDefined(caption.Speaker)

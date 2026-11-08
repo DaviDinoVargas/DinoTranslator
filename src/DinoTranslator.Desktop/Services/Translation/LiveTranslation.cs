@@ -54,6 +54,22 @@ public sealed class LiveTranslation(ISpeechTranslationEngine engine, Profile me,
         _theirs = await OpenAsync(peer.Language, me.Language, CaptionOwner.Other, glossary, cancellationToken);
     }
 
+    public bool CanTranslateText => engine.CanTranslateText;
+
+    /// <summary>
+    /// Texto escrito (ou corrigido) por uma das pessoas, no idioma da outra; <c>null</c> se os
+    /// dois falam o mesmo idioma ou o motor não traduz texto.
+    /// </summary>
+    public async Task<string?> TranslateTextAsync(string text, CaptionOwner author, CancellationToken cancellationToken)
+    {
+        var (source, target) = author == CaptionOwner.Me ? (me.Language, peer.Language) : (peer.Language, me.Language);
+        if (!Languages.NeedsTranslation(source, target))
+        {
+            return null;
+        }
+        return await engine.TranslateTextAsync(text, source, target, cancellationToken) is { } translated ? Clean(translated) : null;
+    }
+
     /// <param name="source">"local" (microfone) ou "remote" (áudio da outra pessoa).</param>
     public void WriteAudio(string source, byte[] pcm)
     {

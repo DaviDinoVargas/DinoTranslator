@@ -23,6 +23,13 @@ public interface ISpeechTranslationStream : IAsyncDisposable
 public interface ISpeechTranslationEngine
 {
     Task<ISpeechTranslationStream> StartAsync(SpeechStreamOptions options, CancellationToken cancellationToken);
+
+    /// <summary>Traduz também o que é escrito no chat (o Azure Speech só traduz fala).</summary>
+    bool CanTranslateText => false;
+
+    /// <summary>Tradução de um texto escrito; <c>null</c> quando o motor não traduz texto.</summary>
+    Task<string?> TranslateTextAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken) =>
+        Task.FromResult<string?>(null);
 }
 
 /// <summary>

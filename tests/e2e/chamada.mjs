@@ -130,6 +130,29 @@ try {
   result.conversa_bolhas_b = await waitFor(b, `(() => { const n = document.querySelectorAll('.conversation .bubble:not(.bubble--partial)').length; return n >= 2 ? n : 0; })()`, "bolhas na conversa (B)", 20000);
   result.conversa_outra_b = await b.evaluate(`document.querySelector('.conversation .bubble--other .bubble__main')?.textContent.trim() || null`);
 
+  // Chat escrito: a Anna escreve, quem traduz (o Dino) devolve a tradução aos dois.
+  const write = (text) => `(() => { const i = document.querySelector('.composer__input'); if (!i || i.disabled) return false; i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`;
+  const send = `(() => { const b = document.querySelector('.composer__send'); if (!b || b.disabled) return false; b.click(); return true; })()`;
+  const written = (side) => `(() => { const b = [...document.querySelectorAll('.conversation .bubble--${side}')].find(x => x.querySelector('.bubble__meta')?.textContent.includes('escrita')); return b ? { principal: b.querySelector('.bubble__main')?.textContent.trim(), secundario: b.querySelector('.bubble__secondary')?.textContent.trim() || null, rodape: b.querySelector('.bubble__meta')?.textContent.replace(/\\s+/g, ' ').trim() } : null; })()`;
+  await waitFor(b, write("Привет, Дино!"), "escrever (B)");
+  await waitFor(b, send, "enviar (B)");
+  result.chat_anna_em_b = await waitFor(b, `(() => { const r = ${written("me")}; return r?.secundario?.startsWith('[pt-BR]') ? r : null; })()`, "mensagem traduzida (B)", 10000).catch(() => null);
+  result.chat_anna_em_a = await waitFor(a, `(() => { const r = ${written("other")}; return r?.principal?.startsWith('[pt-BR]') ? r : null; })()`, "mensagem da Anna (A)", 10000).catch(() => null);
+  await waitFor(a, write("Oi, Anna! Tudo bem?"), "escrever (A)");
+  await waitFor(a, send, "enviar (A)");
+  result.chat_dino_em_b = await waitFor(b, `(() => { const r = ${written("other")}; return r?.principal?.startsWith('[ru-RU]') ? r : null; })()`, "mensagem do Dino (B)", 10000).catch(() => null);
+
+  // Correção: a Anna conserta a mensagem dela e a nova tradução chega aos dois.
+  await b.evaluate(`[...document.querySelectorAll('.conversation .bubble--me')].find(x => x.querySelector('.bubble__meta')?.textContent.includes('escrita'))?.querySelector('.bubble__edit-button')?.click()`);
+  await waitFor(b, `(() => { const t = document.querySelector('.bubble__input'); if (!t) return false; t.value = 'Привет, Дино! Как дела?'; t.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`, "campo de correção (B)", 5000);
+  await waitFor(b, `(() => { const s = document.querySelector('.bubble__save'); if (!s || s.disabled) return false; s.click(); return true; })()`, "corrigir (B)", 5000);
+  result.correcao_em_a = await waitFor(a, `(() => { const r = ${written("other")}; return r?.principal?.includes('Как дела') && r.rodape.includes('editada') ? r : null; })()`, "correção da Anna (A)", 10000).catch(() => null);
+  result.correcao_em_b = await waitFor(b, `(() => { const r = ${written("me")}; return r?.secundario?.includes('Как дела') && r.rodape.includes('editada') ? r : null; })()`, "correção traduzida (B)", 10000).catch(() => null);
+  if (process.env.E2E_SHOTS) {
+    await b.screenshot(`${process.env.E2E_SHOTS}-chat-anna.png`);
+    await a.screenshot(`${process.env.E2E_SHOTS}-chat-dino.png`);
+  }
+
   // Palco com a janela pequena: a outra pessoa continua inteira e a sua câmera no canto.
   const layout = `(() => {
     const box = (s) => { const r = document.querySelector(s)?.getBoundingClientRect(); return r ? [Math.round(r.width), Math.round(r.height)] : null; };
@@ -248,6 +271,11 @@ try {
   }
   result.ok = result.codigos_iguais
     && result.previa_muda_a === true
+    && result.chat_anna_em_b !== null
+    && result.chat_anna_em_a !== null
+    && result.chat_dino_em_b !== null
+    && result.correcao_em_a !== null
+    && result.correcao_em_b !== null
     && result.tela_propria_a !== null
     && result.tela_propria_destaque_a === true
     && result.duas_telas_a === true

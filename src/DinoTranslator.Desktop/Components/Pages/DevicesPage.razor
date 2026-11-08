@@ -117,7 +117,7 @@
               }
               @if (result.Final && result.Latency is { } latency)
               {
-                <time class="bubble__time">legenda final @latency.TotalSeconds.ToString("0.0") s depois da pausa</time>
+                <p class="bubble__meta">legenda final @latency.TotalSeconds.ToString("0.0") s depois da pausa</p>
               }
             </li>
           }

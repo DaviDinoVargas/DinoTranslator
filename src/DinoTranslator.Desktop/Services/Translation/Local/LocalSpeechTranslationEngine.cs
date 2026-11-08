@@ -15,6 +15,11 @@ public sealed class LocalSpeechTranslationEngine(Func<LocalSpeechRuntime> runtim
         return new Stream(loaded, options);
     }
 
+    public bool CanTranslateText => true;
+
+    public Task<string?> TranslateTextAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken) =>
+        Task.Run<string?>(() => runtime().Translator.Translate(text, sourceLanguage, targetLanguage, cancellationToken), cancellationToken);
+
     /// <summary>
     /// Fala de uma pessoa: o segmentador fecha os trechos pelo volume e a linha de montagem
     /// reconhece (placa de vídeo) e traduz (processador) ao mesmo tempo.
