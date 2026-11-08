@@ -14,10 +14,10 @@ public sealed class SpeechPipelineTests
     {
         var gate = new TaskCompletionSource();
         var updates = new ConcurrentQueue<SpeechUpdate>();
-        await using var pipeline = new SpeechPipeline(Recognize(), async (text, token) =>
+        await using var pipeline = new SpeechPipeline(Recognize(), async (text, careful, token) =>
         {
             await gate.Task.WaitAsync(token);
-            return "[ru] " + text;
+            return Translated(text, careful);
         });
         pipeline.Updated += updates.Enqueue;
 
@@ -31,31 +31,53 @@ public sealed class SpeechPipelineTests
 
         var final = await WaitFor(updates, u => u.Final);
         Assert.Equal(Texts[3], final.SourceText);
-        Assert.Equal("[ru] " + Texts[3], final.TranslatedText);
+        Assert.Equal(Translated(Texts[3], careful: true), final.TranslatedText);
         Assert.Single(updates, u => u.Final);
         Assert.Equal(Enumerable.Range(0, updates.Count), updates.Select(u => u.Revision));
     }
 
     [Fact]
-    public async Task Final_igual_a_ultima_provisoria_reaproveita_a_traducao()
+    public async Task Final_igual_a_ultima_provisoria_mostra_a_rapida_e_termina_com_a_cuidadosa()
     {
-        var calls = new ConcurrentQueue<string>();
+        var calls = new ConcurrentQueue<(string Text, bool Careful)>();
         var updates = new ConcurrentQueue<SpeechUpdate>();
-        await using var pipeline = new SpeechPipeline(Recognize(), (text, _) =>
+        await using var pipeline = new SpeechPipeline(Recognize(), (text, careful, _) =>
         {
-            calls.Enqueue(text);
-            return Task.FromResult("[ru] " + text);
+            calls.Enqueue((text, careful));
+            return Task.FromResult(Translated(text, careful));
         });
         pipeline.Updated += updates.Enqueue;
 
         pipeline.Enqueue(Segment(0, text: 2, final: false));
         await WaitUntil(() => updates.Any(u => u.TranslatedText is not null));
-        // O final difere só na pontuação e nas maiúsculas: a tradução da provisória serve.
         pipeline.Enqueue(Segment(0, text: 2, final: true));
 
         var final = await WaitFor(updates, u => u.Final);
-        Assert.Equal("[ru] " + Texts[2], final.TranslatedText);
-        Assert.Single(calls);
+        Assert.Equal(Translated(Texts[2], careful: true), final.TranslatedText);
+        Assert.Contains(updates, u => !u.Final && u.TranslatedText == Translated(Texts[2], careful: false));
+        Assert.Equal([(Texts[2], false), (Texts[2], true)], calls);
+    }
+
+    [Fact]
+    public async Task Final_repetida_reaproveita_a_traducao_cuidadosa()
+    {
+        var calls = new ConcurrentQueue<(string Text, bool Careful)>();
+        var updates = new ConcurrentQueue<SpeechUpdate>();
+        await using var pipeline = new SpeechPipeline(Recognize(), (text, careful, _) =>
+        {
+            calls.Enqueue((text, careful));
+            return Task.FromResult(Translated(text, careful));
+        });
+        pipeline.Updated += updates.Enqueue;
+
+        // Reconhecimento sem texto novo no fim: a última provisória fecha o trecho, traduzida com cuidado.
+        pipeline.Enqueue(Segment(0, text: 2, final: false));
+        await WaitUntil(() => updates.Any(u => u.TranslatedText is not null));
+        pipeline.Enqueue(Segment(0, text: 0, final: true));
+
+        var final = await WaitFor(updates, u => u.Final);
+        Assert.Equal(Translated(Texts[2], careful: true), final.TranslatedText);
+        Assert.Single(calls, c => c.Careful);
     }
 
     [Fact]
@@ -64,11 +86,11 @@ public sealed class SpeechPipelineTests
         var release = new TaskCompletionSource();
         var calls = new ConcurrentQueue<string>();
         var updates = new ConcurrentQueue<SpeechUpdate>();
-        await using var pipeline = new SpeechPipeline(Recognize(), async (text, token) =>
+        await using var pipeline = new SpeechPipeline(Recognize(), async (text, careful, token) =>
         {
             calls.Enqueue(text);
             await release.Task.WaitAsync(token);
-            return "[ru] " + text;
+            return Translated(text, careful);
         });
         pipeline.Updated += updates.Enqueue;
 
@@ -83,7 +105,7 @@ public sealed class SpeechPipelineTests
         await WaitUntil(() => updates.Count(u => u.Final) == 2);
         Assert.DoesNotContain(Texts[2], calls);
         Assert.Equal([Texts[1], Texts[3], Texts[4]], calls);
-        Assert.Equal(["[ru] " + Texts[3], "[ru] " + Texts[4]], updates.Where(u => u.Final).Select(u => u.TranslatedText));
+        Assert.Equal([Translated(Texts[3], careful: true), Translated(Texts[4], careful: true)], updates.Where(u => u.Final).Select(u => u.TranslatedText));
     }
 
     [Fact]
@@ -93,7 +115,7 @@ public sealed class SpeechPipelineTests
         var cancelled = new ConcurrentQueue<string>();
         var release = new TaskCompletionSource();
         var updates = new ConcurrentQueue<SpeechUpdate>();
-        await using var pipeline = new SpeechPipeline(Recognize(), async (text, token) =>
+        await using var pipeline = new SpeechPipeline(Recognize(), async (text, careful, token) =>
         {
             started.Enqueue(text);
             try
@@ -105,7 +127,7 @@ public sealed class SpeechPipelineTests
                 cancelled.Enqueue(text);
                 throw;
             }
-            return "[ru] " + text;
+            return Translated(text, careful);
         });
         pipeline.Updated += updates.Enqueue;
 
@@ -118,14 +140,15 @@ public sealed class SpeechPipelineTests
         await WaitUntil(() => updates.Any(u => u.Final));
         Assert.Equal([Texts[1]], cancelled);
 
-        // Trecho 1: o final repete o texto da provisória em andamento, que é aproveitada.
+        // Trecho 1: o final repete o texto da provisória, que fica na tela até a cuidadosa chegar.
         var before = started.Count;
         pipeline.Enqueue(Segment(1, text: 4, final: false));
         await WaitUntil(() => updates.Any(u => u.Segment == 1 && u.TranslatedText is not null));
         pipeline.Enqueue(Segment(1, text: 4, final: true));
         var final = await WaitFor(updates, u => u.Segment == 1 && u.Final);
-        Assert.Equal("[ru] " + Texts[4], final.TranslatedText);
-        Assert.Equal(before + 1, started.Count);
+        Assert.Equal(Translated(Texts[4], careful: true), final.TranslatedText);
+        Assert.Equal(before + 2, started.Count);
+        Assert.Empty(cancelled.Skip(1));
     }
 
     [Fact]
@@ -147,7 +170,7 @@ public sealed class SpeechPipelineTests
     public async Task Final_sem_texto_novo_fecha_com_a_ultima_provisoria()
     {
         var updates = new ConcurrentQueue<SpeechUpdate>();
-        await using var pipeline = new SpeechPipeline(Recognize(), (text, _) => Task.FromResult("[ru] " + text));
+        await using var pipeline = new SpeechPipeline(Recognize(), (text, careful, _) => Task.FromResult(Translated(text, careful)));
         pipeline.Updated += updates.Enqueue;
 
         pipeline.Enqueue(Segment(0, text: 2, final: false));
@@ -156,7 +179,7 @@ public sealed class SpeechPipelineTests
 
         var final = await WaitFor(updates, u => u.Final);
         Assert.Equal(Texts[2], final.SourceText);
-        Assert.Equal("[ru] " + Texts[2], final.TranslatedText);
+        Assert.Equal(Translated(Texts[2], careful: true), final.TranslatedText);
     }
 
     [Theory]
@@ -167,6 +190,9 @@ public sealed class SpeechPipelineTests
     {
         Assert.Equal(expected, SpeechPipeline.Key(text));
     }
+
+    /// <summary>Tradução de mentira que mostra se foi a rápida ou a cuidadosa.</summary>
+    private static string Translated(string text, bool careful) => (careful ? "[ru+] " : "[ru] ") + text;
 
     private static Func<SpeechSegment, CancellationToken, Task<string>> Recognize() =>
         async (segment, token) =>

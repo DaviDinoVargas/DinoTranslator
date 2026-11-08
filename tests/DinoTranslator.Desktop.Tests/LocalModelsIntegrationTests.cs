@@ -58,6 +58,46 @@ public sealed class LocalModelsIntegrationTests(ITestOutputHelper output)
         }
     }
 
+    [LocalModelsFact]
+    public void Traducao_cuidadosa_comparada_com_a_rapida()
+    {
+        using var runtime = LocalSpeechRuntime.Load(LocalModelsFactAttribute.Folder, WhisperModel.Turbo);
+        var translator = runtime.Translator;
+        translator.Translate("Aquecimento.", Languages.PortugueseBrazil, Languages.Russian);
+        translator.Translate("Aquecimento.", Languages.PortugueseBrazil, Languages.Russian, beamWidth: NllbTranslator.CarefulBeamWidth);
+
+        // Fala de conversa: informal, com sujeito oculto, gíria leve e frases que dependem do contexto.
+        var cases = new (string Text, string From, string To)[]
+        {
+            ("Amanhã de manhã eu vou chegar às sete e meia, então me liga antes de sair.", Languages.PortugueseBrazil, Languages.Russian),
+            ("A minha filha está estudando russo há três meses e já consegue conversar um pouco.", Languages.PortugueseBrazil, Languages.Russian),
+            ("Você prefere conversar em português ou em inglês enquanto a tradução não melhora?", Languages.PortugueseBrazil, Languages.Russian),
+            ("Tô morrendo de saudade, faz tempo que a gente não se fala.", Languages.PortugueseBrazil, Languages.Russian),
+            ("Gracias por la llamada.", Languages.Spanish, Languages.Ukrainian),
+            ("Я вчера весь день работал, поэтому не смог тебе позвонить.", Languages.Russian, Languages.PortugueseBrazil),
+            ("Как у тебя дела с переездом? Уже нашла квартиру?", Languages.Russian, Languages.PortugueseBrazil),
+            ("Amanhã de manhã eu vou chegar às sete e meia, então me liga antes de sair.", Languages.PortugueseBrazil, Languages.English),
+        };
+        long quickTotal = 0;
+        long carefulTotal = 0;
+        foreach (var (text, from, to) in cases)
+        {
+            var watch = Stopwatch.StartNew();
+            var quick = translator.Translate(text, from, to);
+            var quickMs = watch.ElapsedMilliseconds;
+            watch.Restart();
+            var careful = translator.Translate(text, from, to, beamWidth: NllbTranslator.CarefulBeamWidth);
+            var carefulMs = watch.ElapsedMilliseconds;
+            quickTotal += quickMs;
+            carefulTotal += carefulMs;
+            output.WriteLine($"{from} → {to}: {text}");
+            output.WriteLine($"   rápida    {quickMs,5} ms: {quick}");
+            output.WriteLine($"   cuidadosa {carefulMs,5} ms: {careful}{(careful == quick ? "  (igual)" : "")}");
+            Assert.False(string.IsNullOrWhiteSpace(careful));
+        }
+        output.WriteLine($"Total: rápida {quickTotal} ms, cuidadosa {carefulTotal} ms");
+    }
+
     [LocalModelsFact(WhisperModel.Turbo)]
     public Task Reconhece_fala_em_portugues_com_o_modelo_preciso() => RecognizeAsync(WhisperModel.Turbo);
 
