@@ -82,7 +82,7 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 - Nada de segredos, bancos de dados, certificados ou builds no Git (`.gitignore`).
 - Auditoria de dependências vulneráveis em todo build.
 - Instalador assinado; SHA-256 publicado com cada versão.
-- Instalação por usuário, sem administrador. O registro em "Aplicativos instalados" é gravado antes dos atalhos e aponta para o `Desinstalar.exe` da pasta do app. O app só conserta o registro numa pasta instalada pelo instalador (registrada, ou apontada pelo atalho do menu Iniciar), e desinstalar uma cópia só remove o registro e os atalhos dela. Os testes usam registro e atalhos próprios.
+- Instalação por usuário, sem administrador. O registro em "Aplicativos instalados" é gravado antes dos atalhos e aponta para o `Desinstalar.exe` da pasta do app. O app só conserta o registro numa pasta instalada pelo instalador (registrada, ou apontada pelo atalho do menu Iniciar), e desinstalar uma cópia só remove o registro e os atalhos dela. A pasta do app só é apagada depois que o desinstalador fecha, por um processo que recebe o caminho por variável de ambiente, não entra em junções e recusa a raiz de um disco ou uma pasta sem o app. Os testes usam registro e atalhos próprios.
 
 ## 5. Modo servidor (opcional, desligado)
 
