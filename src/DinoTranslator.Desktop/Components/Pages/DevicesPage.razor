@@ -1,5 +1,6 @@
 @page "/configuracoes/dispositivos"
 @implements IAsyncDisposable
+@using DinoTranslator.Desktop.Services.Audio
 @using DinoTranslator.Desktop.Services.Translation
 @inject IJSRuntime Js
 @inject ProfileStore Profiles
@@ -63,9 +64,6 @@
             }
           </select>
         </label>
-        <div class="meter" role="img" aria-label="Volume do microfone">
-          <div class="meter__fill" @ref="_meter"></div>
-        </div>
         <label class="field">
           <span class="field__label">Alto-falante ou fone</span>
           <select class="field__input" value="@_devices?.Speaker" @onchange="@(e => ChooseAsync("speaker", e))">
@@ -78,6 +76,14 @@
         <button type="button" class="button" @onclick="PlaySoundAsync"><Icon Name="som" />Tocar som de teste</button>
       </div>
     </div>
+
+    <h2 class="handshake__step">Supressão de ruído</h2>
+    <p class="handshake__hint">É assim que o seu microfone chega para a outra pessoa e para a tradução. Dá para mudar também durante a chamada, no botão Ruído.</p>
+    <NoiseControls @ref="_noiseControls" State="_noise" Busy="_noiseBusy" OnChange="ChangeNoiseAsync" />
+    <button type="button" class="button devices__monitor" @onclick="ToggleMonitorAsync" disabled="@(_preview is not { Microphone: true } || _noiseBusy)"
+            aria-pressed="@(_monitoring ? "true" : "false")">
+      <Icon Name="@(_monitoring ? "parar" : "fone")" />@(_monitoring ? "Parar de ouvir" : "Ouvir meu microfone (use fones)")
+    </button>
 
     <h2 class="handshake__step">Teste da tradução</h2>
     @if (!Engines.IsReady(Translation.Current))
@@ -135,7 +141,10 @@
 
 @code {
     private ElementReference _video;
-    private ElementReference _meter;
+    private NoiseControls? _noiseControls;
+    private NoiseState? _noise;
+    private bool _noiseBusy;
+    private bool _monitoring;
     private IJSObjectReference? _module;
     private DotNetObjectReference<DevicesPage>? _self;
     private PreviewResult? _preview;
@@ -185,8 +194,10 @@
     {
         try
         {
-            _preview = await _module!.InvokeAsync<PreviewResult>("startPreview", _video, _meter);
+            _monitoring = false;
+            _preview = await _module!.InvokeAsync<PreviewResult>("startPreview", _video, _noiseControls!.MeterFill, _noiseControls.MeterMark);
             _devices = await _module!.InvokeAsync<DeviceList>("listDevices");
+            _noise = (await _module!.InvokeAsync<NoiseState>("noiseState")).Sanitized();
             _error = _preview.Microphone ? null : "Nenhum microfone encontrado. Confira se ele está ligado e liberado nas configurações de privacidade do Windows.";
         }
         catch (JSException)
@@ -211,6 +222,42 @@
         else
         {
             _devices = _devices! with { Speaker = value };
+        }
+    }
+
+    private async Task ChangeNoiseAsync(NoiseSettings settings)
+    {
+        if (_module is null)
+        {
+            return;
+        }
+        _noiseBusy = true;
+        _noise = _noise is null ? new NoiseState(settings, null, null) : _noise with { Settings = settings };
+        try
+        {
+            // Mudou o processamento do próprio navegador: o microfone precisa abrir de novo.
+            if (await _module.InvokeAsync<bool>("setNoise", settings))
+            {
+                await StopTestAsync();
+                await RestartPreviewAsync();
+            }
+            _noise = (await _module.InvokeAsync<NoiseState>("noiseState")).Sanitized();
+        }
+        catch (JSException)
+        {
+            _error = "Não foi possível aplicar a supressão de ruído neste microfone.";
+        }
+        finally
+        {
+            _noiseBusy = false;
+        }
+    }
+
+    private async Task ToggleMonitorAsync()
+    {
+        if (_module is not null)
+        {
+            _monitoring = await _module.InvokeAsync<bool>("monitorMicrophone", !_monitoring);
         }
     }
 

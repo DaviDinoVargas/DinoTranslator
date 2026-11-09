@@ -1,0 +1,104 @@
+@using DinoTranslator.Desktop.Services.Audio
+
+@* Ajustes da supressão de ruído: o modo, a intensidade (DeepFilterNet3), a sensibilidade do
+   microfone com o medidor e o processamento do navegador. Usado na chamada e no teste de
+   dispositivos; quem usa aplica as mudanças (OnChange) e liga o medidor (MeterFill/MeterMark). *@
+<div class="noise" data-modo="@Settings.Mode" data-ativo="@(State?.Mode ?? "")">
+  <div class="noise__modes" role="radiogroup" aria-label="Supressão de ruído">
+    @foreach (var option in NoiseModes.All)
+    {
+      var chosen = option.Id == Settings.Mode;
+      <button type="button" role="radio" aria-checked="@(chosen ? "true" : "false")" disabled="@Busy"
+              class="noise__mode @(chosen ? "noise__mode--on" : "")" @onclick="() => ChangeAsync(Settings with { Mode = option.Id })">
+        <span class="noise__mode-name">@option.Name@(option.Id == NoiseModes.DeepFilter ? " · recomendada" : "")</span>
+        <span class="noise__mode-text">@option.Description</span>
+      </button>
+    }
+  </div>
+
+  <label class="noise__slider @(Settings.Mode == NoiseModes.DeepFilter ? "" : "noise__slider--off")">
+    <span class="noise__label">Intensidade <strong>@Settings.Intensity%</strong></span>
+    <input type="range" min="0" max="100" step="5" value="@Settings.Intensity" aria-label="Intensidade da supressão"
+           disabled="@(Busy || Settings.Mode != NoiseModes.DeepFilter)" @onchange="ChangeIntensityAsync" />
+    <span class="noise__ends"><span>Voz mais natural</span><span>Mais silêncio</span></span>
+  </label>
+  @if (Settings.Mode != NoiseModes.DeepFilter)
+  {
+    <p class="noise__hint">A intensidade é ajustável no DeepFilterNet3; os outros modos têm força fixa.</p>
+  }
+
+  <div class="noise__sensitivity">
+    <div class="noise__label-row">
+      <span class="noise__label">Sensibilidade do microfone</span>
+      <label class="noise__check">
+        <input type="checkbox" checked="@Settings.AutoSensitivity" disabled="@Busy" aria-label="Sensibilidade automática"
+               @onchange="@(e => ChangeAsync(Settings with { AutoSensitivity = e.Value is true }))" />
+        Automática
+      </label>
+    </div>
+    <div class="meter meter--limite" role="img" aria-label="Volume do microfone depois da limpeza e limite da sensibilidade">
+      <div class="meter__fill" @ref="MeterFill"></div>
+      <div class="meter__mark" @ref="MeterMark"></div>
+    </div>
+    @if (!Settings.AutoSensitivity)
+    {
+      <input type="range" min="@NoiseSettings.MinSensitivityDb" max="@NoiseSettings.MaxSensitivityDb" step="1" value="@Settings.SensitivityDb"
+             aria-label="Limite da sensibilidade, em decibéis" disabled="@Busy" @onchange="ChangeSensitivityAsync" />
+      <p class="noise__hint">Abaixo de @Settings.SensitivityDb dB o microfone fica em silêncio. A barra fica verde quando passa.</p>
+    }
+    else
+    {
+      <p class="noise__hint">O limite acompanha o ruído do ambiente; a barra fica verde quando a sua voz passa.</p>
+    }
+  </div>
+
+  <div class="noise__checks">
+    <label class="noise__check">
+      <input type="checkbox" checked="@Settings.EchoCancellation" disabled="@Busy"
+             @onchange="@(e => ChangeAsync(Settings with { EchoCancellation = e.Value is true }))" />
+      Cancelamento de eco
+    </label>
+    <label class="noise__check">
+      <input type="checkbox" checked="@Settings.AutoGain" disabled="@Busy"
+             @onchange="@(e => ChangeAsync(Settings with { AutoGain = e.Value is true }))" />
+      Ganho automático
+    </label>
+  </div>
+
+  <p class="noise__status @(State?.Problem is null ? "" : "noise__status--problem")" role="status">
+    @if (Busy)
+    {
+      <span class="engines__spinner" aria-hidden="true"></span>@("Aplicando…")
+    }
+    else
+    {
+      @(State?.Describe() ?? "Carregando…")
+    }
+  </p>
+</div>
+
+@code {
+    [Parameter]
+    public NoiseState? State { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public EventCallback<NoiseSettings> OnChange { get; set; }
+
+    public ElementReference MeterFill { get; private set; }
+
+    public ElementReference MeterMark { get; private set; }
+
+    private NoiseSettings Settings => State?.Settings ?? NoiseSettings.Default;
+
+    private Task ChangeAsync(NoiseSettings settings) =>
+        settings == Settings || Busy ? Task.CompletedTask : OnChange.InvokeAsync(settings.Sanitized());
+
+    private Task ChangeIntensityAsync(ChangeEventArgs e) =>
+        int.TryParse(e.Value?.ToString(), out var value) ? ChangeAsync(Settings with { Intensity = value }) : Task.CompletedTask;
+
+    private Task ChangeSensitivityAsync(ChangeEventArgs e) =>
+        int.TryParse(e.Value?.ToString(), out var value) ? ChangeAsync(Settings with { SensitivityDb = value }) : Task.CompletedTask;
+}

@@ -1,0 +1,53 @@
+{
+  "descricao": "Supressores de ruído copiados sem mudança dos pacotes npm abaixo. tools/atualizar-supressores.ps1 baixa de novo e confere; o teste VendorFilesTests confere cada SHA-256.",
+  "pacotes": [
+    {
+      "nome": "@workadventure/noise-suppression",
+      "versao": "0.2.0",
+      "licenca": "MIT (DeepFilterNet3: MIT/Apache-2.0)",
+      "origem": "https://registry.npmjs.org/@workadventure/noise-suppression/-/noise-suppression-0.2.0.tgz",
+      "sha256": "4b8046a5fe89949be8021f317fdcd5dc72e3c1ea8f48ad76ab485b7767e314c5",
+      "pasta": "deepfilternet",
+      "copiados": {
+        "dist/deepfilternet.js": "deepfilternet.js",
+        "dist/assets/deepfilternet-worklet-processor.js": "assets/deepfilternet-worklet-processor.js",
+        "dist/assets/deepfilternet/df_bg.wasm": "assets/deepfilternet/df_bg.wasm",
+        "dist/assets/deepfilternet/DeepFilterNet3_onnx.tar.gz": "assets/deepfilternet/DeepFilterNet3_onnx.tar.gz",
+        "LICENSE": "LICENSE"
+      },
+      "arquivos": {
+        "deepfilternet/assets/deepfilternet/DeepFilterNet3_onnx.tar.gz": "c94d91f70911001c946e0fabb4aa9adc37045f45a03b56008cb0c8244cb63616",
+        "deepfilternet/assets/deepfilternet/df_bg.wasm": "8ebf2b217b80fc128505b993c8d7d7d892df5a845ab7a2516fed74b76e7fe708",
+        "deepfilternet/assets/deepfilternet-worklet-processor.js": "e91ddfeb95288e1359d61c1828c39e46474e06c8bbb4789bcd7da32c4593bb52",
+        "deepfilternet/deepfilternet.js": "15cd594b524ad214dce371f6f3a4ae4955ff2176f50cf4aaf5e4ca0a1091a60e",
+        "deepfilternet/LICENSE": "8799c8bada86a11bbe34ece32c6bc4b3ea352b881911f79466537188a322cfa8"
+      }
+    },
+    {
+      "nome": "@sapphi-red/web-noise-suppressor",
+      "versao": "0.4.1",
+      "licenca": "MIT (RNNoise: BSD-3-Clause; GTCRN: MIT)",
+      "origem": "https://registry.npmjs.org/@sapphi-red/web-noise-suppressor/-/web-noise-suppressor-0.4.1.tgz",
+      "sha256": "fb2f23208991c9472c8323d58ede1c9c3232bdef61f6df9f92e56fe5b52342a9",
+      "pasta": "web-noise-suppressor",
+      "copiados": {
+        "dist/index.js": "index.js",
+        "dist/rnnoise.wasm": "rnnoise.wasm",
+        "dist/rnnoise_simd.wasm": "rnnoise_simd.wasm",
+        "dist/gtcrn.wasm": "gtcrn.wasm",
+        "dist/rnnoise/workletProcessor.js": "rnnoise/workletProcessor.js",
+        "dist/gtcrn/workletProcessor.js": "gtcrn/workletProcessor.js",
+        "LICENSE": "LICENSE"
+      },
+      "arquivos": {
+        "web-noise-suppressor/gtcrn/workletProcessor.js": "343322257ef82a421ab9dd795b4afe18c1aa5b48a0ff65bc040a308c78893da8",
+        "web-noise-suppressor/gtcrn.wasm": "01a5286ddaa1ce6d0dd5510bd9241f3bf0cc727a05d5767ae6881d85d9983719",
+        "web-noise-suppressor/index.js": "e2386fac75bf8556a70381d09f5066c4436f2c410c1eee4b2adb7144d6cc4b3a",
+        "web-noise-suppressor/LICENSE": "d91a727fcf7115e66c14fd7430b920baaa2c49f9908d0df473e7d971affcf21a",
+        "web-noise-suppressor/rnnoise/workletProcessor.js": "1e06facbb3d7459b89769aa4247cd4b71263e6662e4da0c54763f3bf06f5893b",
+        "web-noise-suppressor/rnnoise.wasm": "8b60a2ab88fdae2d1a9f940249d0eb072f28ba8e796f7304347b4e07839c8853",
+        "web-noise-suppressor/rnnoise_simd.wasm": "378fd17c294db15ee4e818ba5ef072242a21c8ad7445b483f7f46d7dc4f2c253"
+      }
+    }
+  ]
+}

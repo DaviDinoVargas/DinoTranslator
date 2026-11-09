@@ -1,0 +1,68 @@
+@using DinoTranslator.Desktop.Services.Audio
+@implements IAsyncDisposable
+@inject CallSession Call
+
+@* Supressão de ruído durante a chamada: cada mudança vale na hora, sem reconectar. *@
+<aside class="engines engines--ruido" aria-label="Supressão de ruído">
+  <header class="engines__head">
+    <span class="engines__icon engines__icon--verde"><Icon Name="ruido" /></span>
+    <div class="engines__titles">
+      <p class="engines__title">Supressão de ruído</p>
+      <p class="engines__where">no seu microfone, antes de enviar e de traduzir</p>
+    </div>
+    <button type="button" class="conversation__close" @onclick="OnClose" aria-label="Fechar a supressão de ruído" title="Fechar"><Icon Name="fechar" /></button>
+  </header>
+  <NoiseControls @ref="_controls" State="Call.Noise" Busy="_busy" OnChange="ChangeAsync" />
+</aside>
+
+@code {
+    private NoiseControls? _controls;
+    private bool _busy;
+    private bool _bound;
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    protected override void OnInitialized() => Call.Changed += OnCallChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Call.RefreshNoiseAsync();
+        }
+        if (!_bound && _controls is not null)
+        {
+            _bound = true;
+            await Call.BindNoiseMeterAsync(_controls.MeterFill, _controls.MeterMark);
+        }
+    }
+
+    private async Task ChangeAsync(NoiseSettings settings)
+    {
+        _busy = true;
+        try
+        {
+            await Call.SetNoiseAsync(settings);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void OnCallChanged() => InvokeAsync(StateHasChanged);
+
+    public async ValueTask DisposeAsync()
+    {
+        Call.Changed -= OnCallChanged;
+        try
+        {
+            await Call.UnbindNoiseMeterAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // A janela já fechou.
+        }
+    }
+}

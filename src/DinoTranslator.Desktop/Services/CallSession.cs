@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using DinoTranslator.Desktop.Services.Audio;
 using DinoTranslator.Desktop.Services.Translation;
 using DinoTranslator.Shared;
 using DinoTranslator.Shared.Call;
@@ -398,6 +399,63 @@ public sealed class CallSession(
         await MaybeStartTranslationAsync();
         Notify();
         return media;
+    }
+
+    /// <summary>Supressão de ruído do microfone nesta chamada (escolhas e o modo rodando).</summary>
+    public NoiseState? Noise { get; private set; }
+
+    public async Task RefreshNoiseAsync()
+    {
+        if (_module is not null)
+        {
+            Noise = (await _module.InvokeAsync<NoiseState>("noiseState")).Sanitized();
+            Notify();
+        }
+    }
+
+    public async Task SetNoiseAsync(NoiseSettings settings)
+    {
+        if (_module is null)
+        {
+            return;
+        }
+        Noise = Noise is null ? new NoiseState(settings.Sanitized(), null, null) : Noise with { Settings = settings.Sanitized() };
+        Notify();
+        try
+        {
+            await _module.InvokeAsync<NoiseSettings>("setNoise", settings.Sanitized());
+        }
+        catch (JSException)
+        {
+            // O microfone não reabriu com as novas opções: o painel mostra o que ficou valendo.
+        }
+        await RefreshNoiseAsync();
+    }
+
+    public async Task BindNoiseMeterAsync(ElementReference fill, ElementReference mark)
+    {
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("bindNoiseMeter", fill, mark);
+        }
+    }
+
+    public async Task UnbindNoiseMeterAsync()
+    {
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("bindNoiseMeter", null, null);
+        }
+    }
+
+    [JSInvokable]
+    public void OnNoiseStatus(string mode, string? problem)
+    {
+        if (Noise is not null && NoiseModes.IsKnown(mode))
+        {
+            Noise = (Noise with { Mode = mode, Problem = problem }).Sanitized();
+            Notify();
+        }
     }
 
     public async Task SetVideoQualityAsync(VideoQuality quality)
@@ -1038,6 +1096,7 @@ public sealed class CallSession(
         RemoteScreen = false;
         ScreenStats = null;
         Floating = false;
+        Noise = null;
         Stage = CallStage.Idle;
         titleBar.SetPeer(null, null);
         titleBar.SetStatus(null);

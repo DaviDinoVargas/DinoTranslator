@@ -130,6 +130,23 @@ try {
   result.conversa_bolhas_b = await waitFor(b, `(() => { const n = document.querySelectorAll('.conversation .bubble:not(.bubble--partial)').length; return n >= 2 ? n : 0; })()`, "bolhas na conversa (B)", 20000);
   result.conversa_outra_b = await b.evaluate(`document.querySelector('.conversation .bubble--other .bubble__main')?.textContent.trim() || null`);
 
+  // Supressão de ruído (A): o DeepFilterNet3 roda por padrão; cada modo é trocado no meio da
+  // chamada e precisa ficar rodando de fato, com o medidor mexendo.
+  await waitFor(a, click("Ruído"), "botão Ruído (A)");
+  result.ruido_padrao_a = await waitFor(a, `document.querySelector('.noise')?.dataset.ativo || null`, "supressor ativo (A)", 30000);
+  result.ruido_medidor_a = await waitFor(a, `(() => { const f = document.querySelector('.noise .meter__fill'); return f && parseFloat(f.style.width) > 0 ? f.style.width : null; })()`, "medidor do ruído (A)", 10000).catch(() => null);
+  for (const [nome, modo] of [["GTCRN", "gtcrn"], ["RNNoise", "rnnoise"], ["Padrão", "navegador"], ["Desligada", "desligado"], ["DeepFilterNet3", "deepfilter"]]) {
+    await waitFor(a, `(() => { const m = [...document.querySelectorAll('.noise__mode')].find(m => m.textContent.trim().startsWith(${JSON.stringify(nome)})); if (!m || m.disabled) return false; m.click(); return true; })()`, `modo ${nome} (A)`, 20000);
+    result[`ruido_${modo}_a`] = await waitFor(a, `document.querySelector('.noise')?.dataset.ativo === ${JSON.stringify(modo)} && !document.querySelector('.noise__mode:disabled') ? document.querySelector('.noise__status').textContent.trim() : null`, `modo ${nome} rodando (A)`, 30000);
+  }
+  // A fala do Dino continua chegando legendada depois das trocas.
+  const bubblesBefore = await b.evaluate(`document.querySelectorAll('.conversation .bubble--other:not(.bubble--partial)').length`);
+  result.legenda_depois_das_trocas_b = await waitFor(b, `document.querySelectorAll('.conversation .bubble--other:not(.bubble--partial)').length > ${bubblesBefore}`, "legenda do Dino depois das trocas (B)", 30000);
+  if (process.env.E2E_SHOTS) {
+    await a.screenshot(`${process.env.E2E_SHOTS}-ruido.png`);
+  }
+  await waitFor(a, `(() => { const c = document.querySelector('.engines--ruido .conversation__close'); if (!c) return false; c.click(); return true; })()`, "fechar o painel de ruído (A)");
+
   // Chat escrito: a Anna escreve, quem traduz (o Dino) devolve a tradução aos dois.
   const write = (text) => `(() => { const i = document.querySelector('.composer__input'); if (!i || i.disabled) return false; i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`;
   const send = `(() => { const b = document.querySelector('.composer__send'); if (!b || b.disabled) return false; b.click(); return true; })()`;

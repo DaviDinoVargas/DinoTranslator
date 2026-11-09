@@ -209,6 +209,20 @@ Todos os candidatos de tradução cobrem os cinco idiomas.
 - Opus 48 kHz, quadros de 20 ms, FEC embutido, DTX desligado, até 128 kb/s.
 - **Modo normal**: cancelamento de eco, supressão de ruído e ganho automático.
 - **Modo alta fidelidade** (com fones): sem processamento — voz natural.
+- **Supressão de ruído** (botão **Ruído** na chamada e no teste de dispositivos, vale na hora, sem reconectar). O microfone passa por uma cadeia no próprio app antes de ir para a chamada e para a tradução: supressor → sensibilidade (porta de ruído com medidor, automática ou com limite em dB, como no Discord) → envio.
+  - Modos: desligada; padrão (a do WebRTC, a de antes); RNNoise; GTCRN; **DeepFilterNet3** (padrão), com intensidade ajustável. Cancelamento de eco e ganho automático também têm chave.
+  - Os modelos rodam em AudioWorklets (WebAssembly) e vêm junto com o app, copiados sem mudança de pacotes npm com licença MIT; `js/vendor/ORIGEM.json` registra a origem e o SHA-256 de cada arquivo, e `tools/atualizar-supressores.ps1` confere tudo contra os pacotes publicados.
+  - Se o DeepFilterNet3 não der conta em tempo real, a cadeia desce sozinha para o GTCRN e o painel avisa.
+  - Medido no app (`tests/e2e/ruido.ps1`: fala com ventilador e teclado 12 dB abaixo; o medidor vai até -80 dB):
+
+    | Modo                | Ruído removido | Voz perdida |
+    |---------------------|----------------|-------------|
+    | Padrão (WebRTC)     | 17 dB          | 1,6 dB      |
+    | RNNoise             | 46 dB          | 6,4 dB      |
+    | GTCRN               | ≥ 51 dB        | 7,2 dB      |
+    | DeepFilterNet3 20%  | 34 dB          | 1,6 dB      |
+    | DeepFilterNet3 60%  | 46 dB          | 1,6 dB      |
+    | DeepFilterNet3 100% | ≥ 51 dB        | 0,8 dB      |
 - Escolha de microfone e saída de áudio nas configurações.
 
 ### 5.3 Câmera

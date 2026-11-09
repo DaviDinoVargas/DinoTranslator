@@ -70,7 +70,8 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 
 - O BlazorWebView só carrega conteúdo local empacotado no app.
 - Toda navegação fora da origem do app é cancelada; novas janelas e downloads são bloqueados; links externos abrem no navegador padrão após confirmação.
-- CSP estrita: sem scripts, estilos ou fontes de fora do app.
+- CSP estrita: sem scripts, estilos ou fontes de fora do app. A única exceção é `'wasm-unsafe-eval'`, que deixa compilar WebAssembly dos arquivos do próprio app (os supressores de ruído); não libera `eval` de JavaScript.
+- Supressores de ruído de terceiros (`wwwroot/js/vendor`): copiados sem mudança de pacotes npm fixos; o SHA-256 de cada arquivo fica em `ORIGEM.json`, um teste recusa arquivo alterado ou fora da lista, e `tools/atualizar-supressores.ps1` refaz a cópia conferindo o pacote publicado. Eles não acessam a rede: recebem os binários do app e rodam só sobre o áudio do microfone.
 - Câmera, microfone e tela são liberados só para a origem do app; qualquer outra permissão é negada.
 - DevTools, menu de contexto padrão, atalhos do navegador e preenchimento automático desligados na versão final.
 - Na versão final, o app apaga ao iniciar as variáveis de ambiente do WebView2 (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` e afins), que permitiriam a um atalho ou lançador malicioso ligar a depuração remota, trocar o navegador embutido ou a pasta de dados.

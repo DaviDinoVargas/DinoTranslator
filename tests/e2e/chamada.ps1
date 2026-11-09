@@ -2,8 +2,9 @@
 # Abre dois apps (build Debug) com perfis separados — Dino (pt-BR) e Anna (ru-RU) —,
 # troca convite e resposta pela interface e confere conexão, código de segurança,
 # mídia, legendas traduzidas (motor simulado só no computador do Dino), tela compartilhada
-# em 2K e encerramento. Câmera e microfone são simulados pelo
-# WebView2; a captura de tela real escolhe sozinha a janela do próprio app.
+# em 2K e encerramento. A câmera é simulada pelo WebView2; o microfone toca uma fala gerada
+# pela voz do Windows (o bipe do microfone simulado é ruído para o supressor, que o apaga, como
+# deve). A captura de tela real escolhe sozinha a janela do próprio app.
 #
 # Uso (na raiz do repositório, depois de "dotnet build"):
 #   powershell -File tests/e2e/chamada.ps1
@@ -26,6 +27,21 @@ $people = @(
 
 $processes = @()
 try {
+    # Fala com pausas entre as frases (cada pausa fecha um trecho), repetida em laço pelo WebView2.
+    New-Item -ItemType Directory -Force $work | Out-Null
+    $speech = Join-Path $work "fala.wav"
+    Add-Type -AssemblyName System.Speech
+    $voice = New-Object System.Speech.Synthesis.SpeechSynthesizer
+    $format = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(48000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
+    $voice.SetOutputToWaveFile($speech, $format)
+    $prompt = New-Object System.Speech.Synthesis.PromptBuilder
+    foreach ($sentence in @("Hello, how are you today?", "I am testing the call with live captions.", "The weather is nice and sunny.")) {
+        $prompt.AppendText($sentence)
+        $prompt.AppendBreak([TimeSpan]::FromMilliseconds(1500))
+    }
+    $voice.Speak($prompt)
+    $voice.Dispose()
+
     foreach ($person in $people) {
         New-Item -ItemType Directory -Force $person.Folder | Out-Null
         [IO.File]::WriteAllText("$($person.Folder)\perfil.json", $person.Profile)
@@ -33,7 +49,7 @@ try {
         $env:DINOTRANSLATOR_DATA = $person.Folder
         if ($person.Engine) { $env:DINOTRANSLATOR_ENGINE = $person.Engine } else { Remove-Item Env:DINOTRANSLATOR_ENGINE -ErrorAction SilentlyContinue }
         if ($Manual) { $env:DINOTRANSLATOR_RENDEZVOUS = "desligado" } else { Remove-Item Env:DINOTRANSLATOR_RENDEZVOUS -ErrorAction SilentlyContinue }
-        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$($person.Port) --use-fake-device-for-media-stream --auto-select-desktop-capture-source=DinoTranslator"
+        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$($person.Port) --use-fake-device-for-media-stream --use-file-for-fake-audio-capture=`"$speech`" --auto-select-desktop-capture-source=DinoTranslator"
         $processes += Start-Process -FilePath $exe.FullName -PassThru
     }
     Remove-Item Env:DINOTRANSLATOR_DATA, Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
