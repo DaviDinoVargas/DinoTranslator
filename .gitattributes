@@ -11,3 +11,8 @@
 *.ico     binary
 *.woff2   binary
 *.ttf     binary
+*.wasm    binary
+*.gz      binary
+
+# Arquivos de terceiros conferidos por SHA-256 (ORIGEM.json): o Git nunca muda as quebras de linha.
+src/DinoTranslator.Desktop/wwwroot/js/vendor/** -text

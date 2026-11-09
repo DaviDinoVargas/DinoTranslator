@@ -3,6 +3,8 @@
 // negociados depois pelo canal "sinal", por dentro da conexão já cifrada (DTLS).
 // A lógica do app (códigos, perfil, mensagens) fica em C#.
 
+import { MicrophoneChain, browserProcessing, noiseSettings, paintMeter, saveNoiseSettings } from "./noise.js";
+
 const ICE_SERVERS = [
   { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
   { urls: "stun:stun.cloudflare.com:3478" },
@@ -58,13 +60,12 @@ export function mediaConstraints(quality = videoQuality(), { highFidelity = fals
   const { width, height, frameRate } = QUALITIES[quality];
   const camera = preference("camera");
   const microphone = preference("microphone");
-  const processing = !highFidelity;
   return {
     audio: {
       ...(microphone ? { deviceId: { ideal: microphone } } : {}),
-      echoCancellation: processing,
-      noiseSuppression: processing,
-      autoGainControl: processing,
+      // O supressor de ruído escolhido roda depois, na cadeia do microfone (noise.js); o do
+      // navegador só fica ligado se for ele o escolhido.
+      ...browserProcessing(noiseSettings(), { highFidelity }),
       sampleRate: 48000,
       channelCount: 1,
     },
@@ -132,6 +133,11 @@ export class CallPeer {
     this.pendingNegotiation = false;
     this.remoteFingerprint = null;
     this.localStream = null;
+    this.highFidelity = false;
+    // Microfone limpo (supressor + sensibilidade) e o envio dele na chamada.
+    this.microphone = null;
+    this.audioSender = null;
+    this.noiseLevel = null;
     this.quality = videoQuality();
     this.remoteStream = new MediaStream();
     this.statsTimer = null;
@@ -357,6 +363,7 @@ export class CallPeer {
 
   /** Câmera e microfone. highFidelity desliga o processamento de áudio (exige fones). */
   async startLocalMedia({ highFidelity = false } = {}) {
+    this.highFidelity = highFidelity;
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia(mediaConstraints(this.quality, { highFidelity }));
@@ -364,7 +371,7 @@ export class CallPeer {
       // Sem câmera (ou ocupada por outro programa): a chamada segue só com o microfone.
       stream = await navigator.mediaDevices.getUserMedia({ audio: mediaConstraints(this.quality, { highFidelity }).audio });
     }
-    this.addStream(stream);
+    await this.addStream(stream);
     return stream;
   }
 
@@ -390,17 +397,82 @@ export class CallPeer {
     return (this.localStream?.getTracks() ?? []).some((track) => track.kind === kind && track.readyState === "live");
   }
 
-  addStream(stream) {
+  async addStream(stream) {
     this.localStream = stream;
-    for (const track of stream.getTracks()) {
-      if (track.kind === "video") {
-        track.contentHint = "motion";
-      }
+    for (const track of stream.getVideoTracks()) {
+      track.contentHint = "motion";
       this.pc.addTrack(track, stream);
-      if (track.kind === "audio") {
-        this.attachSpeechCapture("local", track);
-      }
     }
+    const microphone = stream.getAudioTracks()[0];
+    if (microphone) {
+      await this.attachMicrophone(microphone, stream);
+    }
+  }
+
+  /**
+   * O microfone vai para a chamada (e para a tradução) já limpo pela cadeia do supressor. Se a
+   * cadeia não montar, segue o microfone direto, como antes.
+   */
+  async attachMicrophone(raw, stream) {
+    this.microphone = new MicrophoneChain({
+      onTrack: (track) => this.useMicrophoneTrack(track, stream),
+      onStatus: (status) => this.events.onNoiseStatus?.(status),
+      onLevel: (level) => this.noiseLevel?.(level),
+    });
+    try {
+      await this.microphone.apply(raw);
+    } catch {
+      this.microphone.close();
+      this.microphone = null;
+      await this.useMicrophoneTrack(raw, stream);
+    }
+  }
+
+  async useMicrophoneTrack(track, stream) {
+    if (this.audioSender) {
+      await this.audioSender.replaceTrack(track);
+    } else {
+      this.audioSender = this.pc.addTrack(track, stream);
+    }
+    this.detachSpeechCapture("local");
+    this.attachSpeechCapture("local", track);
+  }
+
+  /**
+   * Troca o supressor ou o ajuste dele no meio da chamada, sem renegociar: só a sensibilidade
+   * muda na hora; o resto remonta a cadeia (e, se o processamento do navegador mudou, pega o
+   * microfone de novo com as novas opções).
+   */
+  async setNoise(value) {
+    const before = this.microphone?.settings ?? noiseSettings();
+    const settings = saveNoiseSettings(value);
+    const raw = this.localStream?.getAudioTracks()[0];
+    if (!this.microphone || !raw) {
+      return settings;
+    }
+    const newRaw = before.echoCancellation !== settings.echoCancellation
+      || before.autoGain !== settings.autoGain
+      || (before.mode === "navegador") !== (settings.mode === "navegador");
+    const rebuild = newRaw
+      || before.mode !== settings.mode
+      || this.microphone.status.mode !== settings.mode
+      || (settings.mode === "deepfilter" && before.intensity !== settings.intensity);
+    if (!rebuild) {
+      this.microphone.setSensitivity(settings);
+      return settings;
+    }
+    await this.microphone.apply(newRaw ? await this.reacquireMicrophone(raw) : raw, settings);
+    return settings;
+  }
+
+  async reacquireMicrophone(old) {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: mediaConstraints(this.quality, { highFidelity: this.highFidelity }).audio });
+    const track = stream.getAudioTracks()[0];
+    track.enabled = old.enabled;
+    this.localStream.removeTrack(old);
+    this.localStream.addTrack(track);
+    old.stop();
+    return track;
   }
 
   setTrackEnabled(kind, enabled) {
@@ -425,7 +497,7 @@ export class CallPeer {
       this.silentSink.connect(this.audioContext.destination);
     }
     await this.audioContext.resume();
-    this.attachSpeechCapture("local", this.localStream?.getAudioTracks()[0]);
+    this.attachSpeechCapture("local", this.microphone?.track ?? this.localStream?.getAudioTracks()[0]);
     this.attachSpeechCapture("remote", this.remoteStream.getAudioTracks()[0]);
   }
 
@@ -439,6 +511,16 @@ export class CallPeer {
     source.connect(node);
     node.connect(this.silentSink);
     this.captures.set(who, { source, node });
+  }
+
+  detachSpeechCapture(who) {
+    const capture = this.captures.get(who);
+    if (capture) {
+      capture.node.port.onmessage = null;
+      capture.source.disconnect();
+      capture.node.disconnect();
+      this.captures.delete(who);
+    }
   }
 
   disableSpeechCapture() {
@@ -656,6 +738,7 @@ export class CallPeer {
     this.stopStats();
     this.disableSpeechCapture();
     this.audioContext?.close();
+    this.microphone?.close();
     this.screenTrack?.stop();
     for (const track of this.localStream?.getTracks() ?? []) {
       track.stop();
@@ -717,6 +800,7 @@ export function create(dotnet, polite, relay) {
     onRemoteScreen: (active) => dotnet.invokeMethodAsync("OnRemoteScreen", active),
     onLocalScreen: (active) => dotnet.invokeMethodAsync("OnLocalScreen", active),
     onScreenStats: (sending, width, height, fps, codec) => dotnet.invokeMethodAsync("OnScreenStats", sending, width, height, fps, codec),
+    onNoiseStatus: ({ mode, problem }) => dotnet.invokeMethodAsync("OnNoiseStatus", mode, problem),
   }, { polite, relay: relay ?? null });
 }
 
@@ -818,6 +902,24 @@ export async function startMedia(localVideo, remoteVideo, highFidelity) {
 }
 
 export const setVideoQuality = (name) => current?.setVideoQuality(name);
+
+/** Supressor de ruído desta chamada: as escolhas e o modo que está rodando de fato. */
+export const noiseState = () => ({
+  settings: current?.microphone?.settings ?? noiseSettings(),
+  mode: current?.microphone?.status.mode ?? null,
+  problem: current?.microphone?.status.problem ?? null,
+});
+
+export async function setNoise(value) {
+  return current ? await current.setNoise(value) : saveNoiseSettings(value);
+}
+
+/** Liga (ou desliga, com null) o medidor do painel de ruído. */
+export function bindNoiseMeter(fill, mark) {
+  if (current) {
+    current.noiseLevel = fill ? (level) => paintMeter(fill, mark, level) : null;
+  }
+}
 export const currentVideoQuality = () => current?.quality ?? videoQuality();
 
 /** Som da chamada (o que a outra pessoa fala). A tradução continua ouvindo mesmo mudo. */
