@@ -131,6 +131,10 @@
               disabled="@(!Live || !_hasMicrophone)" aria-pressed="@(_microphone ? "true" : "false")" title="Seu microfone">
         <Icon Name="@(_microphone ? "microfone" : "microfone-mudo")" /><span>@(_microphone ? "Microfone" : "Microfone mudo")</span>
       </button>
+      <button type="button" class="dock-button @(_noise ? "dock-button--active" : "")" @onclick="ToggleNoise"
+              disabled="@(!Live || !_hasMicrophone)" aria-pressed="@(_noise ? "true" : "false")" title="Supressão de ruído do seu microfone">
+        <Icon Name="ruido" /><span>Ruído</span>
+      </button>
       <button type="button" class="dock-button @(_camera ? "dock-button--on" : "dock-button--muted")" @onclick="ToggleCameraAsync"
               disabled="@(!Live || !_hasCamera)" aria-pressed="@(_camera ? "true" : "false")" title="Sua câmera">
         <Icon Name="@(_camera ? "camera" : "camera-desligada")" /><span>@(_camera ? "Câmera" : "Câmera desligada")</span>
@@ -148,7 +152,7 @@
               aria-pressed="@(_conversation ? "true" : "false")" title="Painel com a conversa traduzida">
         <Icon Name="conversa" /><span>Conversa</span>
       </button>
-      <button type="button" class="dock-button @(_engines ? "dock-button--active" : "")" @onclick="() => _engines = !_engines"
+      <button type="button" class="dock-button @(_engines ? "dock-button--active" : "")" @onclick="ToggleEngines"
               aria-pressed="@(_engines ? "true" : "false")" title="Escolher e comparar os motores da tradução">
         <Icon Name="motor" /><span>Motores</span>
       </button>
@@ -163,6 +167,10 @@
     @if (_engines)
     {
       <EnginePanel OnClose="() => _engines = false" />
+    }
+    @if (_noise)
+    {
+      <NoisePanel OnClose="() => _noise = false" />
     }
     </section>
 
@@ -187,10 +195,24 @@
     private bool _hasCamera = true;
     private bool _conversation = true;
     private bool _engines;
+    private bool _noise;
     private bool _mediaStarted;
     private string? _floatingText;
 
     private bool Live => Call.Stage == CallStage.Connected;
+
+    // Os dois painéis ocupam o mesmo canto do palco: abrir um fecha o outro.
+    private void ToggleNoise()
+    {
+        _noise = !_noise;
+        _engines &= !_noise;
+    }
+
+    private void ToggleEngines()
+    {
+        _engines = !_engines;
+        _noise &= !_engines;
+    }
 
     private StageLayout Layout => StageLayout.For(_chosen, Call.RemoteScreen, Call.SharingScreen);
 

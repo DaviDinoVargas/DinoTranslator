@@ -2268,6 +2268,192 @@ h2.handshake__step {
   font-size: 13.5px;
 }
 
+/* Supressão de ruído: o mesmo painel de vidro dos motores (na chamada) e um bloco no teste de
+   dispositivos. O medidor mostra o volume já limpo e, na marca, o limite da sensibilidade. */
+.engines__icon--verde {
+  background: linear-gradient(180deg, #34c759, #248a3d);
+}
+
+.noise {
+  display: grid;
+  gap: 14px;
+}
+
+.noise__modes {
+  display: grid;
+  overflow: hidden;
+  border-radius: var(--raio);
+  background: rgba(255, 255, 255, .06);
+}
+
+.noise__mode {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px 10px 38px;
+  position: relative;
+  border: 0;
+  background: transparent;
+  color: var(--texto);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--rapido) var(--curva);
+}
+
+.noise__mode + .noise__mode {
+  border-top: 1px solid var(--separador);
+}
+
+.noise__mode::before {
+  position: absolute;
+  top: 13px;
+  left: 12px;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 2px solid var(--texto-3);
+  border-radius: 50%;
+  content: "";
+}
+
+.noise__mode:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .05);
+}
+
+.noise__mode:focus-visible {
+  outline: 2px solid var(--azul);
+  outline-offset: -2px;
+}
+
+.noise__mode--on::before {
+  border: 5px solid var(--verde);
+}
+
+.noise__mode:disabled {
+  cursor: default;
+  opacity: .7;
+}
+
+.noise__mode-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.noise__mode-text {
+  color: var(--texto-2);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.noise__slider,
+.noise__sensitivity {
+  display: grid;
+  gap: 6px;
+}
+
+.noise__slider--off {
+  opacity: .55;
+}
+
+.noise__label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.noise__label {
+  color: var(--texto-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.noise__label strong {
+  color: var(--texto);
+  font-variant-numeric: tabular-nums;
+}
+
+.noise input[type="range"] {
+  width: 100%;
+  accent-color: var(--verde);
+}
+
+.noise__ends {
+  display: flex;
+  justify-content: space-between;
+  color: var(--texto-3);
+  font-size: 11.5px;
+}
+
+.noise__hint {
+  color: var(--texto-2);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.noise__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.noise__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--texto);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.noise__check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--verde);
+}
+
+.noise__status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--texto-2);
+  font-size: 13px;
+}
+
+.noise__status--problem {
+  color: #ffd9b0;
+}
+
+.meter--limite {
+  position: relative;
+  height: 8px;
+  overflow: visible;
+}
+
+.meter--limite .meter__fill {
+  background: var(--texto-3);
+}
+
+.meter--limite .meter__fill--loud {
+  background: var(--verde);
+}
+
+.meter__mark {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--amarelo);
+  box-shadow: 0 0 6px rgba(255, 214, 10, .6);
+  transition: left 200ms var(--curva);
+}
+
+.devices__monitor {
+  justify-self: start;
+}
+
 /* ---------- Modo servidor (opcional) ---------- */
 
 .login__mark {
