@@ -1,5 +1,6 @@
 using DinoTranslator.Server.Data;
 using DinoTranslator.Shared;
+using DinoTranslator.Shared.Auth;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -11,13 +12,14 @@ public sealed record NewUser(string UserName, string DisplayName, string Languag
 public sealed class UserAdministrationException(string message) : Exception(message);
 
 /// <summary>
-/// Criação e manutenção das contas. Só é usada pelo comando <c>users</c> no próprio
-/// servidor — não existe endpoint de cadastro.
+/// Criação e manutenção das contas: pelo cadastro (se aberto) e pelo comando <c>users</c> no
+/// próprio servidor, que também ativa o plano e suspende contas.
 /// </summary>
 public sealed class UserAdministration(
     AppDbContext db,
     IPasswordHasher<User> hasher,
     IOptions<AuthOptions> options,
+    SessionValidator sessions,
     TimeProvider time)
 {
     public async Task<User> CreateAsync(NewUser request, CancellationToken cancellationToken = default)
@@ -52,9 +54,9 @@ public sealed class UserAdministration(
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
         var maxUsers = options.Value.MaxUsers;
-        if (await db.Users.CountAsync(cancellationToken) >= maxUsers)
+        if (maxUsers > 0 && await db.Users.CountAsync(cancellationToken) >= maxUsers)
         {
-            throw new UserAdministrationException($"Limite de {maxUsers} contas atingido. Remova uma conta antes de criar outra.");
+            throw new UserAdministrationException($"Limite de {maxUsers} contas atingido.");
         }
 
         if (await db.Users.AnyAsync(u => u.UserName == userName, cancellationToken))
@@ -76,9 +78,58 @@ public sealed class UserAdministration(
         user.PasswordHash = hasher.HashPassword(user, request.Password);
 
         db.Users.Add(user);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // Dois cadastros com o mesmo nome ao mesmo tempo: o índice único decide.
+            throw new UserAdministrationException($"O usuário \"{userName}\" já existe.");
+        }
         await transaction.CommitAsync(cancellationToken);
         return user;
+    }
+
+    /// <summary>Ativa o Plus (por <paramref name="days"/> dias, ou sem prazo) ou volta ao grátis.</summary>
+    public async Task<User> SetPlanAsync(string userName, AccountPlan plan, int? days, CancellationToken cancellationToken = default)
+    {
+        if (days is <= 0 or > 3660)
+        {
+            throw new UserAdministrationException("Prazo inválido: use de 1 a 3660 dias.");
+        }
+        var user = await FindAsync(userName, cancellationToken);
+        var now = time.GetUtcNow().UtcDateTime;
+        user.Plan = plan;
+        // Renovação soma ao prazo que ainda resta.
+        var start = plan == AccountPlan.Plus && user.PlanExpiresAtUtc > now ? user.PlanExpiresAtUtc.Value : now;
+        user.PlanExpiresAtUtc = plan == AccountPlan.Plus && days is { } d ? start.AddDays(d) : null;
+        await db.SaveChangesAsync(cancellationToken);
+        return user;
+    }
+
+    /// <summary>Suspende a conta: encerra todas as sessões e recusa novas entradas.</summary>
+    public async Task DisableAsync(string userName, CancellationToken cancellationToken = default)
+    {
+        var user = await FindAsync(userName, cancellationToken);
+        var now = time.GetUtcNow().UtcDateTime;
+        user.DisabledAtUtc = now;
+        user.SecurityStamp = Guid.NewGuid();
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await db.RefreshTokens
+            .Where(t => t.UserId == user.Id && t.RevokedAtUtc == null)
+            .ExecuteUpdateAsync(set => set.SetProperty(t => t.RevokedAtUtc, now), cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        await sessions.InvalidateAsync(user.Id, cancellationToken);
+    }
+
+    public async Task EnableAsync(string userName, CancellationToken cancellationToken = default)
+    {
+        var user = await FindAsync(userName, cancellationToken);
+        user.DisabledAtUtc = null;
+        await db.SaveChangesAsync(cancellationToken);
+        await sessions.InvalidateAsync(user.Id, cancellationToken);
     }
 
     public Task<List<User>> ListAsync(CancellationToken cancellationToken = default) =>
@@ -105,6 +156,7 @@ public sealed class UserAdministration(
             .ExecuteUpdateAsync(set => set.SetProperty(t => t.RevokedAtUtc, now), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await sessions.InvalidateAsync(user.Id, cancellationToken);
     }
 
     public async Task UnlockAsync(string userName, CancellationToken cancellationToken = default)
@@ -120,6 +172,7 @@ public sealed class UserAdministration(
         var user = await FindAsync(userName, cancellationToken);
         db.Users.Remove(user);
         await db.SaveChangesAsync(cancellationToken);
+        await sessions.InvalidateAsync(user.Id, cancellationToken);
     }
 
     private async Task<User> FindAsync(string userName, CancellationToken cancellationToken)

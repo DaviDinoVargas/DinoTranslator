@@ -19,11 +19,16 @@ public static class AuthSetup
         services.TryAddSingleton(TimeProvider.System);
         services.AddOptions<AuthOptions>()
             .BindConfiguration(AuthOptions.Section)
-            .Validate(o => o.MaxUsers is >= 1 and <= 2, "Auth:MaxUsers deve ser 1 ou 2.")
+            .Validate(o => o.MaxUsers >= 0, "Auth:MaxUsers não pode ser negativo (0 = sem limite).")
+            .Validate(o => o.AccessTokenMinutes is >= 1 and <= 60, "Auth:AccessTokenMinutes deve ficar entre 1 e 60.")
+            .Validate(o => string.IsNullOrEmpty(o.RegistrationCode) || o.RegistrationCode.Length >= 12, "Auth:RegistrationCode precisa ter pelo menos 12 caracteres.")
             .ValidateOnStart();
 
-        // PBKDF2-HMAC-SHA512 com 100 mil iterações (formato V3 do ASP.NET Core Identity).
+        // PBKDF2-HMAC-SHA512 (formato V3 do ASP.NET Core Identity) com as 210 mil iterações
+        // recomendadas pela OWASP; senhas antigas são refeitas no próximo login.
+        services.Configure<PasswordHasherOptions>(o => o.IterationCount = 210_000);
         services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
+        services.AddSingleton<SessionValidator>();
         services.AddScoped<UserAdministration>();
         return services;
     }
@@ -74,8 +79,8 @@ public static class AuthSetup
                         var principal = context.Principal;
                         var valid = principal?.GetUserId() is { } userId
                             && Guid.TryParse(principal.FindFirst(AuthClaims.SecurityStamp)?.Value, out var stamp)
-                            && await context.HttpContext.RequestServices.GetRequiredService<AppDbContext>()
-                                .Users.AnyAsync(u => u.Id == userId && u.SecurityStamp == stamp, context.HttpContext.RequestAborted);
+                            && await context.HttpContext.RequestServices.GetRequiredService<SessionValidator>()
+                                .IsValidAsync(userId, stamp, context.HttpContext.RequestAborted);
                         if (!valid)
                         {
                             context.Fail("Sessão inválida.");
@@ -84,12 +89,25 @@ public static class AuthSetup
                 };
             });
 
-        services.AddAuthorization();
+        // Versão paga: o token diz se o Plus valia na emissão; o prazo é conferido de novo aqui.
+        services.AddAuthorizationBuilder()
+            .AddPolicy(AuthClaims.PlusPolicy, policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+            {
+                if (context.User.FindFirst(AuthClaims.Plan)?.Value != "plus")
+                {
+                    return false;
+                }
+                var until = context.User.FindFirst(AuthClaims.PlanUntil)?.Value;
+                return until is null
+                    || (long.TryParse(until, CultureInfo.InvariantCulture, out var seconds)
+                        && DateTimeOffset.FromUnixTimeSeconds(seconds) > TimeProvider.System.GetUtcNow());
+            }));
         return services;
     }
 
     public const string LoginRateLimit = "login";
     public const string RefreshRateLimit = "refresh";
+    public const string RegisterRateLimit = "register";
 
     /// <summary>Janela fixa de 1 min por IP, sem fila; o excesso recebe 429 com Retry-After.</summary>
     public static IServiceCollection AddAuthRateLimits(this IServiceCollection services)
@@ -108,6 +126,16 @@ public static class AuthSetup
             };
             limiter.AddPolicy(LoginRateLimit, context => PerClientIp(context, o => o.LoginPermitsPerMinute));
             limiter.AddPolicy(RefreshRateLimit, context => PerClientIp(context, o => o.RefreshPermitsPerMinute));
+            limiter.AddPolicy(RegisterRateLimit, context =>
+            {
+                var options = context.RequestServices.GetRequiredService<IOptions<AuthOptions>>().Value;
+                return RateLimitPartition.GetFixedWindowLimiter("cadastro:" + (context.Connection.RemoteIpAddress?.ToString() ?? "desconhecido"), _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = options.RegisterPermitsPerHour,
+                    Window = TimeSpan.FromHours(1),
+                    QueueLimit = 0,
+                });
+            });
         });
         return services;
     }

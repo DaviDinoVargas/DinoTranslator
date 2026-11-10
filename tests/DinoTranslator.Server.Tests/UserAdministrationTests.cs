@@ -11,12 +11,22 @@ public sealed class UserAdministrationTests : IDisposable
     public void Dispose() => _factory.Dispose();
 
     [Fact]
-    public async Task Terceira_conta_e_recusada()
+    public async Task Sem_limite_de_contas_por_padrao()
     {
-        await _factory.CreateUserAsync("dino");
-        await _factory.CreateUserAsync("amiga", language: Languages.Russian);
+        foreach (var name in new[] { "dino", "amiga", "terceiro", "quarto" })
+        {
+            await _factory.CreateUserAsync(name);
+        }
+    }
 
-        var error = await Assert.ThrowsAsync<UserAdministrationException>(() => _factory.CreateUserAsync("terceiro"));
+    [Fact]
+    public async Task Limite_de_contas_vale_quando_configurado()
+    {
+        using var limited = new ServerFactory(new Dictionary<string, string?> { ["Auth:MaxUsers"] = "2" });
+        await limited.CreateUserAsync("dino");
+        await limited.CreateUserAsync("amiga", language: Languages.Russian);
+
+        var error = await Assert.ThrowsAsync<UserAdministrationException>(() => limited.CreateUserAsync("terceiro"));
 
         Assert.Contains("Limite de 2 contas", error.Message);
     }

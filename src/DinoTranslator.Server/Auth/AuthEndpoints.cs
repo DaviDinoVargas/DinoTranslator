@@ -13,6 +13,15 @@ public static class AuthEndpoints
                 : Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Usuário ou senha inválidos."))
             .RequireRateLimiting(AuthSetup.LoginRateLimit);
 
+        app.MapPost(AuthRoutes.Register, async (RegisterRequest request, AuthService auth, CancellationToken cancellationToken) =>
+        {
+            var result = await auth.RegisterAsync(request, cancellationToken);
+            return result.Tokens is { } tokens
+                ? Results.Ok(tokens)
+                : Results.Problem(statusCode: result.Closed ? StatusCodes.Status403Forbidden : StatusCodes.Status400BadRequest, title: result.Error);
+        })
+            .RequireRateLimiting(AuthSetup.RegisterRateLimit);
+
         app.MapPost(AuthRoutes.Refresh, async (RefreshRequest request, AuthService auth, CancellationToken cancellationToken) =>
             await auth.RefreshAsync(request.RefreshToken, cancellationToken) is { } tokens
                 ? Results.Ok(tokens)

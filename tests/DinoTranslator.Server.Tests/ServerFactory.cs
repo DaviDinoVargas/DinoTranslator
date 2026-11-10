@@ -18,6 +18,17 @@ namespace DinoTranslator.Server.Tests;
 /// </summary>
 public class ServerFactory : WebApplicationFactory<Program>
 {
+    private readonly IReadOnlyDictionary<string, string?> _settings;
+
+    /// <summary>Usado como fixture de classe pelo xUnit, que exige um único construtor público.</summary>
+    public ServerFactory()
+        : this(new Dictionary<string, string?>())
+    {
+    }
+
+    /// <summary>Com configurações próprias do teste (limites, cadastro fechado etc.).</summary>
+    internal ServerFactory(IReadOnlyDictionary<string, string?> settings) => _settings = settings;
+
     public const string DefaultPassword = "senha-de-teste-forte";
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"dinotranslator-test-{Guid.NewGuid():N}.db");
@@ -32,6 +43,11 @@ public class ServerFactory : WebApplicationFactory<Program>
         // Limites altos por padrão; o teste do limite usa os próprios valores.
         builder.UseSetting("Auth:LoginPermitsPerMinute", "1000");
         builder.UseSetting("Auth:RefreshPermitsPerMinute", "1000");
+        builder.UseSetting("Auth:RegisterPermitsPerHour", "1000");
+        foreach (var (key, value) in _settings)
+        {
+            builder.UseSetting(key, value);
+        }
         builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(Time));
     }
 
