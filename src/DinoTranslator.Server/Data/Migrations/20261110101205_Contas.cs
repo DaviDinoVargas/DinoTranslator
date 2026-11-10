@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace DinoTranslator.Server.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class Inicial : Migration
+    public partial class Contas : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -15,16 +15,19 @@ namespace DinoTranslator.Server.Data.Migrations
                 name: "Users",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    UserName = table.Column<string>(type: "TEXT", maxLength: 32, nullable: false),
-                    DisplayName = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
-                    Language = table.Column<string>(type: "TEXT", maxLength: 8, nullable: false),
-                    Gender = table.Column<int>(type: "INTEGER", nullable: false),
-                    PasswordHash = table.Column<string>(type: "TEXT", maxLength: 512, nullable: false),
-                    SecurityStamp = table.Column<Guid>(type: "TEXT", nullable: false),
-                    FailedLoginCount = table.Column<int>(type: "INTEGER", nullable: false),
-                    LockoutEndUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserName = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
+                    DisplayName = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    Language = table.Column<string>(type: "character varying(8)", maxLength: 8, nullable: false),
+                    Gender = table.Column<int>(type: "integer", nullable: false),
+                    PasswordHash = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    SecurityStamp = table.Column<Guid>(type: "uuid", nullable: false),
+                    FailedLoginCount = table.Column<int>(type: "integer", nullable: false),
+                    LockoutEndUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    CreatedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    Plan = table.Column<int>(type: "integer", nullable: false),
+                    PlanExpiresAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    DisabledAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -35,14 +38,14 @@ namespace DinoTranslator.Server.Data.Migrations
                 name: "RefreshTokens",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    UserId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    SessionId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    TokenHash = table.Column<byte[]>(type: "BLOB", maxLength: 32, nullable: false),
-                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    ExpiresAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UsedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    RevokedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: true)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    SessionId = table.Column<Guid>(type: "uuid", nullable: false),
+                    TokenHash = table.Column<byte[]>(type: "bytea", maxLength: 32, nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    ExpiresAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UsedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    RevokedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {

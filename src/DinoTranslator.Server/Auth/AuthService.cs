@@ -6,11 +6,15 @@ using Microsoft.Extensions.Options;
 
 namespace DinoTranslator.Server.Auth;
 
+/// <summary>Resultado do cadastro: os tokens (já entra) ou o motivo da recusa.</summary>
+public sealed record RegistrationResult(TokenResponse? Tokens, string? Error, bool Closed = false);
+
 public sealed class AuthService(
     AppDbContext db,
     IPasswordHasher<User> hasher,
     DummyPasswordHash dummy,
     TokenService tokens,
+    UserAdministration accounts,
     IOptions<AuthOptions> options,
     TimeProvider time,
     ILogger<AuthService> logger)
@@ -42,6 +46,13 @@ public sealed class AuthService(
         {
             dummy.Verify(password);
             logger.LogWarning("Tentativa de login na conta bloqueada {UserId}.", user.Id);
+            return null;
+        }
+
+        if (user.DisabledAtUtc is not null)
+        {
+            dummy.Verify(password);
+            logger.LogWarning("Tentativa de login na conta suspensa {UserId}.", user.Id);
             return null;
         }
 
@@ -108,10 +119,62 @@ public sealed class AuthService(
             return null;
         }
 
+        if (stored.User.DisabledAtUtc is not null)
+        {
+            await RevokeSessionAsync(stored.SessionId, now, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return null;
+        }
+
         var response = IssueTokens(stored.User, stored.SessionId, now);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return response;
+    }
+
+    /// <summary>
+    /// Cadastro pela rede, se o servidor permitir (e com o código, se ele exigir). A conta nasce
+    /// no plano grátis; o Plus é ativado pelo dono do servidor.
+    /// </summary>
+    public async Task<RegistrationResult> RegisterAsync(RegisterRequest? request, CancellationToken cancellationToken)
+    {
+        var settings = options.Value;
+        if (!settings.OpenRegistration)
+        {
+            return new RegistrationResult(null, "O cadastro está fechado neste servidor.", Closed: true);
+        }
+        if (request is null)
+        {
+            return new RegistrationResult(null, "Cadastro inválido.");
+        }
+        if (!string.IsNullOrEmpty(settings.RegistrationCode) && !SameSecret(request.Code, settings.RegistrationCode))
+        {
+            return new RegistrationResult(null, "Código de cadastro inválido.");
+        }
+
+        User user;
+        try
+        {
+            user = await accounts.CreateAsync(
+                new NewUser(request.UserName, request.DisplayName, request.Language, request.Gender, request.Password ?? string.Empty),
+                cancellationToken);
+        }
+        catch (UserAdministrationException ex)
+        {
+            return new RegistrationResult(null, ex.Message);
+        }
+
+        var response = IssueTokens(user, sessionId: Guid.NewGuid(), Now);
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Conta {UserId} criada pelo cadastro.", user.Id);
+        return new RegistrationResult(response, null);
+    }
+
+    private static bool SameSecret(string? given, string expected)
+    {
+        var a = System.Text.Encoding.UTF8.GetBytes(given ?? string.Empty);
+        var b = System.Text.Encoding.UTF8.GetBytes(expected);
+        return a.Length == b.Length && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(a, b);
     }
 
     public async Task LogoutAsync(string? refreshToken, CancellationToken cancellationToken)
@@ -139,7 +202,8 @@ public sealed class AuthService(
     }
 
     public static UserProfile ToProfile(User user) =>
-        new(user.Id, user.UserName, user.DisplayName, user.Language, user.Gender);
+        new(user.Id, user.UserName, user.DisplayName, user.Language, user.Gender, user.Plan,
+            user.PlanExpiresAtUtc is { } until ? new DateTimeOffset(until, TimeSpan.Zero) : null);
 
     private void RegisterFailure(User user, DateTime now)
     {

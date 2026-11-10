@@ -23,16 +23,30 @@ public sealed class TokenService(IOptions<JwtOptions> jwt, IOptions<AuthOptions>
             IssuedAt = now.UtcDateTime,
             NotBefore = now.UtcDateTime,
             Expires = expiresAt.UtcDateTime,
-            Claims = new Dictionary<string, object>
-            {
-                [AuthClaims.Subject] = user.Id.ToString(),
-                [JwtRegisteredClaimNames.Jti] = Guid.NewGuid().ToString(),
-                [AuthClaims.Name] = user.UserName,
-                [AuthClaims.SecurityStamp] = user.SecurityStamp.ToString(),
-            },
+            Claims = Claims(user, now.UtcDateTime),
             SigningCredentials = new SigningCredentials(jwt.Value.CreateSecurityKey(), SecurityAlgorithms.HmacSha256),
         });
         return (token, expiresAt);
+    }
+
+    private static Dictionary<string, object> Claims(User user, DateTime nowUtc)
+    {
+        var claims = new Dictionary<string, object>
+        {
+            [AuthClaims.Subject] = user.Id.ToString(),
+            [JwtRegisteredClaimNames.Jti] = Guid.NewGuid().ToString(),
+            [AuthClaims.Name] = user.UserName,
+            [AuthClaims.SecurityStamp] = user.SecurityStamp.ToString(),
+        };
+        if (user.HasPlus(nowUtc))
+        {
+            claims[AuthClaims.Plan] = "plus";
+            if (user.PlanExpiresAtUtc is { } until)
+            {
+                claims[AuthClaims.PlanUntil] = new DateTimeOffset(until, TimeSpan.Zero).ToUnixTimeSeconds();
+            }
+        }
+        return claims;
     }
 
     /// <summary>256 bits aleatórios; o servidor guarda só o SHA-256.</summary>

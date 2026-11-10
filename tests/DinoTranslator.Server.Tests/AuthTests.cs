@@ -32,7 +32,7 @@ public sealed class AuthTests : IDisposable
         Assert.Equal("dino", tokens.User.UserName);
         Assert.NotEmpty(tokens.AccessToken);
         Assert.NotEmpty(tokens.RefreshToken);
-        Assert.Equal(_factory.Time.GetUtcNow().AddMinutes(15), tokens.AccessTokenExpiresAt, TimeSpan.FromSeconds(1));
+        Assert.Equal(_factory.Time.GetUtcNow().AddMinutes(10), tokens.AccessTokenExpiresAt, TimeSpan.FromSeconds(1));
     }
 
     [Fact]

@@ -16,13 +16,13 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 
 builder.Services.AddProblemDetails();
-builder.Services.AddHealthChecks();
+builder.Services.AddScaling(builder.Configuration);
 builder.Services.AddReverseProxySupport();
 builder.Services.AddDatabase();
 builder.Services.AddAccounts();
 builder.Services.AddTokenAuthentication();
 builder.Services.AddAuthRateLimits();
-builder.Services.AddRoom();
+builder.Services.AddRoom(builder.Configuration);
 builder.Services.AddIceServers();
 
 var app = builder.Build();
@@ -51,7 +51,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapHealthChecks("/health");
+app.MapHealth();
 app.MapAuthEndpoints();
 app.MapRoom();
 app.MapIceServers();
