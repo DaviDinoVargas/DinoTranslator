@@ -1,4 +1,5 @@
 using DinoTranslator.Server.Auth;
+using DinoTranslator.Server.Calls;
 using DinoTranslator.Server.Cli;
 using DinoTranslator.Server.Data;
 using DinoTranslator.Server.Infrastructure;
@@ -25,6 +26,7 @@ builder.Services.AddTokenAuthentication();
 builder.Services.AddAuthRateLimits();
 builder.Services.AddRoom(builder.Configuration);
 builder.Services.AddSocial(builder.Configuration);
+builder.Services.AddVoice(builder.Configuration);
 builder.Services.AddIceServers();
 
 var app = builder.Build();
@@ -56,6 +58,7 @@ app.UseAuthorization();
 app.MapHealth();
 app.MapAuthEndpoints();
 app.MapSocial();
+app.MapVoice();
 app.MapIceServers();
 
 await app.RunAsync();
