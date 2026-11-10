@@ -9,7 +9,6 @@ public static class RoomSetup
 {
     public static IServiceCollection AddRoom(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddSingleton<PresenceTracker>();
         services.AddSingleton<IUserIdProvider, SubjectUserIdProvider>();
         services.AddSignalR(options =>
         {
@@ -20,12 +19,6 @@ public static class RoomSetup
             options.AddFilter<HubRateLimitFilter>();
         }).AddScaleOut(configuration);
         return services;
-    }
-
-    public static IEndpointRouteBuilder MapRoom(this IEndpointRouteBuilder app)
-    {
-        app.MapHub<RoomHub>(RoomRoutes.Hub);
-        return app;
     }
 
     /// <summary>Endereça mensagens pelo id do usuário (claim "sub" do JWT).</summary>

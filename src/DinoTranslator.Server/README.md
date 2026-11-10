@@ -76,4 +76,33 @@ dotnet run -- users enable <usuario>
 | GET    | `/api/ice-servers`  | JWT          | —             |
 | WS     | `/hubs/sala`        | JWT no cabeçalho | 50 mensagens/s por conexão |
 
+## Versão paga (exige Plus)
+
+Tudo abaixo exige token de conta com Plus válido; conta grátis recebe 403.
+
+| Método | Rota | Quem pode |
+|--------|------|-----------|
+| GET | `/api/eu/grupos` | a própria conta |
+| POST | `/api/grupos` `{name}` | qualquer um (até 20 grupos próprios e 200 no total); nasce com `#geral` e o canal de voz |
+| GET/PATCH/DELETE | `/api/grupos/{id}` | membros veem; administradores renomeiam; o dono apaga |
+| POST | `/api/grupos/{id}/canais` `{name, kind}` | administradores (até 50 canais) |
+| DELETE | `/api/canais/{id}` | administradores |
+| POST | `/api/grupos/{id}/convites` `{maxUses?, hours?}` | membros (código de 10 caracteres; até 30 dias) |
+| GET / POST | `/api/convites/{código}` / `/entrar` | qualquer conta Plus (grupo de até 500 membros) |
+| DELETE | `/api/grupos/{id}/membros/{conta}` | a própria pessoa (sair) ou alguém de papel maior (remover) |
+| PUT | `/api/grupos/{id}/membros/{conta}/papel` `{role}` | só o dono (Owner passa o grupo) |
+| GET | `/api/canais/{id}/mensagens?antes=&limite=` | membros do grupo ou as duas pessoas da conversa |
+| POST | `/api/canais/{id}/mensagens` `{content, replyToId?}` | idem; até 4.000 caracteres; 10 por 10 s por conta |
+| PATCH / DELETE | `/api/mensagens/{id}` | edita quem escreveu; apaga quem escreveu ou administrador |
+| GET / POST | `/api/amigos` `{userName}` | pedir; se a outra pessoa já pediu, vira amizade |
+| DELETE | `/api/amigos/{conta}` | desfazer, recusar ou cancelar |
+| POST / DELETE | `/api/bloqueios/{conta}` | bloqueado não pede amizade nem manda mensagem direta |
+| GET / POST | `/api/conversas` / `/api/conversas/{conta}` | conversa direta só entre amigos ou quem está num mesmo grupo |
+| WS | `/hubs/app` | eventos: mensagens, digitando, presença, mudanças de grupo e de amigos |
+
+- A mensagem é guardada como foi escrita, com o idioma de quem escreveu; cada app traduz para o idioma de quem lê, com o próprio motor. O servidor não traduz nem envia texto a serviços de fora.
+- O que a pessoa não pode ver responde 404, igual ao que não existe.
+- Quem sai ou é removido de um grupo para de receber os eventos dele na hora, em qualquer instância.
+- Presença: com Redis, cada instância renova as próprias conexões a cada 30 s; se uma instância cair, quem estava nela fica offline em até 90 s.
+
 Os controles de segurança estão descritos em [docs/SEGURANCA.md](../../docs/SEGURANCA.md).
