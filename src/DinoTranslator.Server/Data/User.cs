@@ -1,4 +1,5 @@
 using DinoTranslator.Shared;
+using DinoTranslator.Shared.Auth;
 
 namespace DinoTranslator.Server.Data;
 
@@ -25,4 +26,15 @@ public sealed class User
     public DateTime? LockoutEndUtc { get; set; }
 
     public DateTime CreatedAtUtc { get; set; }
+
+    /// <summary>Plano da conta. A versão paga (grupos, chat, chamadas em grupo) exige Plus válido.</summary>
+    public AccountPlan Plan { get; set; }
+
+    /// <summary>Até quando o Plus vale; <c>null</c> = sem prazo.</summary>
+    public DateTime? PlanExpiresAtUtc { get; set; }
+
+    /// <summary>Conta suspensa pelo dono do servidor: não entra e perde as sessões abertas.</summary>
+    public DateTime? DisabledAtUtc { get; set; }
+
+    public bool HasPlus(DateTime nowUtc) => Plan == AccountPlan.Plus && (PlanExpiresAtUtc is not { } until || until > nowUtc);
 }

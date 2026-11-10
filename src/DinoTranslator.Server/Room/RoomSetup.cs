@@ -1,12 +1,13 @@
 using DinoTranslator.Server.Auth;
 using DinoTranslator.Shared.Room;
+using DinoTranslator.Server.Infrastructure;
 using Microsoft.AspNetCore.SignalR;
 
 namespace DinoTranslator.Server.Room;
 
 public static class RoomSetup
 {
-    public static IServiceCollection AddRoom(this IServiceCollection services)
+    public static IServiceCollection AddRoom(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<PresenceTracker>();
         services.AddSingleton<IUserIdProvider, SubjectUserIdProvider>();
@@ -17,7 +18,7 @@ public static class RoomSetup
             options.KeepAliveInterval = TimeSpan.FromSeconds(15);
             options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
             options.AddFilter<HubRateLimitFilter>();
-        });
+        }).AddScaleOut(configuration);
         return services;
     }
 
