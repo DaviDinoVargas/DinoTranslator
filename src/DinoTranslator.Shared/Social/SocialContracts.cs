@@ -23,6 +23,8 @@ public static class SocialRoutes
     public static string Block(Guid userId) => $"/api/bloqueios/{userId}";
     public const string Directs = "/api/conversas";
     public static string Direct(Guid userId) => $"/api/conversas/{userId}";
+    public static string ChannelVoice(Guid id) => $"/api/canais/{id}/voz";
+    public const string LiveKitWebhook = "/api/livekit/webhook";
 }
 
 /// <summary>Limites que o servidor aplica (o app usa os mesmos para avisar antes).</summary>
@@ -94,6 +96,9 @@ public sealed record InviteInfo(string Code, Guid GroupId, string GroupName, int
 public sealed record FriendInfo(UserSummary User, FriendState State, bool Online);
 
 public sealed record DirectInfo(ChannelInfo Channel, UserSummary Other, bool Online);
+
+/// <summary>Entrada num canal de voz (ou chamada da conversa direta): o servidor de mídia e a permissão assinada.</summary>
+public sealed record VoiceJoin(string Url, string Token, string Room, DateTimeOffset ExpiresAt);
 
 public sealed record NameRequest(string Name);
 

@@ -33,6 +33,9 @@ public sealed class Notifier(IHubContext<AppHub, IAppClient> hub, IPresenceStore
     public Task VoiceChangedAsync(Guid groupId, Guid channelId, IReadOnlyList<Guid> userIds) =>
         hub.Clients.Group(GroupName(groupId)).VoiceChanged(channelId, userIds);
 
+    public Task DirectVoiceChangedAsync(ChannelRef channel, IReadOnlyList<Guid> userIds) =>
+        To(channel).VoiceChanged(channel.Id, userIds);
+
     /// <summary>A pessoa entrou num grupo: as conexões abertas dela passam a receber os eventos dele.</summary>
     public async Task JoinedGroupAsync(Guid userId, Guid groupId)
     {
