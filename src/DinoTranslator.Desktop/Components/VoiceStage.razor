@@ -1,0 +1,196 @@
+@using DinoTranslator.Desktop.Services.Audio
+@using DinoTranslator.Desktop.Services.Plus
+@using DinoTranslator.Shared.Social
+@implements IAsyncDisposable
+@inject GroupCall Call
+@inject PlusState State
+@inject TimeProvider Time
+
+@* Canal de voz: quem está nele, entrar e sair, quadros de vídeo e tela, legendas no idioma de
+   quem vê e a supressão de ruído. Os quadros são desenhados pelo group-call.js dentro do grid. *@
+<div class="voice" data-na-chamada="@(InCall ? "sim" : "nao")" data-pessoas="@Call.Participants.Count">
+  <header class="chat__head">
+    <p class="chat__title"><Icon Name="som" Class="icon--inline" />@Title</p>
+    <p class="chat__note">@(InCall ? $"{Call.Participants.Count} na chamada" : $"{State.VoiceMembers(Channel.Id).Count} na chamada")</p>
+  </header>
+
+  <div class="voice__grid @(InCall ? "" : "voice__grid--hidden")" @ref="_grid"></div>
+
+  @if (!InCall)
+  {
+    <div class="voice__lobby">
+      @if (State.VoiceMembers(Channel.Id) is { Count: > 0 } inside)
+      {
+        <div class="voice__people">
+          @foreach (var userId in inside)
+          {
+            var name = State.FindUser(userId)?.DisplayName ?? "Alguém";
+            <span class="voice__person"><Avatar Name="@name" Class="avatar--large" /><span>@name</span></span>
+          }
+        </div>
+      }
+      else
+      {
+        <p class="handshake__hint">Ninguém na chamada ainda.</p>
+      }
+      @if (Call.ChannelId is not null)
+      {
+        <p class="handshake__hint">Você está em @Call.ChannelName: entrar aqui sai de lá.</p>
+      }
+      <button type="button" class="button button--primary" disabled="@Call.Joining" @onclick="JoinAsync">
+        <Icon Name="entrar" />@(Call.Joining ? "Entrando…" : "Entrar na chamada")
+      </button>
+      <p class="handshake__hint">Seu microfone passa pelo supressor de ruído; as legendas aparecem no idioma de cada pessoa.</p>
+    </div>
+  }
+  else
+  {
+    <div class="voice__people voice__people--call">
+      @foreach (var person in Call.Participants.Where(p => !p.Camera && !p.Screen))
+      {
+        <span class="voice__person @(person.Speaking ? "voice__person--speaking" : "")">
+          <Avatar Name="@person.Name" Mine="person.Local" Class="avatar--large" />
+          <span>@person.Name@(person.Microphone ? "" : " · mudo")</span>
+        </span>
+      }
+    </div>
+
+    <ol class="voice__captions" aria-live="polite" aria-label="Legendas">
+      @foreach (var caption in RecentCaptions)
+      {
+        <li class="voice__caption @(caption.Final ? "" : "voice__caption--partial")">
+          <span class="voice__caption-name">@caption.Name</span> @caption.Text@(caption.Final ? "" : "…")
+        </li>
+      }
+    </ol>
+
+    <footer class="call__dock voice__dock">
+      <button type="button" class="dock-button @(Call.Microphone ? "dock-button--on" : "dock-button--muted")" @onclick="Call.ToggleMicrophoneAsync" aria-pressed="@(Call.Microphone ? "true" : "false")">
+        <Icon Name="@(Call.Microphone ? "microfone" : "microfone-mudo")" /><span>@(Call.Microphone ? "Microfone" : "Mudo")</span>
+      </button>
+      <button type="button" class="dock-button @(Call.Deafened ? "dock-button--muted" : "dock-button--on")" @onclick="Call.ToggleDeafenAsync" aria-pressed="@(Call.Deafened ? "true" : "false")">
+        <Icon Name="@(Call.Deafened ? "som-mudo" : "som")" /><span>@(Call.Deafened ? "Sem som" : "Som")</span>
+      </button>
+      <button type="button" class="dock-button @(_noise ? "dock-button--active" : "")" @onclick="() => _noise = !_noise" aria-pressed="@(_noise ? "true" : "false")">
+        <Icon Name="ruido" /><span>Ruído</span>
+      </button>
+      <button type="button" class="dock-button @(Call.Camera ? "dock-button--active" : "")" @onclick="Call.ToggleCameraAsync" aria-pressed="@(Call.Camera ? "true" : "false")">
+        <Icon Name="@(Call.Camera ? "camera" : "camera-desligada")" /><span>Câmera</span>
+      </button>
+      <button type="button" class="dock-button @(Call.Screen ? "dock-button--active" : "")" @onclick="Call.ToggleScreenAsync" aria-pressed="@(Call.Screen ? "true" : "false")">
+        <Icon Name="tela" /><span>@(Call.Screen ? "Parar tela" : "Tela")</span>
+      </button>
+      <button type="button" class="dock-button dock-button--end" @onclick="Call.LeaveAsync" title="Sair da chamada">
+        <Icon Name="desligar" /><span>Sair</span>
+      </button>
+    </footer>
+
+    @if (_noise)
+    {
+      <aside class="engines engines--ruido" aria-label="Supressão de ruído">
+        <header class="engines__head">
+          <span class="engines__icon engines__icon--verde"><Icon Name="ruido" /></span>
+          <div class="engines__titles">
+            <p class="engines__title">Supressão de ruído</p>
+            <p class="engines__where">no seu microfone, antes de enviar e de traduzir</p>
+          </div>
+          <button type="button" class="conversation__close" @onclick="() => _noise = false" aria-label="Fechar a supressão de ruído"><Icon Name="fechar" /></button>
+        </header>
+        <NoiseControls @ref="_noiseControls" State="Call.Noise" Busy="_noiseBusy" OnChange="ChangeNoiseAsync" />
+      </aside>
+    }
+  }
+
+  @if (Call.Problem is { } problem)
+  {
+    <p class="login__error" role="alert"><Icon Name="alerta" />@problem</p>
+  }
+  @if (InCall && !Call.CaptionsOn)
+  {
+    <p class="chat__note"><Icon Name="info" />Sem tradução configurada neste computador: a sua fala não gera legendas.</p>
+  }
+</div>
+
+@code {
+    private ElementReference _grid;
+    private NoiseControls? _noiseControls;
+    private bool _noise;
+    private bool _noiseBusy;
+    private bool _meterBound;
+
+    [Parameter, EditorRequired]
+    public ChannelInfo Channel { get; set; } = default!;
+
+    [Parameter]
+    public string Title { get; set; } = "";
+
+    private bool InCall => Call.ChannelId == Channel.Id;
+
+    /// <summary>A última legenda de cada pessoa, enquanto é recente.</summary>
+    private IEnumerable<GroupCaption> RecentCaptions
+    {
+        get
+        {
+            var now = Time.GetUtcNow();
+            return Call.Captions
+                .Where(c => now - c.At < TimeSpan.FromSeconds(12))
+                .GroupBy(c => c.ParticipantId)
+                .Select(g => g.OrderBy(c => c.At).Last())
+                .OrderBy(c => c.At)
+                .TakeLast(4);
+        }
+    }
+
+    protected override void OnInitialized() => Call.Changed += OnChanged;
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && InCall)
+        {
+            await Call.BindGridAsync(_grid);
+        }
+        if (_noise && !_meterBound && _noiseControls is not null)
+        {
+            _meterBound = true;
+            await Call.RefreshNoiseAsync();
+            await Call.BindNoiseMeterAsync(_noiseControls.MeterFill, _noiseControls.MeterMark);
+        }
+        else if (!_noise && _meterBound)
+        {
+            _meterBound = false;
+            await Call.BindNoiseMeterAsync(null, null);
+        }
+    }
+
+    private Task JoinAsync() => Call.JoinAsync(Channel, Title, _grid);
+
+    private async Task ChangeNoiseAsync(NoiseSettings settings)
+    {
+        _noiseBusy = true;
+        try
+        {
+            await Call.SetNoiseAsync(settings);
+        }
+        finally
+        {
+            _noiseBusy = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Call.Changed -= OnChanged;
+        if (_meterBound)
+        {
+            try
+            {
+                await Call.BindNoiseMeterAsync(null, null);
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+    }
+}

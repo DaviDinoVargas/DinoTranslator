@@ -17,7 +17,7 @@ public enum LoginResult
 /// Sessão do usuário: login, renovação automática do token de acesso e saída.
 /// O token de acesso fica só em memória.
 /// </summary>
-public sealed class AuthClient(HttpClient http, ISessionStore store, TimeProvider time)
+public sealed class AuthClient(Plus.PlusHttp plus, ISessionStore store, TimeProvider time)
 {
     private static readonly TimeSpan RenewBefore = TimeSpan.FromMinutes(1);
 
@@ -33,9 +33,9 @@ public sealed class AuthClient(HttpClient http, ISessionStore store, TimeProvide
         HttpResponseMessage response;
         try
         {
-            response = await http.PostAsJsonAsync(AuthRoutes.Login, new LoginRequest(userName, password), cancellationToken);
+            response = await plus.Client.PostAsJsonAsync(AuthRoutes.Login, new LoginRequest(userName, password), cancellationToken);
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
             return LoginResult.ServerUnavailable;
         }
@@ -71,6 +71,59 @@ public sealed class AuthClient(HttpClient http, ISessionStore store, TimeProvide
                 _gate.Release();
             }
             return LoginResult.Success;
+        }
+    }
+
+    /// <summary>Cria a conta (se o servidor permitir) e já entra. Devolve a mensagem de erro, se houver.</summary>
+    public async Task<(LoginResult Result, string? Error)> RegisterAsync(RegisterRequest request, bool remember, CancellationToken cancellationToken = default)
+    {
+        HttpResponseMessage response;
+        try
+        {
+            response = await plus.Client.PostAsJsonAsync(AuthRoutes.Register, request, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException
+            || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            return (LoginResult.ServerUnavailable, null);
+        }
+        using (response)
+        {
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                return (LoginResult.TooManyAttempts, null);
+            }
+            if (!response.IsSuccessStatusCode)
+            {
+                var problem = await ProblemTitleAsync(response, cancellationToken);
+                return ((int)response.StatusCode >= 500 ? LoginResult.ServerUnavailable : LoginResult.InvalidCredentials, problem);
+            }
+            var tokens = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken)
+                ?? throw new InvalidOperationException("Resposta de cadastro vazia.");
+            await _gate.WaitAsync(cancellationToken);
+            try
+            {
+                Apply(tokens, remember);
+            }
+            finally
+            {
+                _gate.Release();
+            }
+            return (LoginResult.Success, null);
+        }
+    }
+
+    /// <summary>A mensagem do servidor (campo "title" do problema), limitada e só texto.</summary>
+    public static async Task<string?> ProblemTitleAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var json = await System.Text.Json.JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            return json.RootElement.TryGetProperty("title", out var title) && title.GetString() is { Length: > 0 and <= 300 } text ? text : null;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
+        {
+            return null;
         }
     }
 
@@ -135,9 +188,9 @@ public sealed class AuthClient(HttpClient http, ISessionStore store, TimeProvide
         }
         try
         {
-            using var _ = await http.PostAsJsonAsync(AuthRoutes.Logout, new RefreshRequest(session.RefreshToken), cancellationToken);
+            using var _ = await plus.Client.PostAsJsonAsync(AuthRoutes.Logout, new RefreshRequest(session.RefreshToken), cancellationToken);
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
             // Sem conexão: a sessão local já foi apagada e o token expira sozinho no servidor.
         }
@@ -148,9 +201,9 @@ public sealed class AuthClient(HttpClient http, ISessionStore store, TimeProvide
         HttpResponseMessage response;
         try
         {
-            response = await http.PostAsJsonAsync(AuthRoutes.Refresh, new RefreshRequest(refreshToken), cancellationToken);
+            response = await plus.Client.PostAsJsonAsync(AuthRoutes.Refresh, new RefreshRequest(refreshToken), cancellationToken);
         }
-        catch (Exception ex) when (ex is HttpRequestException
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException
             || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
         {
             // Servidor fora do ar: mantém o token salvo para tentar de novo depois.

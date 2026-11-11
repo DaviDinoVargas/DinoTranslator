@@ -27,24 +27,25 @@ public static class DesktopServices
         services.AddSingleton(new SpeechEngineFactory(new ModelFolder(settings.ModelsFolder)));
         services.AddSingleton(new EngineChoiceStore(settings.EngineChoiceFile));
 
-        if (settings.Mode == ConnectionMode.Code)
-        {
-            services.AddSingleton<IUiDispatcher, WpfUiDispatcher>();
-            // Fluxo aberto enquanto se espera a resposta: sem o limite de tempo padrão do HttpClient.
-            var relayHttp = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-            relayHttp.DefaultRequestHeaders.UserAgent.ParseAdd("DinoTranslator");
-            services.AddSingleton(new RendezvousRelay(relayHttp, settings.RendezvousUri));
-            // Escopo do BlazorWebView: uma sessão de chamada por janela.
-            services.AddScoped<CallSession>();
-        }
+        // Versão grátis: chamada por código, sem login.
+        services.AddSingleton<IUiDispatcher, WpfUiDispatcher>();
+        // Fluxo aberto enquanto se espera a resposta: sem o limite de tempo padrão do HttpClient.
+        var relayHttp = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        relayHttp.DefaultRequestHeaders.UserAgent.ParseAdd("DinoTranslator");
+        services.AddSingleton(new RendezvousRelay(relayHttp, settings.RendezvousUri));
+        // Escopo do BlazorWebView: uma sessão de chamada por janela.
+        services.AddScoped<CallSession>();
 
-        if (settings.Mode == ConnectionMode.Server)
-        {
-            services.AddSingleton<ISessionStore>(new DpapiSessionStore(settings.SessionFile));
-            services.AddSingleton(new HttpClient { BaseAddress = settings.ServerUri, Timeout = TimeSpan.FromSeconds(15) });
-            services.AddSingleton<AuthClient>();
-            services.AddSingleton<RoomConnection>();
-        }
+        // Versão Plus: conta no seu servidor, grupos, chat e chamadas em grupo.
+        services.AddSingleton(new Plus.PlusServerStore(settings.PlusServerFile));
+        services.AddSingleton<Plus.PlusHttp>();
+        services.AddSingleton<ISessionStore>(new DpapiSessionStore(settings.SessionFile));
+        services.AddSingleton<AuthClient>();
+        services.AddSingleton<Plus.PlusApi>();
+        services.AddSingleton<Plus.MessageTranslator>();
+        services.AddSingleton<Plus.PlusState>();
+        // A chamada em grupo usa o WebView2 da janela: uma por janela, como a chamada por código.
+        services.AddScoped<Plus.GroupCall>();
 
         return services;
     }

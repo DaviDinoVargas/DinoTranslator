@@ -39,6 +39,9 @@ public sealed record DesktopSettings(ConnectionMode Mode, Uri? ServerUri, string
     /// <summary>Última combinação de motores escolhida na chamada (não é segredo).</summary>
     public string EngineChoiceFile => Path.Combine(DataFolder, "motores-escolha.json");
 
+    /// <summary>Endereço do servidor da versão Plus, escolhido no app.</summary>
+    public string PlusServerFile => Path.Combine(DataFolder, "plus-servidor.json");
+
     public static DesktopSettings Load()
     {
         var dataFolder = Path.Combine(
