@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/node_modules/
+.git/
+.vs/
+artifacts/
+tests/
+tools/
+src/DinoTranslator.Desktop/
+src/Installer/
+deploy/.env
+**/data/
+**/*.db

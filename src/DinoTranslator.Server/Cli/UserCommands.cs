@@ -19,6 +19,7 @@ public sealed class UserCommands(UserAdministration admin, TextWriter output, IS
           users remove <usuario>
           users plan <usuario> plus [--dias N]     (sem --dias: sem prazo; renovar soma ao que resta)
           users plan <usuario> gratis
+          users plan <prefixo>* plus|gratis        (todas as contas que começam com o prefixo, 3+ letras)
           users disable <usuario>                  (suspende e encerra as sessões)
           users enable <usuario>
         """;
@@ -34,6 +35,8 @@ public sealed class UserCommands(UserAdministration admin, TextWriter output, IS
                 ["reset-password", var userName] => await ResetPasswordAsync(userName, cancellationToken),
                 ["unlock", var userName] => await UnlockAsync(userName, cancellationToken),
                 ["remove", var userName] => await RemoveAsync(userName, cancellationToken),
+                ["plan", var prefix, var plan] when prefix.EndsWith('*') && plan is "plus" or "gratis" =>
+                    await PlanPrefixAsync(prefix[..^1], plan == "plus" ? AccountPlan.Plus : AccountPlan.Free, cancellationToken),
                 ["plan", var userName, "plus"] => await PlanAsync(userName, AccountPlan.Plus, null, cancellationToken),
                 ["plan", var userName, "plus", "--dias", var days] when int.TryParse(days, out var n) => await PlanAsync(userName, AccountPlan.Plus, n, cancellationToken),
                 ["plan", var userName, "gratis"] => await PlanAsync(userName, AccountPlan.Free, null, cancellationToken),
@@ -140,6 +143,13 @@ public sealed class UserCommands(UserAdministration admin, TextWriter output, IS
         await output.WriteLineAsync(user.Plan == AccountPlan.Plus
             ? $"Plus ativo para \"{user.UserName}\"" + (user.PlanExpiresAtUtc is { } until ? $" até {until:yyyy-MM-dd HH:mm} UTC." : ", sem prazo.")
             : $"\"{user.UserName}\" voltou ao plano grátis.");
+        return 0;
+    }
+
+    private async Task<int> PlanPrefixAsync(string prefix, AccountPlan plan, CancellationToken cancellationToken)
+    {
+        var changed = await admin.SetPlanByPrefixAsync(prefix, plan, cancellationToken);
+        await output.WriteLineAsync($"{changed} conta(s) com o prefixo \"{prefix}\" agora no plano {(plan == AccountPlan.Plus ? "Plus, sem prazo" : "grátis")}.");
         return 0;
     }
 

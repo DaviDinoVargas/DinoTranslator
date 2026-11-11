@@ -107,6 +107,7 @@ O mesmo app tem as duas versões. A tela inicial continua com a chamada por cód
 - **Chamadas em grupo**: SFU LiveKit hospedado junto (escala para dezenas de pessoas por sala, ao contrário do P2P). A API emite a permissão assinada só para a sala daquele canal e acompanha quem está em cada sala pelos webhooks assinados. O microfone passa pela mesma cadeia do supressor de ruído; cada app reconhece a própria fala e manda, pelo canal de dados da sala, o original e as traduções para os idiomas de quem está ouvindo. A chamada continua enquanto a pessoa navega por outros canais.
 - **Escala**: API sem estado atrás do proxy; PostgreSQL com índices para as consultas quentes (mensagens por canal e id, membros por conta); cache curto de acesso e de sessão (sem consulta ao banco a cada requisição); presença e eventos em tempo real pelo Redis; limites por conta e por IP; migrações do banco uma instância por vez.
 - O antigo modo servidor de duas contas (`"Conexao": { "Modo": "servidor" }`) deu lugar à versão Plus.
+- **Subir no servidor**: Docker Compose em `deploy/` (Caddy com HTTPS automático, API em réplicas, PostgreSQL, Redis e LiveKit); passo a passo, backup e como crescer em [DEPLOY.md](DEPLOY.md). Teste de carga: 1.000 contas conectadas, ~400 mensagens/s e ~3.600 entregas/s com 100% entregue e 95% em até 26 ms, num só PC (`tests/carga/carga.ps1`).
 
 ---
 

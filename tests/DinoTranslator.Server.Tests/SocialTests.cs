@@ -295,6 +295,27 @@ public sealed class SocialTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Limite_de_mensagens_e_por_conta_e_nao_por_ip()
+    {
+        // As duas contas chegam do mesmo IP (como numa casa ou atrás do CGNAT da operadora).
+        var dino = await PersonAsync("dino");
+        var anna = await PersonAsync("anna");
+        var group = await GroupWithMemberAsync(dino, anna);
+        var text = group.Channels.First(c => c.Kind == ChannelKind.Text);
+
+        var statuses = new List<HttpStatusCode>();
+        foreach (var person in new[] { dino, anna })
+        {
+            for (var i = 0; i < 10; i++)
+            {
+                statuses.Add((await person.Http.PostAsJsonAsync(SocialRoutes.ChannelMessages(text.Id), new SendMessageRequest($"m{i}"))).StatusCode);
+            }
+        }
+
+        Assert.All(statuses, status => Assert.Equal(HttpStatusCode.OK, status));
+    }
+
+    [Fact]
     public async Task Mensagem_vazia_ou_grande_demais_e_recusada_e_ha_limite_por_conta()
     {
         var dino = await PersonAsync("dino");
