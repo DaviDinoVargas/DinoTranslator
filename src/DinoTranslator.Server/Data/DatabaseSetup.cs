@@ -35,7 +35,19 @@ public static class DatabaseSetup
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         if (db.Database.IsNpgsql())
         {
-            await db.Database.MigrateAsync(cancellationToken);
+            // Várias instâncias sobem juntas: uma migra de cada vez (trava do próprio PostgreSQL,
+            // solta sozinha se a instância cair); as outras esperam e acham tudo pronto.
+            await db.Database.OpenConnectionAsync(cancellationToken);
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_lock(7240513)", cancellationToken);
+                await db.Database.MigrateAsync(cancellationToken);
+            }
+            finally
+            {
+                await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_unlock(7240513)", CancellationToken.None);
+                await db.Database.CloseConnectionAsync();
+            }
         }
         else
         {
