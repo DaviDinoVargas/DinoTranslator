@@ -48,6 +48,22 @@
         "web-noise-suppressor/rnnoise.wasm": "8b60a2ab88fdae2d1a9f940249d0eb072f28ba8e796f7304347b4e07839c8853",
         "web-noise-suppressor/rnnoise_simd.wasm": "378fd17c294db15ee4e818ba5ef072242a21c8ad7445b483f7f46d7dc4f2c253"
       }
+    },
+    {
+      "nome": "livekit-client",
+      "versao": "2.23.0",
+      "licenca": "Apache-2.0",
+      "origem": "https://registry.npmjs.org/livekit-client/-/livekit-client-2.23.0.tgz",
+      "sha256": "993eafb83afb4c566bb388108ad6469bf499d76200014c96c35fe3b39fee859d",
+      "pasta": "livekit",
+      "copiados": {
+        "dist/livekit-client.esm.mjs": "livekit-client.esm.js",
+        "LICENSE": "LICENSE"
+      },
+      "arquivos": {
+        "livekit/LICENSE": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b",
+        "livekit/livekit-client.esm.js": "053820ce316a0d9881e54d4745eeb45b96575c05d3591a214f318168336e1367"
+      }
     }
   ]
 }

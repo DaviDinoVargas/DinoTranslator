@@ -65,6 +65,15 @@
           </button>
         </div>
 
+        <button type="button" class="plus-card" @onclick="@(() => Navigation.NavigateTo("/conta"))">
+          <span class="plus-card__badge">Plus</span>
+          <span class="plus-card__text">
+            <span class="plus-card__title">Grupos, chat e chamadas em grupo</span>
+            <span class="plus-card__meta">Com conta no seu servidor: canais, amigos, conversas traduzidas e chamadas com várias pessoas.</span>
+          </span>
+          <Icon Name="seta" />
+        </button>
+
         <p class="group-title">Ajustes</p>
         <nav class="group" aria-label="Ajustes">
           <button type="button" class="setting-row" @onclick="@(() => Navigation.NavigateTo("/configuracoes/traducao"))">
@@ -99,12 +108,4 @@
 
 @code {
     private bool _editing;
-
-    protected override void OnInitialized()
-    {
-        if (Settings.Mode == ConnectionMode.Server)
-        {
-            Navigation.NavigateTo("/login", replace: true);
-        }
-    }
 }

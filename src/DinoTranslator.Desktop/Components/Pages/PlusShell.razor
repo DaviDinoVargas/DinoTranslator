@@ -1,0 +1,444 @@
+@page "/plus"
+@using DinoTranslator.Desktop.Services.Plus
+@using DinoTranslator.Shared.Social
+@implements IDisposable
+@inject AuthClient Auth
+@inject PlusState State
+@inject NavigationManager Navigation
+@inject IJSRuntime Js
+
+@if (Auth.CurrentUser is not { } me)
+{
+  <main class="login"><p class="login__status">Abrindo…</p></main>
+}
+else if (!State.Plus)
+{
+  <main class="login">
+    <section class="login__panel">
+      <div class="handshake__top"><span class="plus-card__badge">Plus</span></div>
+      <h1 class="login__title">Sua conta está no plano grátis</h1>
+      <p class="handshake__hint">
+        Grupos, chat e chamadas em grupo são do plano Plus. Peça a ativação ao dono do servidor, informando o seu usuário:
+      </p>
+      <p class="plus-free__user">@me.UserName</p>
+      <p class="handshake__hint">Depois da ativação, entre de novo. As chamadas por código continuam grátis na tela inicial.</p>
+      <div class="home__actions">
+        <button type="button" class="button button--primary" @onclick="LogoutAsync"><Icon Name="sair" />Sair da conta</button>
+        <button type="button" class="button" @onclick="@(() => Navigation.NavigateTo("/"))"><Icon Name="voltar" />Tela inicial</button>
+      </div>
+    </section>
+  </main>
+}
+else
+{
+  <main class="plus @(State.SelectedGroup is null ? "plus--sem-membros" : "")" data-conectado="@(State.Connected ? "sim" : "nao")">
+    @* Coluna 1: início e grupos *@
+    <nav class="plus__rail" aria-label="Grupos">
+      <button type="button" class="rail-item @(State.SelectedGroup is null ? "rail-item--on" : "")" @onclick="State.SelectHome" title="Amigos e conversas" aria-label="Amigos e conversas">
+        <BrandMark />
+        @if (State.Directs.Any(d => State.Unread(d.Channel)))
+        {
+          <span class="rail-item__dot" aria-hidden="true"></span>
+        }
+      </button>
+      <span class="plus__rail-line" aria-hidden="true"></span>
+      @foreach (var item in State.Groups)
+      {
+        var details = State.Details(item.Id);
+        <button type="button" class="rail-item @(State.SelectedGroup == item.Id ? "rail-item--on" : "")" title="@item.Name" aria-label="@($"Grupo {item.Name}")"
+                @onclick="() => State.SelectGroupAsync(item.Id)">
+          <span class="rail-item__initials">@Initials(item.Name)</span>
+          @if (details is not null && details.Channels.Any(State.Unread))
+          {
+            <span class="rail-item__dot" aria-hidden="true"></span>
+          }
+        </button>
+      }
+      <button type="button" class="rail-item rail-item--add" title="Criar ou entrar num grupo" aria-label="Criar ou entrar num grupo" @onclick="() => Open(Dialog.NewGroup)">
+        <Icon Name="mais" />
+      </button>
+    </nav>
+
+    @* Coluna 2: canais do grupo, ou amigos e conversas *@
+    <aside class="plus__side">
+      @if (State.SelectedGroup is { } groupId && State.Details(groupId) is { } group)
+      {
+        <header class="plus__side-head">
+          <p class="plus__side-title">@group.Group.Name</p>
+          <button type="button" class="icon-button" title="Convidar" aria-label="Convidar" @onclick="() => InviteAsync(groupId)"><Icon Name="convidar" /></button>
+          <button type="button" class="icon-button" title="@(group.Group.MyRole == GroupRole.Owner ? "Apagar o grupo" : "Sair do grupo")" aria-label="Sair do grupo" @onclick="() => LeaveAsync(group)"><Icon Name="sair" /></button>
+        </header>
+        <div class="plus__side-scroll">
+          <p class="plus__section">Canais de texto
+            @if (group.Group.MyRole >= GroupRole.Admin)
+            {
+              <button type="button" class="plus__section-add" title="Novo canal de texto" aria-label="Novo canal de texto" @onclick="() => NewChannel(ChannelKind.Text)"><Icon Name="mais" /></button>
+            }
+          </p>
+          @foreach (var textChannel in group.Channels.Where(c => c.Kind == ChannelKind.Text))
+          {
+            <button type="button" class="channel @(State.SelectedChannel == textChannel.Id ? "channel--on" : "") @(State.Unread(textChannel) ? "channel--unread" : "")"
+                    @onclick="() => State.SelectChannelAsync(textChannel.Id)">
+              <span class="channel__hash" aria-hidden="true">#</span>@textChannel.Name
+            </button>
+          }
+          <p class="plus__section">Canais de voz
+            @if (group.Group.MyRole >= GroupRole.Admin)
+            {
+              <button type="button" class="plus__section-add" title="Novo canal de voz" aria-label="Novo canal de voz" @onclick="() => NewChannel(ChannelKind.Voice)"><Icon Name="mais" /></button>
+            }
+          </p>
+          @foreach (var voiceChannel in group.Channels.Where(c => c.Kind == ChannelKind.Voice))
+          {
+            var inside = State.VoiceMembers(voiceChannel.Id);
+            <button type="button" class="channel @(State.SelectedChannel == voiceChannel.Id ? "channel--on" : "")" @onclick="() => State.SelectChannelAsync(voiceChannel.Id)">
+              <Icon Name="som" Class="channel__icon" />@voiceChannel.Name
+              @if (inside.Count > 0)
+              {
+                <span class="channel__count">@inside.Count</span>
+              }
+            </button>
+            @foreach (var userId in inside)
+            {
+              <span class="channel__voice-user"><Avatar Name="@(Name(userId))" Class="avatar--tiny" />@Name(userId)</span>
+            }
+          }
+        </div>
+      }
+      else
+      {
+        <header class="plus__side-head">
+          <p class="plus__side-title">Amigos e conversas</p>
+        </header>
+        <div class="plus__side-scroll">
+          <form class="plus__add-friend" @onsubmit="AddFriendAsync">
+            <input class="field__input" @bind="_friendName" placeholder="Adicionar pelo usuário" aria-label="Adicionar amigo pelo usuário" maxlength="32" spellcheck="false" />
+            <button type="submit" class="icon-button" title="Pedir amizade" aria-label="Pedir amizade" disabled="@string.IsNullOrWhiteSpace(_friendName)"><Icon Name="mais" /></button>
+          </form>
+          @if (State.Friends.Any(f => f.State == FriendState.Incoming))
+          {
+            <p class="plus__section">Pedidos de amizade</p>
+            @foreach (var request in State.Friends.Where(f => f.State == FriendState.Incoming))
+            {
+              <div class="person">
+                <Avatar Name="@request.User.DisplayName" Class="avatar--small" />
+                <span class="person__name">@request.User.DisplayName<span class="person__user">@request.User.UserName</span></span>
+                <button type="button" class="icon-button icon-button--ok" title="Aceitar" aria-label="@($"Aceitar {request.User.DisplayName}")" @onclick="() => AcceptAsync(request)"><Icon Name="ok" /></button>
+                <button type="button" class="icon-button" title="Recusar" aria-label="@($"Recusar {request.User.DisplayName}")" @onclick="() => State.RemoveFriendAsync(request.User.Id)"><Icon Name="fechar" /></button>
+              </div>
+            }
+          }
+          <p class="plus__section">Conversas</p>
+          @if (State.Directs.Count == 0)
+          {
+            <p class="plus__empty">Abra uma conversa pela lista de amigos ou pelos membros de um grupo.</p>
+          }
+          @foreach (var direct in State.Directs)
+          {
+            <button type="button" class="person person--button @(State.SelectedChannel == direct.Channel.Id ? "person--on" : "") @(State.Unread(direct.Channel) ? "person--unread" : "")"
+                    @onclick="() => State.SelectChannelAsync(direct.Channel.Id)">
+              <Avatar Name="@direct.Other.DisplayName" Class="avatar--small" />
+              <span class="presence @(State.IsOnline(direct.Other.Id) ? "presence--on" : "")" aria-label="@(State.IsOnline(direct.Other.Id) ? "online" : "offline")"></span>
+              <span class="person__name">@direct.Other.DisplayName<span class="person__user">@LanguageName(direct.Other.Language)</span></span>
+            </button>
+          }
+          <p class="plus__section">Amigos</p>
+          @foreach (var friend in State.Friends.Where(f => f.State == FriendState.Friends))
+          {
+            <div class="person">
+              <Avatar Name="@friend.User.DisplayName" Class="avatar--small" />
+              <span class="presence @(State.IsOnline(friend.User.Id) ? "presence--on" : "")"></span>
+              <span class="person__name">@friend.User.DisplayName<span class="person__user">@friend.User.UserName</span></span>
+              <button type="button" class="icon-button" title="Conversar" aria-label="@($"Conversar com {friend.User.DisplayName}")" @onclick="() => State.OpenDirectAsync(friend.User.Id)"><Icon Name="conversa" /></button>
+            </div>
+          }
+          @foreach (var pending in State.Friends.Where(f => f.State == FriendState.Outgoing))
+          {
+            <div class="person person--pending">
+              <Avatar Name="@pending.User.DisplayName" Class="avatar--small" />
+              <span class="person__name">@pending.User.DisplayName<span class="person__user">pedido enviado</span></span>
+              <button type="button" class="icon-button" title="Cancelar pedido" aria-label="Cancelar pedido" @onclick="() => State.RemoveFriendAsync(pending.User.Id)"><Icon Name="fechar" /></button>
+            </div>
+          }
+        </div>
+      }
+      <footer class="plus__me">
+        <Avatar Name="@me.DisplayName" Mine="true" Class="avatar--small" />
+        <span class="person__name">@me.DisplayName<span class="person__user">@me.UserName · Plus</span></span>
+        <button type="button" class="icon-button" title="Câmera, áudio e ruído" aria-label="Câmera, áudio e ruído" @onclick="@(() => Navigation.NavigateTo("/configuracoes/dispositivos"))"><Icon Name="fone" /></button>
+        <button type="button" class="icon-button" title="Tela inicial" aria-label="Tela inicial" @onclick="@(() => Navigation.NavigateTo("/"))"><Icon Name="voltar" /></button>
+        <button type="button" class="icon-button" title="Sair da conta" aria-label="Sair da conta" @onclick="LogoutAsync"><Icon Name="sair" /></button>
+      </footer>
+    </aside>
+
+    @* Coluna 3: o canal aberto *@
+    <section class="plus__main">
+      @if (State.Problem is { } problem)
+      {
+        <p class="plus__problem" role="alert"><Icon Name="alerta" />@problem</p>
+      }
+      @if (_notice is { } notice)
+      {
+        <div class="plus__notice" role="status">
+          <span>@notice</span>
+          <button type="button" class="icon-button" aria-label="Fechar o aviso" @onclick="() => _notice = null"><Icon Name="fechar" /></button>
+        </div>
+      }
+      @if (Selected is { } selected)
+      {
+        @if (selected.Kind == ChannelKind.Voice)
+        {
+          <VoiceStage @key="selected.Id" Channel="selected" Title="@selected.Name" />
+        }
+        else
+        {
+          <ChatView @key="selected.Id" Channel="selected" Title="@ChannelTitle(selected)" />
+        }
+      }
+      else
+      {
+        <div class="plus__welcome">
+          <BrandMark Class="brand-mark--grande" />
+          <p class="plus__welcome-title">Olá, @me.DisplayName</p>
+          <p class="handshake__hint">Escolha uma conversa ou um canal. Cada mensagem aparece no seu idioma, traduzida neste computador.</p>
+        </div>
+      }
+    </section>
+
+    @* Coluna 4: membros do grupo *@
+    @if (State.SelectedGroup is { } membersGroup && State.Details(membersGroup) is { } shown)
+    {
+      <aside class="plus__members" aria-label="Membros">
+        @foreach (var online in new[] { true, false })
+        {
+          var list = shown.Members.Where(m => State.IsOnline(m.User.Id) == online).ToList();
+          if (list.Count == 0)
+          {
+            continue;
+          }
+          <p class="plus__section">@(online ? "Online" : "Offline") — @list.Count</p>
+          @foreach (var member in list)
+          {
+            <div class="person @(online ? "" : "person--offline")">
+              <Avatar Name="@member.User.DisplayName" Class="avatar--small" />
+              <span class="presence @(online ? "presence--on" : "")"></span>
+              <span class="person__name">@member.User.DisplayName<span class="person__user">@RoleName(member.Role) · @LanguageName(member.User.Language)</span></span>
+              @if (member.User.Id != me.Id)
+              {
+                <button type="button" class="icon-button" title="Conversar" aria-label="@($"Conversar com {member.User.DisplayName}")" @onclick="() => State.OpenDirectAsync(member.User.Id)"><Icon Name="conversa" /></button>
+                @if (shown.Group.MyRole > member.Role && shown.Group.MyRole >= GroupRole.Admin)
+                {
+                  <button type="button" class="icon-button" title="Remover do grupo" aria-label="@($"Remover {member.User.DisplayName}")" @onclick="() => KickAsync(shown, member)"><Icon Name="fechar" /></button>
+                }
+              }
+            </div>
+          }
+        }
+      </aside>
+    }
+
+    @if (_dialog == Dialog.NewGroup)
+    {
+      <div class="plus-dialog" role="dialog" aria-modal="true" aria-label="Criar ou entrar num grupo">
+        <form class="plus-dialog__box" @onsubmit="CreateGroupAsync">
+          <p class="plus-dialog__title">Criar um grupo</p>
+          <input class="field__input" @bind="_groupName" placeholder="Nome do grupo" aria-label="Nome do grupo" maxlength="64" />
+          <button type="submit" class="button button--primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_groupName))">Criar</button>
+        </form>
+        <form class="plus-dialog__box" @onsubmit="JoinGroupAsync">
+          <p class="plus-dialog__title">Ou entre com um convite</p>
+          <input class="field__input" @bind="_inviteCode" placeholder="Código do convite" aria-label="Código do convite" maxlength="200" spellcheck="false" />
+          <button type="submit" class="button" disabled="@(_busy || string.IsNullOrWhiteSpace(_inviteCode))">Entrar no grupo</button>
+        </form>
+        @if (_dialogError is not null)
+        {
+          <p class="login__error" role="alert"><Icon Name="alerta" />@_dialogError</p>
+        }
+        <button type="button" class="button button--quiet" @onclick="Close">Cancelar</button>
+      </div>
+    }
+    @if (_dialog == Dialog.NewChannel)
+    {
+      <div class="plus-dialog" role="dialog" aria-modal="true" aria-label="Novo canal">
+        <form class="plus-dialog__box" @onsubmit="CreateChannelAsync">
+          <p class="plus-dialog__title">Novo canal de @(_channelKind == ChannelKind.Voice ? "voz" : "texto")</p>
+          <input class="field__input" @bind="_channelName" placeholder="Nome do canal" aria-label="Nome do canal" maxlength="64" />
+          <button type="submit" class="button button--primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_channelName))">Criar canal</button>
+        </form>
+        @if (_dialogError is not null)
+        {
+          <p class="login__error" role="alert"><Icon Name="alerta" />@_dialogError</p>
+        }
+        <button type="button" class="button button--quiet" @onclick="Close">Cancelar</button>
+      </div>
+    }
+  </main>
+}
+
+@code {
+    private enum Dialog { None, NewGroup, NewChannel }
+
+    private Dialog _dialog;
+    private string? _dialogError;
+    private string? _notice;
+    private bool _busy;
+    private string _groupName = "";
+    private string _inviteCode = "";
+    private string _channelName = "";
+    private string _friendName = "";
+    private ChannelKind _channelKind;
+
+    private ChannelInfo? Selected => State.SelectedChannel is not { } id
+        ? null
+        : State.SelectedGroup is { } group
+            ? State.Details(group)?.Channels.FirstOrDefault(c => c.Id == id)
+            : State.DirectFor(id)?.Channel;
+
+    protected override async Task OnInitializedAsync()
+    {
+        State.Changed += OnChanged;
+        if (Auth.CurrentUser is null && !await Auth.TryResumeAsync())
+        {
+            Navigation.NavigateTo("/conta");
+            return;
+        }
+        await State.StartAsync();
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private string ChannelTitle(ChannelInfo channel) =>
+        channel.Kind == ChannelKind.Direct ? State.DirectFor(channel.Id)?.Other.DisplayName ?? "Conversa" : "#" + channel.Name;
+
+    private string Name(Guid userId) => State.FindUser(userId)?.DisplayName ?? "Alguém";
+
+    private static string LanguageName(string code) => Languages.IsSupported(code) ? Languages.Get(code).NativeName : code;
+
+    private static string RoleName(GroupRole role) => role switch
+    {
+        GroupRole.Owner => "dono",
+        GroupRole.Admin => "administrador",
+        _ => "membro",
+    };
+
+    private static string Initials(string name)
+    {
+        var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var letters = words.Length >= 2 ? $"{words[0][0]}{words[1][0]}" : name.Length >= 2 ? name[..2] : name;
+        return letters.ToUpperInvariant();
+    }
+
+    private void Open(Dialog dialog)
+    {
+        _dialog = dialog;
+        _dialogError = null;
+    }
+
+    private void Close() => _dialog = Dialog.None;
+
+    private void NewChannel(ChannelKind kind)
+    {
+        _channelKind = kind;
+        _channelName = "";
+        Open(Dialog.NewChannel);
+    }
+
+    private async Task CreateGroupAsync()
+    {
+        _busy = true;
+        _dialogError = await State.CreateGroupAsync(_groupName);
+        _busy = false;
+        if (_dialogError is null)
+        {
+            _groupName = "";
+            Close();
+        }
+    }
+
+    private async Task JoinGroupAsync()
+    {
+        _busy = true;
+        _dialogError = await State.JoinAsync(_inviteCode);
+        _busy = false;
+        if (_dialogError is null)
+        {
+            _inviteCode = "";
+            Close();
+        }
+    }
+
+    private async Task CreateChannelAsync()
+    {
+        if (State.SelectedGroup is not { } groupId)
+        {
+            return;
+        }
+        _busy = true;
+        var created = await AppApi.CreateChannelAsync(groupId, _channelName, _channelKind);
+        _busy = false;
+        _dialogError = created.Error;
+        if (created.Ok)
+        {
+            await State.LoadGroupAsync(groupId);
+            Close();
+        }
+    }
+
+    [Inject]
+    private PlusApi AppApi { get; set; } = default!;
+
+    private async Task InviteAsync(Guid groupId)
+    {
+        var invite = await AppApi.CreateInviteAsync(groupId);
+        if (invite.Value is { } value)
+        {
+            var copied = true;
+            try
+            {
+                await Js.InvokeVoidAsync("navigator.clipboard.writeText", value.Code);
+            }
+            catch (JSException)
+            {
+                // Sem acesso à área de transferência (janela sem foco): o código fica no aviso.
+                copied = false;
+            }
+            _notice = copied
+                ? $"Convite copiado: {value.Code} (vale 7 dias). Mande para quem você quer no grupo."
+                : $"Convite: {value.Code} (vale 7 dias). Mande para quem você quer no grupo.";
+        }
+        else
+        {
+            _notice = invite.Error;
+        }
+    }
+
+    private async Task LeaveAsync(GroupDetails group)
+    {
+        var result = group.Group.MyRole == GroupRole.Owner
+            ? (await AppApi.DeleteGroupAsync(group.Group.Id)).Error
+            : await State.LeaveGroupAsync(group.Group.Id);
+        _notice = result;
+    }
+
+    private async Task KickAsync(GroupDetails group, MemberInfo member)
+    {
+        _notice = (await AppApi.RemoveMemberAsync(group.Group.Id, member.User.Id)).Error;
+    }
+
+    private async Task AddFriendAsync()
+    {
+        _notice = await State.AddFriendAsync(_friendName) ?? $"Pedido de amizade enviado para {_friendName.Trim()}.";
+        _friendName = "";
+    }
+
+    private async Task AcceptAsync(FriendInfo request) => _notice = await State.AddFriendAsync(request.User.UserName);
+
+    private async Task LogoutAsync()
+    {
+        await State.ResetAsync();
+        await Auth.LogoutAsync();
+        Navigation.NavigateTo("/");
+    }
+
+    public void Dispose() => State.Changed -= OnChanged;
+}

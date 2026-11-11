@@ -70,7 +70,7 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 
 - O BlazorWebView só carrega conteúdo local empacotado no app.
 - Toda navegação fora da origem do app é cancelada; novas janelas e downloads são bloqueados; links externos abrem no navegador padrão após confirmação.
-- CSP estrita: sem scripts, estilos ou fontes de fora do app. A única exceção é `'wasm-unsafe-eval'`, que deixa compilar WebAssembly dos arquivos do próprio app (os supressores de ruído); não libera `eval` de JavaScript.
+- CSP estrita: sem scripts, estilos ou fontes de fora do app. Conexões só para o próprio app e, por `wss:`/`https:`, para o servidor de mídia das chamadas em grupo (LiveKit); as chamadas à API da versão Plus saem do C#, não da página. A única exceção é `'wasm-unsafe-eval'`, que deixa compilar WebAssembly dos arquivos do próprio app (os supressores de ruído); não libera `eval` de JavaScript.
 - Supressores de ruído de terceiros (`wwwroot/js/vendor`): copiados sem mudança de pacotes npm fixos; o SHA-256 de cada arquivo fica em `ORIGEM.json`, um teste recusa arquivo alterado ou fora da lista, e `tools/atualizar-supressores.ps1` refaz a cópia conferindo o pacote publicado. Eles não acessam a rede: recebem os binários do app e rodam só sobre o áudio do microfone.
 - Câmera, microfone e tela são liberados só para a origem do app; qualquer outra permissão é negada.
 - DevTools, menu de contexto padrão, atalhos do navegador e preenchimento automático desligados na versão final.
@@ -85,39 +85,51 @@ O app tem dois modos de conexão. O **modo código** (padrão) não usa servidor
 - Instalador assinado; SHA-256 publicado com cada versão.
 - Instalação por usuário, sem administrador. O registro em "Aplicativos instalados" é gravado antes dos atalhos e aponta para o `Desinstalar.exe` da pasta do app. O app só conserta o registro numa pasta instalada pelo instalador (registrada, ou apontada pelo atalho do menu Iniciar), e desinstalar uma cópia só remove o registro e os atalhos dela. A pasta do app só é apagada depois que o desinstalador fecha, por um processo que recebe o caminho por variável de ambiente, não entra em junções e recusa a raiz de um disco ou uma pasta sem o app. Os testes usam registro e atalhos próprios.
 
-## 5. Modo servidor (opcional, desligado)
+## 5. Versão Plus: o servidor (`DinoTranslator.Server`)
 
-Controles do `DinoTranslator.Server`, mantidos para quando o modo servidor for reativado.
+Controles do servidor da versão paga (contas, grupos, chat e chamadas em grupo).
 
-### 5.1 Autenticação (`servidor/autenticacao`)
+### 5.1 Autenticação e contas
 
-- Contas criadas **apenas** pelo comando `users add`, executado no próprio servidor. Não existe endpoint de cadastro.
-- `MaxUsers = 2` conferido no banco antes de criar qualquer conta.
+- Cadastro pelo app (`/api/auth/register`) pode ser desligado ou exigir um código de 12+ caracteres (comparado em tempo constante); 5 cadastros por IP por hora. O comando `users` no servidor cria contas, ativa o Plus e suspende.
+- Limite de contas configurável (`Auth:MaxUsers`, 0 = sem limite).
+- Plano no token de acesso; a política Plus confere o prazo de novo a cada requisição. Conta grátis recebe 403 em tudo da versão paga, inclusive no tempo real.
+- Suspensão: muda o carimbo da sessão, revoga os refresh tokens e recusa login e renovação.
 - Usuário: 3–32 caracteres `[a-z0-9._-]`, comparado em minúsculas.
 - Senha: 12 a 128 caracteres; não pode conter o nome de usuário.
-- Hash: `PasswordHasher` do ASP.NET Core Identity (PBKDF2-HMAC-SHA512, 100 mil iterações, sal aleatório), com re-hash automático se o formato evoluir.
+- Hash: `PasswordHasher` do ASP.NET Core Identity (PBKDF2-HMAC-SHA512, 210 mil iterações, como recomenda a OWASP; sal aleatório), refeito no próximo login quando o formato ou as iterações mudam.
 - Bloqueio: 5 falhas seguidas → 15 min; o contador zera no sucesso.
 - Tempo de resposta uniforme: usuário inexistente também passa pelo hash, para não revelar quais usuários existem.
 - Limite de requisições: login 10/min por IP; renovação de token 30/min por IP.
-- JWT: HS256, chave de no mínimo 256 bits vinda de configuração segura; valida emissor, audiência e expiração (15 min, tolerância de 30 s); aceito só no cabeçalho `Authorization`.
+- JWT: HS256, chave de no mínimo 256 bits vinda de configuração segura; valida emissor, audiência e expiração (10 min, tolerância de 30 s); aceito só no cabeçalho `Authorization`.
+- O carimbo da sessão é conferido em toda requisição, com cache de 20 s (compartilhado pelo Redis): troca de senha e suspensão valem em todas as instâncias em até 20 s, sem uma consulta ao banco por requisição.
 - Refresh token: 256 bits aleatórios, guardado como SHA-256, validade de 30 dias, trocado a cada uso. Reapresentar um token já trocado revoga a sessão inteira.
 - Sair revoga a sessão; trocar a senha revoga todas as sessões.
 - No app: refresh token cifrado com DPAPI; token de acesso só em memória; validação de certificado padrão do Windows, nunca desligada.
 
-### 5.2 Tempo real (`servidor/sinalizacao`)
+### 5.2 Grupos, chat e tempo real
 
-- SignalR só aceita usuários autenticados; uma conexão ativa por conta.
-- Tamanho máximo de mensagem (64 KB) e validação de tipo e tamanho dos sinais.
-- Mensagens só são repassadas ao outro usuário — não existem salas arbitrárias.
-- Limite de mensagens por segundo por conexão.
+- Toda rota confere se a pessoa pode ver e mexer no grupo, canal ou mensagem; o que ela não pode ver responde 404, igual ao que não existe. Papéis: só administradores criam e apagam canais e removem membros de papel menor; só o dono apaga o grupo e muda papéis.
+- Convites de 10 caracteres aleatórios (cerca de 50 bits), com validade (até 30 dias) e limite de usos contados no próprio banco.
+- Bloqueio: quem bloqueou não aparece para quem foi bloqueado (pedido de amizade responde "não existe") e a conversa direta é recusada. Conversa direta só entre amigos ou quem divide um grupo.
+- Mensagens até 4.000 caracteres, guardadas como foram escritas e mostradas sempre como texto. O servidor não traduz nem manda texto a serviços de fora.
+- Limites por conta: 10 mensagens a cada 10 s e 60 ações por minuto; no hub, limite por conexão e mensagens de até 64 KB.
+- Quem sai ou é removido de um grupo é tirado na hora dos grupos do SignalR em todas as instâncias: não recebe mais nada dele.
+- A antiga sala de duas pessoas foi removida: num servidor com muitas contas ela mandaria presença e sinais à conta errada.
 
-### 5.3 TURN
+### 5.3 Chamadas em grupo (LiveKit)
+
+- A API emite a permissão (JWT HS256 com o segredo do LiveKit, 32+ caracteres) só para a sala do canal de voz que a pessoa pode usar, com validade de 6 h.
+- Os webhooks do LiveKit são aceitos só com assinatura válida (JWT com o SHA-256 do corpo); corpo alterado ou segredo errado é recusado.
+- As legendas que chegam pelo canal de dados são conferidas (tamanho e campos) antes de aparecer.
+
+### 5.4 TURN
 
 - `use-auth-secret` com segredo próprio; credenciais válidas por 12 h emitidas pelo servidor.
 - Sem acesso a redes internas: `denied-peer-ip` para `0.0.0.0/8`, `10.0.0.0/8`, `100.64.0.0/10`, `127.0.0.0/8`, `169.254.0.0/16`, `172.16.0.0/12`, `192.168.0.0/16`, `::1`, `fc00::/7`, `fe80::/10`; `no-multicast-peers`.
 - `no-cli`, `fingerprint`, TLS com o certificado do domínio, cotas por usuário e banda máxima.
 
-### 5.4 Infraestrutura
+### 5.5 Infraestrutura
 
 - Firewall negando tudo exceto 443/TCP (HTTPS), 3478 UDP/TCP e 5349/TCP (TURN), faixa de portas de relay do TURN e SSH.
 - SSH só por chave, sem login de root.

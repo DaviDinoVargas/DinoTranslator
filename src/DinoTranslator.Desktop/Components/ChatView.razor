@@ -1,0 +1,172 @@
+@using DinoTranslator.Desktop.Services.Plus
+@using DinoTranslator.Shared.Social
+@implements IDisposable
+@inject PlusState State
+@inject IJSRuntime Js
+
+@* Um canal de texto ou uma conversa direta. Cada mensagem aparece no idioma de quem lê
+   (traduzida neste computador), com o original embaixo. *@
+<div class="chat" data-canal="@Channel.Id">
+  <header class="chat__head">
+    <p class="chat__title">@Title</p>
+    @if (!State.Translator.Available)
+    {
+      <p class="chat__note"><Icon Name="info" />Sem tradução neste computador: as mensagens aparecem no original.</p>
+    }
+  </header>
+
+  <ol class="chat__list" @ref="_list" aria-live="polite">
+    @if (Messages.HasMore && Messages.Loaded)
+    {
+      <li class="chat__more"><button type="button" class="button button--quiet button--small" @onclick="() => State.LoadOlderAsync(Channel.Id)">Mensagens anteriores</button></li>
+    }
+    @foreach (var message in Messages.Items)
+    {
+      var mine = message.Author.Id == State.Me?.Id;
+      var translated = mine || message.Deleted ? null : State.Translator.Get(message.Id, message.EditedAt, message.Content, message.Language, MyLanguage);
+      var pending = !mine && !message.Deleted && translated is null && message.Language != MyLanguage && State.Translator.Available;
+      <li class="chat-message @(mine ? "chat-message--mine" : "")" data-id="@message.Id">
+        <Avatar Name="@message.Author.DisplayName" Mine="mine" Class="avatar--small" />
+        <div class="chat-message__body">
+          <p class="chat-message__meta">
+            <span class="chat-message__author">@message.Author.DisplayName</span>
+            <time>@message.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</time>
+            @if (message.EditedAt is not null && !message.Deleted)
+            {
+              <span>· editada</span>
+            }
+          </p>
+          @if (message.Deleted)
+          {
+            <p class="chat-message__deleted">Mensagem apagada.</p>
+          }
+          else if (_editing == message.Id)
+          {
+            <form class="chat-message__edit" @onsubmit="() => SaveEditAsync(message)">
+              <input class="field__input" @bind="_editText" aria-label="Editar a mensagem" maxlength="@SocialLimits.MaxMessageLength" />
+              <button type="submit" class="icon-button icon-button--ok" aria-label="Salvar"><Icon Name="ok" /></button>
+              <button type="button" class="icon-button" aria-label="Cancelar" @onclick="() => _editing = null"><Icon Name="fechar" /></button>
+            </form>
+          }
+          else
+          {
+            <p class="chat-message__text">@(translated ?? message.Content)</p>
+            @if (translated is not null)
+            {
+              <p class="chat-message__original">@LanguageTag(message.Language) @message.Content</p>
+            }
+            else if (pending)
+            {
+              <p class="chat-message__original">traduzindo…</p>
+            }
+          }
+        </div>
+        @if (mine && !message.Deleted && _editing != message.Id)
+        {
+          <div class="chat-message__actions">
+            <button type="button" class="icon-button" title="Editar" aria-label="Editar a mensagem" @onclick="() => StartEdit(message)"><Icon Name="editar" /></button>
+            <button type="button" class="icon-button" title="Apagar" aria-label="Apagar a mensagem" @onclick="() => DeleteAsync(message)"><Icon Name="lixeira" /></button>
+          </div>
+        }
+      </li>
+    }
+    @if (Messages.Loaded && Messages.Items.Count == 0)
+    {
+      <li class="plus__empty">Nenhuma mensagem ainda. Escreva no seu idioma: cada pessoa lê no dela.</li>
+    }
+  </ol>
+
+  @if (Typers is { Length: > 0 } typers)
+  {
+    <p class="chat__typing">@typers digitando…</p>
+  }
+  @if (_error is not null)
+  {
+    <p class="login__error" role="alert"><Icon Name="alerta" />@_error</p>
+  }
+  <form class="composer chat__composer" @onsubmit="SendAsync">
+    <input class="composer__input" type="text" @bind="_draft" @bind:event="oninput" @bind:after="TypedAsync" maxlength="@SocialLimits.MaxMessageLength"
+           placeholder="@($"Mensagem em {LanguageName(MyLanguage)}")" aria-label="Escrever mensagem" autocomplete="off" />
+    <button type="submit" class="composer__send" disabled="@(_sending || string.IsNullOrWhiteSpace(_draft))" aria-label="Enviar" title="Enviar">
+      <Icon Name="enviar" />
+    </button>
+  </form>
+</div>
+
+@code {
+    private ElementReference _list;
+    private string _draft = "";
+    private string _editText = "";
+    private long? _editing;
+    private bool _sending;
+    private string? _error;
+    private long _lastShown;
+
+    [Parameter, EditorRequired]
+    public ChannelInfo Channel { get; set; } = default!;
+
+    [Parameter]
+    public string Title { get; set; } = "";
+
+    private ChannelMessages Messages => State.Messages(Channel.Id);
+
+    private string MyLanguage => State.Me?.Language ?? Languages.PortugueseBrazil;
+
+    private string? Typers => string.Join(", ", State.Typing(Channel.Id).Select(id => State.FindUser(id)?.DisplayName ?? "Alguém")) is { Length: > 0 } names ? names : null;
+
+    private static string LanguageName(string code) => Languages.IsSupported(code) ? Languages.Get(code).NativeName : code;
+
+    private static string LanguageTag(string code) => $"[{code}]";
+
+    protected override void OnInitialized() => State.Changed += OnChanged;
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Mensagem nova embaixo: rola até ela.
+        var last = Messages.Items.LastOrDefault()?.Id ?? 0;
+        if (last != _lastShown)
+        {
+            _lastShown = last;
+            await Js.InvokeVoidAsync("dinoScrollToEnd", _list);
+        }
+    }
+
+    private Task TypedAsync() => State.TypingAsync(Channel.Id);
+
+    private async Task SendAsync()
+    {
+        var text = _draft.Trim();
+        if (text.Length == 0 || _sending)
+        {
+            return;
+        }
+        _sending = true;
+        _error = await State.SendAsync(Channel.Id, text);
+        if (_error is null)
+        {
+            _draft = "";
+        }
+        _sending = false;
+    }
+
+    private void StartEdit(MessageInfo message)
+    {
+        _editing = message.Id;
+        _editText = message.Content;
+    }
+
+    private async Task SaveEditAsync(MessageInfo message)
+    {
+        _error = await State.EditAsync(message.Id, _editText);
+        if (_error is null)
+        {
+            _editing = null;
+        }
+    }
+
+    private async Task DeleteAsync(MessageInfo message) => _error = await State.DeleteAsync(message);
+
+    public void Dispose() => State.Changed -= OnChanged;
+}

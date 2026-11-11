@@ -1,0 +1,175 @@
+@page "/conta"
+@using DinoTranslator.Desktop.Services.Plus
+@using DinoTranslator.Shared.Auth
+@inject AuthClient Auth
+@inject PlusServerStore Server
+@inject PlusState State
+@inject ProfileStore Profiles
+@inject NavigationManager Navigation
+
+<main class="login">
+  <section class="login__panel plus-login" aria-labelledby="plus-title">
+    <div class="handshake__top">
+      <span class="plus-card__badge">Plus</span>
+    </div>
+    <h1 id="plus-title" class="login__title">@(_register ? "Criar conta" : "Entrar")</h1>
+    <p class="handshake__hint">Grupos, chat e chamadas em grupo, com a sua conta no seu servidor.</p>
+
+    @if (_checking)
+    {
+      <p class="login__status">Retomando a sessão…</p>
+    }
+    else
+    {
+      <div class="plus-login__tabs" role="tablist">
+        <button type="button" role="tab" aria-selected="@(!_register ? "true" : "false")" class="@(!_register ? "plus-login__tab--on" : "")" @onclick="() => Switch(false)">Entrar</button>
+        <button type="button" role="tab" aria-selected="@(_register ? "true" : "false")" class="@(_register ? "plus-login__tab--on" : "")" @onclick="() => Switch(true)">Criar conta</button>
+      </div>
+
+      <form class="login__form" @onsubmit="SubmitAsync">
+        <label class="field">
+          <span class="field__label">Servidor</span>
+          <input class="field__input" @bind="_server" placeholder="dinotranslator.seudominio.com" spellcheck="false" autocomplete="url" maxlength="200" aria-label="Endereço do servidor" />
+        </label>
+        <label class="field">
+          <span class="field__label">Usuário</span>
+          <input class="field__input" @bind="_userName" autocomplete="username" spellcheck="false" maxlength="32" aria-label="Usuário" />
+        </label>
+        @if (_register)
+        {
+          <label class="field">
+            <span class="field__label">Nome que aparece</span>
+            <input class="field__input" @bind="_displayName" maxlength="64" aria-label="Nome que aparece" />
+          </label>
+          <label class="field">
+            <span class="field__label">Idioma em que você fala e lê</span>
+            <select class="field__input" @bind="_language" aria-label="Idioma">
+              @foreach (var language in Languages.All)
+              {
+                <option value="@language.Code">@language.NativeName</option>
+              }
+            </select>
+          </label>
+        }
+        <label class="field">
+          <span class="field__label">Senha@(_register ? " (12 ou mais caracteres)" : "")</span>
+          <input class="field__input" type="password" @bind="_password" autocomplete="@(_register ? "new-password" : "current-password")" maxlength="128" aria-label="Senha" />
+        </label>
+        @if (_register)
+        {
+          <label class="field">
+            <span class="field__label">Confirme a senha</span>
+            <input class="field__input" type="password" @bind="_confirm" autocomplete="new-password" maxlength="128" aria-label="Confirme a senha" />
+          </label>
+          <label class="field">
+            <span class="field__label">Código de cadastro (se o servidor pedir)</span>
+            <input class="field__input" @bind="_code" spellcheck="false" maxlength="128" aria-label="Código de cadastro" />
+          </label>
+        }
+        <label class="check">
+          <input type="checkbox" @bind="_remember" />
+          <span>Manter conectado neste computador</span>
+        </label>
+
+        @if (_error is not null)
+        {
+          <p class="login__error" role="alert"><Icon Name="alerta" />@_error</p>
+        }
+
+        <button type="submit" class="button button--primary" disabled="@_busy">
+          @(_busy ? "Aguarde…" : _register ? "Criar conta e entrar" : "Entrar")
+        </button>
+      </form>
+    }
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))"><Icon Name="voltar" />Voltar</button>
+  </section>
+</main>
+
+@code {
+    private bool _checking = true;
+    private bool _register;
+    private bool _busy;
+    private bool _remember = true;
+    private string? _error;
+    private string _server = "";
+    private string _userName = "";
+    private string _displayName = "";
+    private string _password = "";
+    private string _confirm = "";
+    private string _code = "";
+    private string _language = Languages.PortugueseBrazil;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // HTTPS aparece só com o domínio; outro esquema (http://localhost, em desenvolvimento) vai inteiro.
+        _server = Server.Current is { } current ? current.Scheme == Uri.UriSchemeHttps ? current.Authority : current.GetLeftPart(UriPartial.Authority) : "";
+        if (Profiles.Current is { } profile)
+        {
+            _displayName = profile.Name;
+            _language = profile.Language;
+        }
+        if (Server.Current is not null && await Auth.TryResumeAsync())
+        {
+            Navigation.NavigateTo("/plus");
+            return;
+        }
+        _checking = false;
+    }
+
+    private void Switch(bool register)
+    {
+        _register = register;
+        _error = null;
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+        _error = Server.Save(_server);
+        if (_error is not null)
+        {
+            return;
+        }
+        if (_register && _password != _confirm)
+        {
+            _error = "As senhas não conferem.";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            await State.ResetAsync();
+            if (_register)
+            {
+                var gender = Profiles.Current?.Gender ?? Gender.Unspecified;
+                var (result, message) = await Auth.RegisterAsync(
+                    new RegisterRequest(_userName, _password, _displayName, _language, gender, string.IsNullOrWhiteSpace(_code) ? null : _code.Trim()), _remember);
+                _error = result == LoginResult.Success ? null : message ?? Describe(result);
+            }
+            else
+            {
+                var result = await Auth.LoginAsync(_userName, _password, _remember);
+                _error = result == LoginResult.Success ? null : Describe(result);
+            }
+            if (_error is null)
+            {
+                _password = _confirm = "";
+                Navigation.NavigateTo("/plus");
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string Describe(LoginResult result) => result switch
+    {
+        LoginResult.InvalidCredentials => "Usuário ou senha inválidos.",
+        LoginResult.TooManyAttempts => "Muitas tentativas. Espere um minuto e tente de novo.",
+        _ => "O servidor não respondeu. Confira o endereço e a sua internet.",
+    };
+}

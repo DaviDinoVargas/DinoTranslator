@@ -89,12 +89,24 @@ Um único computador processa as duas falas: a da própria pessoa pelo microfone
 - Isso também evita os provedores que não atendem a Rússia: basta quem está no Brasil configurar o motor.
 - Legendas só são aceitas de quem foi escolhido para traduzir.
 
-### 3.4 Modo servidor (opcional, desligado)
+### 3.4 Versão Plus (paga): conta, grupos, chat e chamadas em grupo
 
-O servidor ASP.NET Core com login, presença e credenciais de TURN continua no repositório (`DinoTranslator.Server`), com seus testes, para ser reativado se precisar — por exemplo, um relay TURN se a conexão direta falhar em alguma rede.
+O mesmo app tem as duas versões. A tela inicial continua com a chamada por código (grátis, sem login, como acima) e ganha o cartão **Plus**, que leva a entrar ou criar conta no **seu servidor** (o endereço é escolhido no app, só HTTPS).
 
-- O app escolhe o modo em `appsettings.json`: `"Conexao": { "Modo": "codigo" }` (padrão) ou `"servidor"`.
-- No modo servidor, valem as telas de login e de sala com presença e os controles da seção "Modo servidor" de [SEGURANCA.md](SEGURANCA.md).
+```
+ App (Windows) ──HTTPS/WSS──► Caddy ──► API DinoTranslator (N instâncias, sem estado)
+      │                                   │            │
+      │                                   ▼            ▼
+      │                              PostgreSQL      Redis (cache, presença, SignalR entre instâncias)
+      └────────WSS + WebRTC──────────► LiveKit (SFU, chamadas em grupo) ──webhook assinado──► API
+```
+
+- **Contas**: cadastro pelo app (pode ser fechado ou exigir código), plano grátis ou **Plus** (ativado pelo dono do servidor no comando `users plan`, enquanto não há cobrança), suspensão. Detalhes em `src/DinoTranslator.Server/README.md`.
+- **Estilo Discord**: trilho com os grupos; canais de texto e de voz; amigos, pedidos e conversas diretas; membros com presença; "digitando"; convites com validade e limite de usos; papéis (dono, administrador, membro).
+- **Tradução do chat**: o servidor guarda a mensagem como foi escrita, com o idioma de quem escreveu; cada app traduz para quem lê, com o próprio motor, e mostra o original embaixo. O servidor nunca traduz nem manda texto para fora.
+- **Chamadas em grupo**: SFU LiveKit hospedado junto (escala para dezenas de pessoas por sala, ao contrário do P2P). A API emite a permissão assinada só para a sala daquele canal e acompanha quem está em cada sala pelos webhooks assinados. O microfone passa pela mesma cadeia do supressor de ruído; cada app reconhece a própria fala e manda, pelo canal de dados da sala, o original e as traduções para os idiomas de quem está ouvindo. A chamada continua enquanto a pessoa navega por outros canais.
+- **Escala**: API sem estado atrás do proxy; PostgreSQL com índices para as consultas quentes (mensagens por canal e id, membros por conta); cache curto de acesso e de sessão (sem consulta ao banco a cada requisição); presença e eventos em tempo real pelo Redis; limites por conta e por IP; migrações do banco uma instância por vez.
+- O antigo modo servidor de duas contas (`"Conexao": { "Modo": "servidor" }`) deu lugar à versão Plus.
 
 ---
 
