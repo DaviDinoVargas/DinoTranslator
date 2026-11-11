@@ -32,3 +32,6 @@ secrets/
 *.db-shm
 *.db-wal
 *.log
+
+# Segredos do servidor (gerados por deploy/gerar-env.sh)
+deploy/.env

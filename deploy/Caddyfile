@@ -1,0 +1,20 @@
+# HTTPS automático (Let's Encrypt) para os dois endereços.
+
+{$DOMINIO_API} {
+	encode zstd gzip
+	# Reparte entre as réplicas da API e só manda tráfego às que estão prontas (banco e Redis).
+	reverse_proxy {
+		dynamic a api 8080 {
+			refresh 5s
+		}
+		lb_policy least_conn
+		health_uri /health/pronto
+		health_interval 10s
+		health_timeout 3s
+	}
+}
+
+# Sinalização das chamadas em grupo (a mídia vai direto para as portas 7881/7882 do LiveKit).
+{$DOMINIO_MIDIA} {
+	reverse_proxy livekit:7880
+}
