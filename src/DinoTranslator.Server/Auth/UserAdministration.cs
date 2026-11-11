@@ -108,6 +108,18 @@ public sealed class UserAdministration(
         return user;
     }
 
+    /// <summary>Plano de todas as contas que começam com o prefixo (sem prazo). Prefixo de 3+ caracteres.</summary>
+    public async Task<int> SetPlanByPrefixAsync(string prefix, AccountPlan plan, CancellationToken cancellationToken = default)
+    {
+        var normalized = Credentials.NormalizeUserName(prefix);
+        if (normalized.Length < 3)
+        {
+            throw new UserAdministrationException("Use um prefixo de pelo menos 3 caracteres.");
+        }
+        return await db.Users.Where(u => u.UserName.StartsWith(normalized))
+            .ExecuteUpdateAsync(set => set.SetProperty(u => u.Plan, plan).SetProperty(u => u.PlanExpiresAtUtc, (DateTime?)null), cancellationToken);
+    }
+
     /// <summary>Suspende a conta: encerra todas as sessões e recusa novas entradas.</summary>
     public async Task DisableAsync(string userName, CancellationToken cancellationToken = default)
     {
