@@ -51,8 +51,11 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 app.UseSecurityHeaders();
-app.UseRateLimiter();
 app.UseAuthentication();
+// Depois da autenticação: os limites da versão Plus contam por conta, não por IP (pessoas atrás
+// do mesmo IP — casa, empresa, CGNAT da operadora — não dividem o limite). Login e cadastro
+// continuam por IP.
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapHealth();
