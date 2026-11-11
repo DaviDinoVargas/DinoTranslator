@@ -1,0 +1,41 @@
+@page "/licencas"
+@inject NavigationManager Navigation
+
+@* Componentes de terceiros e as licenças deles, com a atribuição que a CC BY 4.0 do OPUS-MT pede. *@
+<main class="login">
+  <section class="login__panel licenses">
+    <h1 class="login__title">Licenças</h1>
+    <p class="handshake__hint">O DinoTranslator usa estes componentes de código aberto. Obrigado a quem os faz.</p>
+    <ul class="licenses__list">
+      @foreach (var (name, use, license) in Items)
+      {
+        <li><strong>@name</strong> — @use <span class="licenses__license">@license</span></li>
+      }
+    </ul>
+    <p class="handshake__hint">
+      Tradução da versão Plus: OPUS-MT, Jörg Tiedemann e Santhosh Thottingal, Universidade de Helsinque (Helsinki-NLP), CC BY 4.0.
+      O NLLB-200 (Meta, CC BY-NC 4.0) é só para uso não comercial e por isso só aparece na versão grátis.
+    </p>
+    <button type="button" class="button button--quiet handshake__cancel" @onclick="@(() => Navigation.NavigateTo("/"))"><Icon Name="voltar" />Voltar</button>
+  </section>
+</main>
+
+@code {
+    private static readonly (string Name, string Use, string License)[] Items =
+    [
+        (".NET, ASP.NET Core, Blazor, SignalR", "app e servidor", "MIT"),
+        ("WebView2 / Chromium WebRTC", "chamadas, câmera e tela", "Microsoft / BSD"),
+        ("Whisper, whisper.cpp, Whisper.net", "reconhecimento de fala", "MIT"),
+        ("faster-whisper, CTranslate2", "motor auxiliar", "MIT"),
+        ("MarianMT / OPUS-MT", "tradução (versão Plus)", "CC BY 4.0"),
+        ("NLLB-200", "tradução (só versão grátis)", "CC BY-NC 4.0"),
+        ("ONNX Runtime", "motor local", "MIT"),
+        ("Silero VAD", "detector de fala", "MIT"),
+        ("DeepFilterNet3, @workadventure/noise-suppression", "supressor de ruído", "MIT / Apache-2.0"),
+        ("RNNoise, GTCRN, @sapphi-red/web-noise-suppressor", "supressores de ruído", "BSD-3-Clause / MIT"),
+        ("LiveKit (servidor e livekit-client)", "chamadas em grupo", "Apache-2.0"),
+        ("Python", "motor auxiliar", "PSF"),
+        ("Bibliotecas CUDA da NVIDIA", "placa de vídeo", "NVIDIA CUDA EULA"),
+        ("Inter", "fonte", "SIL OFL 1.1"),
+    ];
+}

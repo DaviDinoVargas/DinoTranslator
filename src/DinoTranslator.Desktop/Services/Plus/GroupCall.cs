@@ -230,7 +230,8 @@ public sealed class GroupCall(IJSRuntime js, PlusApi api, PlusState state, Speec
 
     private async Task StartCaptionsAsync()
     {
-        if (_module is null || engines.Create(translation.Current) is not { } engine)
+        // Serviço pago: só motores com licença comercial (MarianMT local ou o provedor de nuvem).
+        if (_module is null || engines.CreateForPlus(translation.Current) is not { } engine)
         {
             return;
         }

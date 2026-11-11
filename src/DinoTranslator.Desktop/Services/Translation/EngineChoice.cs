@@ -52,13 +52,40 @@ public enum TranslatorOption
 /// reproduz o motor original: volume, 0,8 s de pausa, Whisper do ajuste, NLLB 600M e final cuidadosa.
 /// </summary>
 /// <param name="Careful">Versão final com busca em feixe no reconhecimento e na tradução.</param>
+/// <param name="Commercial">
+/// Uso pago (versão Plus): só peças com licença que permite venda. O NLLB-200 é CC BY-NC 4.0 (uso
+/// não comercial) e não entra, nem como reserva; o MarianMT (OPUS-MT, CC BY 4.0) e o Whisper (MIT) sim.
+/// </param>
 public sealed record EngineChoice(
     DetectorOption Detector,
     int PauseMs,
     RecognizerOption Recognizer,
     TranslatorOption Translator,
-    bool Careful)
+    bool Careful,
+    bool Commercial = false)
 {
+    /// <summary>Tradutores que podem ser usados num serviço pago (licença comercial).</summary>
+    public static bool IsCommercial(TranslatorOption option) => option is TranslatorOption.OpusGpu or TranslatorOption.OpusCpu;
+
+    /// <summary>
+    /// A combinação para a versão Plus: a preferida da pessoa, com o tradutor trocado pelo MarianMT
+    /// (na placa, se houver) e sem reserva no NLLB. Sem o MarianMT instalado, não há tradução local paga.
+    /// </summary>
+    public static EngineChoice? ForPlus(TranslationSettings settings, EngineAvailability availability, EngineChoice? preferred = null)
+    {
+        var translator = availability.Translators.Contains(TranslatorOption.OpusGpu) ? TranslatorOption.OpusGpu
+            : availability.Translators.Contains(TranslatorOption.OpusCpu) ? TranslatorOption.OpusCpu
+            : (TranslatorOption?)null;
+        if (translator is null)
+        {
+            return null;
+        }
+        var basis = preferred ?? For(settings);
+        var recognizer = availability.Recognizers.Contains(basis.Recognizer) ? basis.Recognizer : For(settings).Recognizer;
+        var detector = availability.Detectors.Contains(basis.Detector) ? basis.Detector : DetectorOption.Volume;
+        return new EngineChoice(detector, basis.PauseMs, recognizer, translator.Value, basis.Careful, Commercial: true);
+    }
+
     public static IReadOnlyList<int> Pauses { get; } = [500, 800, 1_200];
 
     public static EngineChoice For(TranslationSettings settings) => new(
@@ -91,7 +118,8 @@ public sealed record EngineChoice(
             Pauses.Contains(PauseMs) ? PauseMs : fallback.PauseMs,
             Enum.IsDefined(Recognizer) ? Recognizer : fallback.Recognizer,
             Enum.IsDefined(Translator) ? Translator : fallback.Translator,
-            Careful);
+            Careful,
+            Commercial);
     }
 
     public static string Label(DetectorOption option) => option switch

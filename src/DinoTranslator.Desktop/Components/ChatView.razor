@@ -11,7 +11,7 @@
     <p class="chat__title">@Title</p>
     @if (!State.Translator.Available)
     {
-      <p class="chat__note"><Icon Name="info" />Sem tradução neste computador: as mensagens aparecem no original.</p>
+      <p class="chat__note"><Icon Name="info" />@(State.Translator.Problem ?? "Sem tradução neste computador.") As mensagens aparecem no original.</p>
     }
   </header>
 

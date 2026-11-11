@@ -107,7 +107,7 @@
   }
   @if (InCall && !Call.CaptionsOn)
   {
-    <p class="chat__note"><Icon Name="info" />Sem tradução configurada neste computador: a sua fala não gera legendas.</p>
+    <p class="chat__note"><Icon Name="info" />@(State.Translator.Problem ?? "Sem tradução neste computador.") A sua fala não gera legendas.</p>
   }
 </div>
 
