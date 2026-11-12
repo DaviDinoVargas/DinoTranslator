@@ -88,6 +88,18 @@ public static class SocialSetup
             (await chat.EditAsync(Me(user), messageId, request, ct)).ToResult()).RequireRateLimiting(MessageRateLimit);
         api.MapDelete("/api/mensagens/{messageId:long}", async (long messageId, ClaimsPrincipal user, ChatService chat, CancellationToken ct) =>
             (await chat.DeleteAsync(Me(user), messageId, ct)).ToResult()).RequireRateLimiting(MessageRateLimit);
+        api.MapPut("/api/mensagens/{messageId:long}/reacoes/{emoji}", async (long messageId, string emoji, ClaimsPrincipal user, ChatService chat, CancellationToken ct) =>
+            (await chat.ReactAsync(Me(user), messageId, Uri.UnescapeDataString(emoji), add: true, ct)).ToResult()).RequireRateLimiting(ActionRateLimit);
+        api.MapDelete("/api/mensagens/{messageId:long}/reacoes/{emoji}", async (long messageId, string emoji, ClaimsPrincipal user, ChatService chat, CancellationToken ct) =>
+            (await chat.ReactAsync(Me(user), messageId, Uri.UnescapeDataString(emoji), add: false, ct)).ToResult()).RequireRateLimiting(ActionRateLimit);
+        api.MapPut("/api/mensagens/{messageId:long}/fixar", async (long messageId, ClaimsPrincipal user, ChatService chat, CancellationToken ct) =>
+            (await chat.PinAsync(Me(user), messageId, pin: true, ct)).ToResult()).RequireRateLimiting(ActionRateLimit);
+        api.MapDelete("/api/mensagens/{messageId:long}/fixar", async (long messageId, ClaimsPrincipal user, ChatService chat, CancellationToken ct) =>
+            (await chat.PinAsync(Me(user), messageId, pin: false, ct)).ToResult()).RequireRateLimiting(ActionRateLimit);
+        api.MapGet("/api/canais/{channelId:guid}/fixadas", async (Guid channelId, ClaimsPrincipal user, ChatService chat, CancellationToken ct) =>
+            (await chat.PinsAsync(Me(user), channelId, ct)).ToResult());
+        api.MapGet(SocialRoutes.Search, async (string? q, Guid? canal, Guid? grupo, ClaimsPrincipal user, ChatService chat, CancellationToken ct) =>
+            (await chat.SearchAsync(Me(user), q, canal, grupo, ct)).ToResult()).RequireRateLimiting(ActionRateLimit);
 
         // Amigos, bloqueios e conversas diretas
         api.MapGet(SocialRoutes.Friends, async (ClaimsPrincipal user, FriendService friends, CancellationToken ct) =>

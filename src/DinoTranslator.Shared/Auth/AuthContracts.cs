@@ -16,12 +16,16 @@ public sealed record LoginRequest(string UserName, string Password);
 /// <summary>Cadastro pela rede (se o servidor permitir). Code: código de cadastro, se o servidor exigir.</summary>
 public sealed record RegisterRequest(string UserName, string Password, string DisplayName, string Language, Gender Gender, string? Code = null);
 
-/// <summary>Grátis: entra e cuida do perfil. Plus: a versão paga inteira (grupos, chat, chamadas em grupo).</summary>
+/// <summary>
+/// Grátis: entra e cuida do perfil. Plus: grupos, chat, chamadas em grupo e os adicionais. Pro:
+/// tudo do Plus e a camada de IA (com créditos). Ver a matriz de planos.
+/// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter<AccountPlan>))]
 public enum AccountPlan
 {
     Free = 0,
     Plus = 1,
+    Pro = 2,
 }
 
 public sealed record RefreshRequest(string RefreshToken);

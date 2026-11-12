@@ -36,5 +36,8 @@ public sealed class User
     /// <summary>Conta suspensa pelo dono do servidor: não entra e perde as sessões abertas.</summary>
     public DateTime? DisabledAtUtc { get; set; }
 
-    public bool HasPlus(DateTime nowUtc) => Plan == AccountPlan.Plus && (PlanExpiresAtUtc is not { } until || until > nowUtc);
+    /// <summary>Plano pago valendo (Plus ou Pro): libera a versão paga.</summary>
+    public bool HasPlus(DateTime nowUtc) => Plan >= AccountPlan.Plus && (PlanExpiresAtUtc is not { } until || until > nowUtc);
+
+    public bool HasPro(DateTime nowUtc) => Plan == AccountPlan.Pro && HasPlus(nowUtc);
 }

@@ -22,6 +22,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
     public DbSet<Block> Blocks => Set<Block>();
 
+    public DbSet<MessageReaction> MessageReactions => Set<MessageReaction>();
+
+    public DbSet<MessageMention> MessageMentions => Set<MessageMention>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<User>(user =>
@@ -72,8 +76,25 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             message.Property(m => m.Language).HasMaxLength(8);
             message.HasIndex(m => new { m.ChannelId, m.Id });
             message.HasIndex(m => m.AuthorId);
+            message.HasIndex(m => new { m.ChannelId, m.PinnedAtUtc });
             message.HasOne<Channel>().WithMany().HasForeignKey(m => m.ChannelId).OnDelete(DeleteBehavior.Cascade);
             message.HasOne(m => m.Author).WithMany().HasForeignKey(m => m.AuthorId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<MessageReaction>(reaction =>
+        {
+            reaction.HasKey(r => new { r.MessageId, r.UserId, r.Emoji });
+            reaction.Property(r => r.Emoji).HasMaxLength(16);
+            reaction.HasOne<Message>().WithMany().HasForeignKey(r => r.MessageId).OnDelete(DeleteBehavior.Cascade);
+            reaction.HasOne<User>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<MessageMention>(mention =>
+        {
+            mention.HasKey(m => new { m.MessageId, m.UserId });
+            mention.HasIndex(m => m.UserId);
+            mention.HasOne<Message>().WithMany().HasForeignKey(m => m.MessageId).OnDelete(DeleteBehavior.Cascade);
+            mention.HasOne<User>().WithMany().HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<GroupInvite>(invite =>

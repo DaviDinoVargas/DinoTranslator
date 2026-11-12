@@ -102,8 +102,9 @@ public sealed class UserAdministration(
         var now = time.GetUtcNow().UtcDateTime;
         user.Plan = plan;
         // Renovação soma ao prazo que ainda resta.
-        var start = plan == AccountPlan.Plus && user.PlanExpiresAtUtc > now ? user.PlanExpiresAtUtc.Value : now;
-        user.PlanExpiresAtUtc = plan == AccountPlan.Plus && days is { } d ? start.AddDays(d) : null;
+        var paid = plan != AccountPlan.Free;
+        var start = paid && user.PlanExpiresAtUtc > now ? user.PlanExpiresAtUtc.Value : now;
+        user.PlanExpiresAtUtc = paid && days is { } d ? start.AddDays(d) : null;
         await db.SaveChangesAsync(cancellationToken);
         return user;
     }

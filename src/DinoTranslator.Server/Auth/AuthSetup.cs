@@ -92,17 +92,23 @@ public static class AuthSetup
         // Versão paga: o token diz se o Plus valia na emissão; o prazo é conferido de novo aqui.
         services.AddAuthorizationBuilder()
             .AddPolicy(AuthClaims.PlusPolicy, policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
-            {
-                if (context.User.FindFirst(AuthClaims.Plan)?.Value != "plus")
-                {
-                    return false;
-                }
-                var until = context.User.FindFirst(AuthClaims.PlanUntil)?.Value;
-                return until is null
-                    || (long.TryParse(until, CultureInfo.InvariantCulture, out var seconds)
-                        && DateTimeOffset.FromUnixTimeSeconds(seconds) > TimeProvider.System.GetUtcNow());
-            }));
+                PaidPlanValid(context.User, "plus", "pro")))
+            .AddPolicy(AuthClaims.ProPolicy, policy => policy.RequireAuthenticatedUser().RequireAssertion(context =>
+                PaidPlanValid(context.User, "pro")));
         return services;
+    }
+
+    /// <summary>O token diz qual plano valia na emissão; o prazo é conferido de novo aqui.</summary>
+    private static bool PaidPlanValid(System.Security.Claims.ClaimsPrincipal user, params string[] plans)
+    {
+        if (!plans.Contains(user.FindFirst(AuthClaims.Plan)?.Value))
+        {
+            return false;
+        }
+        var until = user.FindFirst(AuthClaims.PlanUntil)?.Value;
+        return until is null
+            || (long.TryParse(until, CultureInfo.InvariantCulture, out var seconds)
+                && DateTimeOffset.FromUnixTimeSeconds(seconds) > TimeProvider.System.GetUtcNow());
     }
 
     public const string LoginRateLimit = "login";

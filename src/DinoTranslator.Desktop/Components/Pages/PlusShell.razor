@@ -164,7 +164,7 @@ else
       }
       <footer class="plus__me">
         <Avatar Name="@me.DisplayName" Mine="true" Class="avatar--small" />
-        <span class="person__name">@me.DisplayName<span class="person__user">@me.UserName · Plus</span></span>
+        <span class="person__name">@me.DisplayName<span class="person__user">@me.UserName · @(State.Pro ? "Pro" : "Plus")</span></span>
         <button type="button" class="icon-button" title="Câmera, áudio e ruído" aria-label="Câmera, áudio e ruído" @onclick="@(() => Navigation.NavigateTo("/configuracoes/dispositivos"))"><Icon Name="fone" /></button>
         <button type="button" class="icon-button" title="Tela inicial" aria-label="Tela inicial" @onclick="@(() => Navigation.NavigateTo("/"))"><Icon Name="voltar" /></button>
         <button type="button" class="icon-button" title="Sair da conta" aria-label="Sair da conta" @onclick="LogoutAsync"><Icon Name="sair" /></button>

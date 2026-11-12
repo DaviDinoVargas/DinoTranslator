@@ -217,6 +217,9 @@ namespace DinoTranslator.Server.Data.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("character varying(8)");
 
+                    b.Property<DateTime?>("PinnedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<long?>("ReplyToId")
                         .HasColumnType("bigint");
 
@@ -226,7 +229,43 @@ namespace DinoTranslator.Server.Data.Migrations
 
                     b.HasIndex("ChannelId", "Id");
 
+                    b.HasIndex("ChannelId", "PinnedAtUtc");
+
                     b.ToTable("Messages");
+                });
+
+            modelBuilder.Entity("DinoTranslator.Server.Data.MessageMention", b =>
+                {
+                    b.Property<long>("MessageId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("MessageId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("MessageMentions");
+                });
+
+            modelBuilder.Entity("DinoTranslator.Server.Data.MessageReaction", b =>
+                {
+                    b.Property<long>("MessageId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Emoji")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("MessageId", "UserId", "Emoji");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("MessageReactions");
                 });
 
             modelBuilder.Entity("DinoTranslator.Server.Data.RefreshToken", b =>
@@ -407,6 +446,36 @@ namespace DinoTranslator.Server.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Author");
+                });
+
+            modelBuilder.Entity("DinoTranslator.Server.Data.MessageMention", b =>
+                {
+                    b.HasOne("DinoTranslator.Server.Data.Message", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DinoTranslator.Server.Data.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DinoTranslator.Server.Data.MessageReaction", b =>
+                {
+                    b.HasOne("DinoTranslator.Server.Data.Message", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DinoTranslator.Server.Data.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("DinoTranslator.Server.Data.RefreshToken", b =>
