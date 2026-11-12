@@ -111,7 +111,7 @@
         <Icon Name="alerta" />@problem
         @if (Call.Stage is CallStage.Ended or CallStage.Idle)
         {
-          <button type="button" class="button button--quiet" @onclick="BackHome">Voltar ao início</button>
+          <button type="button" class="button button--quiet" @onclick="BackHome">@(Call.Transport == CallTransport.Account ? "Voltar às conversas" : "Voltar ao início")</button>
         }
       </p>
     }
@@ -389,11 +389,12 @@
 
     private async Task HangUpAsync()
     {
+        var back = Call.ReturnPath;
         await Call.HangUpAsync();
-        Navigation.NavigateTo("/");
+        Navigation.NavigateTo(back);
     }
 
-    private void BackHome() => Navigation.NavigateTo("/");
+    private void BackHome() => Navigation.NavigateTo(Call.ReturnPath);
 
     private void OnCallChanged() => InvokeAsync(async () =>
     {
