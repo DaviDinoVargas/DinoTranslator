@@ -4,7 +4,8 @@ using DinoTranslator.Desktop.Services.Translation.Local;
 namespace DinoTranslator.Desktop.Services.Translation;
 
 /// <param name="Phrases">Glossário: nomes e termos que o reconhecimento deve preferir.</param>
-public sealed record SpeechStreamOptions(string SourceLanguage, string TargetLanguage, IReadOnlyList<string> Phrases);
+/// <param name="Glossary">Glossário aplicado na tradução (termos mantidos ou com tradução fixa).</param>
+public sealed record SpeechStreamOptions(string SourceLanguage, string TargetLanguage, IReadOnlyList<string> Phrases, Glossary? Glossary = null);
 
 /// <summary>Atualização de um trecho: provisória (vai se ajustando) ou final (com os tempos medidos).</summary>
 public sealed record SpeechUpdate(int Segment, int Revision, string SourceText, string? TranslatedText, bool Final, SpeechTiming? Timing = null);

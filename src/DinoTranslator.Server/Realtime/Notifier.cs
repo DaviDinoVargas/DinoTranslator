@@ -29,6 +29,11 @@ public sealed class Notifier(IHubContext<AppHub, IAppClient> hub, IPresenceStore
 
     public Task GroupChangedAsync(Guid groupId) => hub.Clients.Group(GroupName(groupId)).GroupChanged(groupId);
 
+    /// <summary>Glossário pessoal: os outros aparelhos da conta recarregam.</summary>
+    public Task GlossaryChangedAsync(Guid userId) => hub.Clients.User(userId.ToString()).GlossaryChanged(null);
+
+    public Task GroupGlossaryChangedAsync(Guid groupId) => hub.Clients.Group(GroupName(groupId)).GlossaryChanged(groupId);
+
     public Task FriendsChangedAsync(params Guid[] userIds) => hub.Clients.Users(userIds.Select(u => u.ToString())).FriendsChanged();
 
     public Task DirectOpenedAsync(Guid userId, DirectInfo direct) => hub.Clients.User(userId.ToString()).DirectOpened(direct);

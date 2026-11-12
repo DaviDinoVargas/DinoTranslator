@@ -19,6 +19,7 @@ public static class SocialSetup
         services.AddScoped<GroupService>();
         services.AddScoped<ChatService>();
         services.AddScoped<FriendService>();
+        services.AddScoped<GlossaryService>();
         services.AddSingleton<Notifier>();
         if (Scaling.HasRedis(configuration))
         {
@@ -116,6 +117,16 @@ public static class SocialSetup
             Results.Ok(await friends.DirectsAsync(Me(user), ct)));
         api.MapPost("/api/conversas/{userId:guid}", async (Guid userId, ClaimsPrincipal user, FriendService friends, CancellationToken ct) =>
             (await friends.OpenDirectAsync(Me(user), userId, ct)).ToResult()).RequireRateLimiting(ActionRateLimit);
+
+        // Glossário
+        api.MapGet(SocialRoutes.Glossary, async (ClaimsPrincipal user, GlossaryService glossary, CancellationToken ct) =>
+            (await glossary.PersonalAsync(Me(user), ct)).ToResult());
+        api.MapPut(SocialRoutes.Glossary, async (GlossaryRequest request, ClaimsPrincipal user, GlossaryService glossary, CancellationToken ct) =>
+            (await glossary.SetPersonalAsync(Me(user), request, ct)).ToResult()).RequireRateLimiting(ActionRateLimit);
+        api.MapGet("/api/grupos/{groupId:guid}/glossario", async (Guid groupId, ClaimsPrincipal user, GlossaryService glossary, CancellationToken ct) =>
+            (await glossary.GroupAsync(Me(user), groupId, ct)).ToResult());
+        api.MapPut("/api/grupos/{groupId:guid}/glossario", async (Guid groupId, GlossaryRequest request, ClaimsPrincipal user, GlossaryService glossary, CancellationToken ct) =>
+            (await glossary.SetGroupAsync(Me(user), groupId, request, ct)).ToResult()).RequireRateLimiting(ActionRateLimit);
         return app;
     }
 }

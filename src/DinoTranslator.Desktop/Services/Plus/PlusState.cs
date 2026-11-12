@@ -58,6 +58,15 @@ public sealed class PlusState : IAsyncDisposable, ICallSignaling
     /// <summary>Sinal da chamada pela conta (ver <see cref="DirectCalls"/>).</summary>
     public event Action<CallSignalInfo>? CallSignalReceived;
 
+    /// <summary>O tempo real ligou (ou religou) com a conta: hora de carregar o que depende dela.</summary>
+    public event Action? SessionStarted;
+
+    /// <summary>Saiu da conta: esquecer o que era dela.</summary>
+    public event Action? SessionEnded;
+
+    /// <summary>Glossário mudou no servidor: o pessoal (null) ou o de um grupo.</summary>
+    public event Action<Guid?>? GlossaryChanged;
+
     public MessageTranslator Translator { get; }
 
     public UserProfile? Me => _auth.CurrentUser;
@@ -218,6 +227,7 @@ public sealed class PlusState : IAsyncDisposable, ICallSignaling
             {
                 await ReadyAsync();
                 await RefreshListsAsync();
+                SessionStarted?.Invoke();
             };
             _hub.Reconnecting += _ =>
             {
@@ -245,6 +255,7 @@ public sealed class PlusState : IAsyncDisposable, ICallSignaling
         }
         // Depois do tempo real ligado: o que chegar enquanto as listas carregam não se perde.
         await RefreshListsAsync();
+        SessionStarted?.Invoke();
         Notify();
     }
 
@@ -605,6 +616,7 @@ public sealed class PlusState : IAsyncDisposable, ICallSignaling
             Notify();
         });
         hub.On<CallSignalInfo>(nameof(IAppClient.DirectCall), signal => CallSignalReceived?.Invoke(signal));
+        hub.On<Guid?>(nameof(IAppClient.GlossaryChanged), groupId => GlossaryChanged?.Invoke(groupId));
     }
 
     private void Upsert(MessageInfo message)
@@ -728,6 +740,7 @@ public sealed class PlusState : IAsyncDisposable, ICallSignaling
         SelectedGroup = null;
         SelectedChannel = null;
         Problem = null;
+        SessionEnded?.Invoke();
         Notify();
     }
 

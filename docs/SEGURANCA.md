@@ -116,6 +116,7 @@ Controles do servidor da versão paga (contas, grupos, chat e chamadas em grupo)
 - Limites por conta: 10 mensagens a cada 10 s e 60 ações por minuto; no hub, limite por conexão e mensagens de até 64 KB.
 - Quem sai ou é removido de um grupo é tirado na hora dos grupos do SignalR em todas as instâncias: não recebe mais nada dele.
 - A antiga sala de duas pessoas foi removida: num servidor com muitas contas ela mandaria presença e sinais à conta errada.
+- Glossário pessoal (só a própria conta lê e muda) e do grupo (membros leem, só administradores mudam): até 200 e 300 termos, cada termo e tradução com até 60 caracteres, sem caracteres de controle e sem repetir; idioma da tradução só da lista. A lista é trocada inteira numa transação. No app, o glossário só troca termos por marcadores antes da tradução local; se um marcador não volta intacto, a frase é traduzida sem ele.
 
 ### 5.3 Chamada 1:1 pela conta
 

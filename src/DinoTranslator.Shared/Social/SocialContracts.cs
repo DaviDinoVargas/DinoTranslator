@@ -28,6 +28,8 @@ public static class SocialRoutes
     public static string MessagePin(long id) => $"/api/mensagens/{id}/fixar";
     public static string ChannelPins(Guid id) => $"/api/canais/{id}/fixadas";
     public const string Search = "/api/busca";
+    public const string Glossary = "/api/glossario";
+    public static string GroupGlossary(Guid id) => $"/api/grupos/{id}/glossario";
     public const string LiveKitWebhook = "/api/livekit/webhook";
 }
 
@@ -170,6 +172,25 @@ public interface IAppClient
 
     /// <summary>Sinal da chamada 1:1 pela conta (ver <see cref="CallSignal"/>).</summary>
     Task DirectCall(CallSignalInfo signal);
+
+    /// <summary>O glossário mudou: o pessoal (null, de outro aparelho da conta) ou o do grupo.</summary>
+    Task GlossaryChanged(Guid? groupId);
+}
+
+/// <summary>
+/// Termo do glossário (nomes, marcas, jargão): o reconhecimento de fala recebe a lista como dica e
+/// a tradução mantém o termo como está (sem <see cref="Translation"/>) ou usa a tradução dada para
+/// o idioma <see cref="Language"/>.
+/// </summary>
+public sealed record GlossaryEntry(string Term, string? Translation = null, string? Language = null);
+
+public sealed record GlossaryRequest(IReadOnlyList<GlossaryEntry>? Entries);
+
+public static class GlossaryLimits
+{
+    public const int MaxTermLength = 60;
+    public const int MaxPersonal = 200;
+    public const int MaxGroup = 300;
 }
 
 /// <summary>
