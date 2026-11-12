@@ -43,6 +43,13 @@ public sealed class AppHub(AppDbContext db, IPresenceStore presence, Notifier no
         await base.OnDisconnectedAsync(exception);
     }
 
+    /// <summary>
+    /// O app chama logo depois de conectar: o SignalR só atende depois de OnConnectedAsync, então a
+    /// resposta garante que a conexão já está nos grupos e recebe os eventos. Só aí o app carrega
+    /// as listas, e nenhuma mensagem cai no intervalo.
+    /// </summary>
+    public Task<bool> Ready() => Task.FromResult(true);
+
     /// <summary>"Fulano está digitando" para quem pode ver o canal.</summary>
     public async Task Typing(Guid channelId)
     {
