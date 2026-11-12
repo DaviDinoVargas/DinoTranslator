@@ -167,6 +167,55 @@ public interface IAppClient
 
     /// <summary>Quem está no canal de voz agora.</summary>
     Task VoiceChanged(Guid channelId, IReadOnlyList<Guid> userIds);
+
+    /// <summary>Sinal da chamada 1:1 pela conta (ver <see cref="CallSignal"/>).</summary>
+    Task DirectCall(CallSignalInfo signal);
+}
+
+/// <summary>
+/// Chamada 1:1 pela conta: o app troca pelo servidor o mesmo convite e a mesma resposta da chamada
+/// por código. A mídia continua direta entre os dois computadores e cifrada de ponta a ponta.
+/// </summary>
+public enum CallSignal
+{
+    /// <summary>Quem liga manda o convite (código da chamada).</summary>
+    Ring = 0,
+
+    /// <summary>Quem atende manda a resposta (código da chamada).</summary>
+    Answer = 1,
+
+    /// <summary>Quem recebeu recusou.</summary>
+    Decline = 2,
+
+    /// <summary>Quem ligou desistiu antes de atenderem (ou o tempo acabou).</summary>
+    Cancel = 3,
+
+    /// <summary>Quem recebeu já está em outra chamada.</summary>
+    Busy = 4,
+
+    /// <summary>Só do servidor: outro aparelho da mesma pessoa já atendeu ou recusou; este para de tocar.</summary>
+    Handled = 5,
+}
+
+/// <summary>Sinal recebido: de qual conversa direta, de quem e de qual chamada.</summary>
+public sealed record CallSignalInfo(Guid ChannelId, Guid FromUserId, string CallId, CallSignal Signal, string? Code);
+
+public static class CallSignalLimits
+{
+    /// <summary>Convite e resposta (SDP comprimido e perfil) cabem com folga.</summary>
+    public const int MaxCodeLength = 16 * 1024;
+
+    /// <summary>Id da chamada: 128 bits em hexadecimal minúsculo, como no código da chamada.</summary>
+    public const int CallIdLength = 32;
+
+    /// <summary>Toques seguidos por conexão antes de esperar.</summary>
+    public const int RingBurst = 5;
+
+    /// <summary>Um toque a mais liberado a cada tanto.</summary>
+    public static readonly TimeSpan RingEvery = TimeSpan.FromSeconds(10);
+
+    public static bool ValidCallId(string? callId) =>
+        callId is { Length: CallIdLength } && callId.All(c => char.IsAsciiDigit(c) || c is >= 'a' and <= 'f');
 }
 
 /// <summary>Métodos que o app chama no hub.</summary>
@@ -176,4 +225,7 @@ public static class AppHubMethods
 
     /// <summary>Responde depois que a conexão já está inscrita nos grupos (ver AppHub.Ready).</summary>
     public const string Ready = "Ready";
+
+    /// <summary>Sinal da chamada 1:1 pela conta; devolve se a outra pessoa está conectada.</summary>
+    public const string DirectCall = "DirectCall";
 }

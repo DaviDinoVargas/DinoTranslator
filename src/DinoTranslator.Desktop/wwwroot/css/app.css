@@ -3610,6 +3610,75 @@ h2.handshake__step {
 
 }
 
+/* Chamada pela conta: o aviso fica por cima de qualquer tela (menos a da chamada). */
+.direct-call {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 90;
+  display: flex;
+  width: min(520px, calc(100vw - 32px));
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--vidro-borda);
+  border-radius: var(--raio-g);
+  background: var(--vidro-escuro);
+  backdrop-filter: var(--vidro-desfoque);
+  box-shadow: var(--sombra), var(--vidro-brilho);
+  transform: translateX(-50%);
+  animation: direct-call-in 220ms var(--curva);
+}
+
+.direct-call--incoming .avatar {
+  animation: direct-call-pulse 1.6s ease-in-out infinite;
+}
+
+.direct-call__text {
+  min-width: 0;
+  flex: 1;
+}
+
+.direct-call__title {
+  margin: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.direct-call__message {
+  margin: 2px 0 0;
+  color: var(--texto-2);
+  font-size: 13px;
+}
+
+.direct-call__actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.button--atender {
+  border-color: rgba(255, 255, 255, .16);
+  background: linear-gradient(180deg, #4ade75, var(--verde));
+  color: #04130a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 10px 26px rgba(48, 209, 88, .32);
+}
+
+@keyframes direct-call-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px);
+  }
+}
+
+@keyframes direct-call-pulse {
+  50% {
+    box-shadow: 0 0 0 8px var(--verde-fundo);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

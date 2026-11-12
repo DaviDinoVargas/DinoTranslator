@@ -150,6 +150,28 @@ try {
   if (process.env.E2E_SHOTS) {
     await a.screenshot(`${process.env.E2E_SHOTS}-plus-direta-dino.png`);
   }
+
+  // Chamada pela conta: o Dino liga da conversa direta e a Anna atende pelo aviso.
+  await waitFor(a, click("Ligar para"), "ligar (A)");
+  result.chamando_a = await waitFor(a, text(".direct-call__title"), "chamando (A)", 10000);
+  result.tocando_b = await waitFor(b, text(".direct-call--incoming .direct-call__title"), "aviso de chamada (B)", 15000);
+  if (process.env.E2E_SHOTS) {
+    await b.screenshot(`${process.env.E2E_SHOTS}-plus-tocando-anna.png`);
+  }
+  await waitFor(b, click("Atender"), "atender (B)");
+  // Conectou: os dois na tela da chamada, com o mesmo código de segurança.
+  const digits = `location.pathname === '/chamada' && document.querySelector('.call__digits')?.textContent.trim()`;
+  const digitsA = await waitFor(a, digits, "chamada aberta (A)", 30000);
+  const digitsB = await waitFor(b, digits, "chamada aberta (B)", 30000);
+  result.mesmo_codigo = digitsA === digitsB ? digitsA : `${digitsA} ≠ ${digitsB}`;
+  result.aviso_sumiu_a = await a.evaluate(`!document.querySelector('.direct-call')`);
+  // Encerrar volta às conversas; do outro lado aparece que acabou.
+  await waitFor(a, click("Encerrar"), "encerrar (A)");
+  result.voltou_a = await waitFor(a, `location.pathname === '/plus' && 'plus'`, "volta às conversas (A)", 15000);
+  result.fim_b = await waitFor(b, `document.querySelector('.call__problem')?.textContent.includes('encerrou') && document.querySelector('.call__problem').textContent.replace(/\\s+/g, ' ').trim()`, "aviso de fim (B)", 15000);
+  if (result.mesmo_codigo !== digitsA) {
+    throw new Error("códigos de segurança diferentes");
+  }
   result.ok = true;
 } catch (error) {
   result.ok = false;

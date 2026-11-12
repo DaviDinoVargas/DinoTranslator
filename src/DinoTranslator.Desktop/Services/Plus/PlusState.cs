@@ -24,7 +24,7 @@ public sealed class ChannelMessages
 /// "digitando" e quem está em cada canal de voz. A conexão em tempo real (/hubs/app) mantém
 /// tudo atualizado; as telas só leem daqui e redesenham quando <see cref="Changed"/> avisa.
 /// </summary>
-public sealed class PlusState : IAsyncDisposable
+public sealed class PlusState : IAsyncDisposable, ICallSignaling
 {
     private static readonly TimeSpan TypingShows = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan TypingEvery = TimeSpan.FromSeconds(3);
@@ -54,6 +54,9 @@ public sealed class PlusState : IAsyncDisposable
     }
 
     public event Action? Changed;
+
+    /// <summary>Sinal da chamada pela conta (ver <see cref="DirectCalls"/>).</summary>
+    public event Action<CallSignalInfo>? CallSignalReceived;
 
     public MessageTranslator Translator { get; }
 
@@ -139,6 +142,60 @@ public sealed class PlusState : IAsyncDisposable
             .FirstOrDefault(u => u.Id == userId);
 
     /// <summary>Carrega o que a pessoa tem e liga o tempo real. Conta grátis só vê o aviso do Plus.</summary>
+    /// <summary>
+    /// Ao abrir o app: com a sessão salva ("manter conectado") de uma conta paga, liga o tempo real
+    /// para as chamadas pela conta chegarem em qualquer tela, sem precisar abrir o Plus antes.
+    /// </summary>
+    public async Task ConnectIfSignedInAsync()
+    {
+        if (_server.Current is null || _hub is not null)
+        {
+            return;
+        }
+        try
+        {
+            if (_auth.CurrentUser is null && !await _auth.TryResumeAsync())
+            {
+                return;
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException)
+        {
+            return;
+        }
+        await StartAsync();
+    }
+
+    public async Task<SignalResult> SendCallSignalAsync(Guid channelId, string callId, CallSignal signal, string? code)
+    {
+        if (_hub?.State != HubConnectionState.Connected)
+        {
+            return new SignalResult(false, false, "Sem conexão em tempo real com o servidor agora.");
+        }
+        try
+        {
+            return new SignalResult(true, await _hub.InvokeAsync<bool>(AppHubMethods.DirectCall, channelId, callId, signal, code));
+        }
+        catch (HubException ex)
+        {
+            return new SignalResult(false, false, HubProblem(ex));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or TaskCanceledException)
+        {
+            return new SignalResult(false, false, "Sem conexão em tempo real com o servidor agora.");
+        }
+    }
+
+    public string? PeerName(Guid channelId) => DirectFor(channelId)?.Other.DisplayName;
+
+    /// <summary>O motivo que o servidor mandou (a mensagem chega como "... HubException: motivo").</summary>
+    private static string HubProblem(HubException ex)
+    {
+        const string Marker = "HubException: ";
+        var at = ex.Message.LastIndexOf(Marker, StringComparison.Ordinal);
+        return at >= 0 ? ex.Message[(at + Marker.Length)..] : "O servidor recusou o pedido.";
+    }
+
     public async Task StartAsync()
     {
         if (!Plus || _server.Current is not { } server)
@@ -547,6 +604,7 @@ public sealed class PlusState : IAsyncDisposable
             }
             Notify();
         });
+        hub.On<CallSignalInfo>(nameof(IAppClient.DirectCall), signal => CallSignalReceived?.Invoke(signal));
     }
 
     private void Upsert(MessageInfo message)

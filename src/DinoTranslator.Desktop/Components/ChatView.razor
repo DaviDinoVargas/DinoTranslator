@@ -2,6 +2,7 @@
 @using DinoTranslator.Shared.Social
 @implements IDisposable
 @inject PlusState State
+@inject DirectCalls Calls
 @inject IJSRuntime Js
 
 @* Um canal de texto ou uma conversa direta. Cada mensagem aparece no idioma de quem lê
@@ -13,6 +14,11 @@
     <form class="chat__search" @onsubmit="SearchAsync" role="search">
       <input class="field__input" @bind="_query" placeholder="Buscar" aria-label="Buscar mensagens" maxlength="@SocialLimits.MaxSearchLength" />
     </form>
+    @if (Channel.Kind == ChannelKind.Direct)
+    {
+      <button type="button" class="icon-button" title="Ligar" aria-label="Ligar para @Title" disabled="@Calls.Busy"
+              @onclick="() => Calls.CallAsync(Channel.Id)"><Icon Name="telefone" /></button>
+    }
     <button type="button" class="icon-button @(_pins is not null ? "icon-button--on" : "")" title="Mensagens fixadas" aria-label="Mensagens fixadas"
             aria-pressed="@(_pins is not null ? "true" : "false")" @onclick="TogglePinsAsync"><Icon Name="fixar" /></button>
   </header>
@@ -236,7 +242,11 @@
     private string Names(IReadOnlyList<Guid> users) =>
         string.Join(", ", users.Select(id => id == State.Me?.Id ? "você" : State.FindUser(id)?.DisplayName ?? "alguém"));
 
-    protected override void OnInitialized() => State.Changed += OnChanged;
+    protected override void OnInitialized()
+    {
+        State.Changed += OnChanged;
+        Calls.Changed += OnChanged;
+    }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
 
@@ -335,5 +345,9 @@
 
     private async Task DeleteAsync(MessageInfo message) => _error = await State.DeleteAsync(message);
 
-    public void Dispose() => State.Changed -= OnChanged;
+    public void Dispose()
+    {
+        State.Changed -= OnChanged;
+        Calls.Changed -= OnChanged;
+    }
 }

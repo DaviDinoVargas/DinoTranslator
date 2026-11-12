@@ -23,6 +23,16 @@ public enum CallRole
     Guest,
 }
 
+/// <summary>Como o convite e a resposta chegam ao outro computador.</summary>
+public enum CallTransport
+{
+    /// <summary>Códigos copiados pelo mensageiro (e o encontro automático, se ligado).</summary>
+    Codes,
+
+    /// <summary>Pela conta Plus: o servidor repassa convite e resposta na conversa direta.</summary>
+    Account,
+}
+
 /// <summary>Andamento do encontro automático (a resposta que volta sem o mensageiro).</summary>
 public enum AutoConnect
 {
@@ -128,6 +138,15 @@ public sealed class CallSession(
     public CallRole? Role { get; private set; }
 
     public Profile? Peer { get; private set; }
+
+    /// <summary>Como esta chamada foi combinada.</summary>
+    public CallTransport Transport { get; private set; }
+
+    /// <summary>Id da chamada (o mesmo do convite e da resposta).</summary>
+    public string? CallId { get; private set; }
+
+    /// <summary>Para onde voltar quando a chamada acaba.</summary>
+    public string ReturnPath => Transport == CallTransport.Account ? "/plus" : "/";
 
     public DateTimeOffset? InviteExpiresAt { get; private set; }
 
@@ -310,8 +329,11 @@ public sealed class CallSession(
         Notify();
     }
 
-    /// <summary>Anfitrião: gera o convite. Cada convite aceita uma única resposta.</summary>
-    public async Task<string> CreateInviteAsync()
+    /// <summary>
+    /// Anfitrião: gera o convite. Cada convite aceita uma única resposta. Pela conta, a resposta
+    /// chega pelo servidor: o encontro automático (serviço público) não é usado.
+    /// </summary>
+    public async Task<string> CreateInviteAsync(CallTransport transport = CallTransport.Codes)
     {
         var profile = RequireProfile();
         await ResetAsync();
@@ -323,9 +345,14 @@ public sealed class CallSession(
         var text = CallCodes.Encode(_pendingInvite);
 
         Role = CallRole.Host;
+        Transport = transport;
+        CallId = _pendingInvite.CallId;
         Stage = CallStage.WaitingAnswer;
         InviteExpiresAt = now + CallCodes.Validity;
-        ListenForAnswer(new CallRendezvous(_pendingInvite.CallId), now);
+        if (transport == CallTransport.Codes)
+        {
+            ListenForAnswer(new CallRendezvous(_pendingInvite.CallId), now);
+        }
         Notify();
         return text;
     }
@@ -359,15 +386,16 @@ public sealed class CallSession(
         _remoteSdp = answer.Sdp;
         Stage = CallStage.Connecting;
         Problem = null;
-        StartOpeningDeadline(ConnectTimeout,
-            $"Não foi possível conectar com {answer.Profile.Name}: as redes de vocês não deixaram a ligação direta passar. "
-            + "Criem um novo convite; se continuar, um de vocês pode tentar outra rede ou configurar uma retransmissão.");
+        StartOpeningDeadline(ConnectTimeout, Transport == CallTransport.Account
+            ? AccountFailure(answer.Profile.Name)
+            : $"Não foi possível conectar com {answer.Profile.Name}: as redes de vocês não deixaram a ligação direta passar. "
+              + "Criem um novo convite; se continuar, um de vocês pode tentar outra rede ou configurar uma retransmissão.");
         Notify();
         await _module.InvokeVoidAsync("acceptAnswer", answer.Sdp);
     }
 
     /// <summary>Convidado: lê o convite e gera a resposta.</summary>
-    public async Task<string> AcceptInviteAsync(string text)
+    public async Task<string> AcceptInviteAsync(string text, CallTransport transport = CallTransport.Codes)
     {
         var profile = RequireProfile();
         var now = time.GetUtcNow();
@@ -379,17 +407,30 @@ public sealed class CallSession(
         var answer = CallCodes.Encode(new CallCode(CallCodes.CurrentVersion, CallCodeKind.Answer, invite.CallId, now, profile, sdp));
 
         Role = CallRole.Guest;
+        Transport = transport;
+        CallId = invite.CallId;
         Peer = invite.Profile;
         _remoteSdp = invite.Sdp;
         Stage = CallStage.Connecting;
-        // O convidado espera o anfitrião enquanto o convite valer; quem decide desistir é ele.
-        var remaining = invite.CreatedAt + CallCodes.Validity - now;
-        StartOpeningDeadline(remaining > ConnectTimeout ? remaining : ConnectTimeout,
-            $"O convite de {invite.Profile.Name} expirou sem a chamada conectar. Peçam um novo convite.");
-        PublishAnswer(new CallRendezvous(invite.CallId), answer);
+        if (transport == CallTransport.Account)
+        {
+            // Pela conta, quem ligou recebe a resposta na hora: conecta logo ou não conecta.
+            StartOpeningDeadline(ConnectTimeout, AccountFailure(invite.Profile.Name));
+        }
+        else
+        {
+            // O convidado espera o anfitrião enquanto o convite valer; quem decide desistir é ele.
+            var remaining = invite.CreatedAt + CallCodes.Validity - now;
+            StartOpeningDeadline(remaining > ConnectTimeout ? remaining : ConnectTimeout,
+                $"O convite de {invite.Profile.Name} expirou sem a chamada conectar. Peçam um novo convite.");
+            PublishAnswer(new CallRendezvous(invite.CallId), answer);
+        }
         Notify();
         return answer;
     }
+
+    private static string AccountFailure(string name) =>
+        $"Não foi possível conectar com {name}. Tentem ligar de novo; se continuar, um de vocês pode tentar outra rede.";
 
     public async Task<LocalMedia> StartMediaAsync(ElementReference localVideo, ElementReference remoteVideo, bool highFidelity)
     {
@@ -1174,6 +1215,8 @@ public sealed class CallSession(
         _remoteSdp = null;
         Role = null;
         Peer = null;
+        Transport = CallTransport.Codes;
+        CallId = null;
         InviteExpiresAt = null;
         SecurityCode = null;
         RoundTripMs = null;

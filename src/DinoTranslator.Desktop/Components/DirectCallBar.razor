@@ -1,0 +1,121 @@
+@using DinoTranslator.Desktop.Services.Plus
+@implements IAsyncDisposable
+@inject DirectCalls Calls
+@inject PlusState Plus
+@inject NavigationManager Navigation
+@inject IJSRuntime Js
+
+@* Chamada pela conta: o aviso de quem está ligando (e de quem você está chamando) aparece por cima
+   de qualquer tela, menos a da chamada, com o toque. *@
+@if (Calls.State is { } state && !OnCallScreen)
+{
+  <div class="direct-call direct-call--@state.Phase.ToString().ToLowerInvariant()"
+       role="@(state.Phase == DirectCallPhase.Incoming ? "alertdialog" : "status")" aria-live="assertive" aria-label="@Title(state)">
+    <Avatar Name="@state.Name" />
+    <div class="direct-call__text">
+      <p class="direct-call__title">@Title(state)</p>
+      @if (state.Message is { } message)
+      {
+        <p class="direct-call__message">@message</p>
+      }
+      else if (state.Phase == DirectCallPhase.Incoming)
+      {
+        <p class="direct-call__message">Chamada pela conta · cifrada de ponta a ponta</p>
+      }
+    </div>
+    <div class="direct-call__actions">
+      @switch (state.Phase)
+      {
+        case DirectCallPhase.Incoming:
+          <button type="button" class="button button--danger" @onclick="Calls.DeclineAsync"><Icon Name="desligar" />Recusar</button>
+          <button type="button" class="button button--atender" @onclick="Calls.AnswerAsync"><Icon Name="telefone" />Atender</button>
+          break;
+        case DirectCallPhase.Ringing or DirectCallPhase.Connecting:
+          <button type="button" class="button button--danger" @onclick="Calls.CancelAsync"><Icon Name="desligar" />Cancelar</button>
+          break;
+        default:
+          <button type="button" class="button button--quiet" @onclick="Calls.Dismiss">Fechar</button>
+          break;
+      }
+    </div>
+  </div>
+}
+
+@code {
+    private IJSObjectReference? _ring;
+    private string? _tone;
+
+    /// <summary>Na tela da chamada o aviso some (as telas do convite por código continuam mostrando).</summary>
+    private bool OnCallScreen => Navigation.ToBaseRelativePath(Navigation.Uri) is "chamada";
+
+    private static string Title(DirectCallState state) => state.Phase switch
+    {
+        DirectCallPhase.Incoming => $"{state.Name} está ligando",
+        DirectCallPhase.Ringing => $"Chamando {state.Name}…",
+        DirectCallPhase.Connecting => $"Conectando com {state.Name}…",
+        _ => $"Chamada com {state.Name}",
+    };
+
+    protected override void OnInitialized()
+    {
+        Calls.Changed += OnChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Com a sessão salva de uma conta paga, as chamadas chegam desde a abertura do app.
+            await Plus.ConnectIfSignedInAsync();
+        }
+        await UpdateToneAsync();
+    }
+
+    /// <summary>Toque de quem recebe e "chamando" de quem liga; silêncio no resto.</summary>
+    private async Task UpdateToneAsync()
+    {
+        var tone = Calls.State?.Phase switch
+        {
+            DirectCallPhase.Incoming => "entrada",
+            DirectCallPhase.Ringing => "saida",
+            _ => null,
+        };
+        if (tone == _tone)
+        {
+            return;
+        }
+        _tone = tone;
+        try
+        {
+            _ring ??= await Js.InvokeAsync<IJSObjectReference>("import", "./js/ring.js");
+            await _ring.InvokeVoidAsync(tone is null ? "stop" : "start", tone);
+        }
+        catch (JSException)
+        {
+            // Sem som, o aviso continua na tela.
+        }
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(StateHasChanged);
+
+    public async ValueTask DisposeAsync()
+    {
+        Calls.Changed -= OnChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+        if (_ring is not null)
+        {
+            try
+            {
+                await _ring.InvokeVoidAsync("stop");
+                await _ring.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // A janela já fechou.
+            }
+        }
+    }
+}
