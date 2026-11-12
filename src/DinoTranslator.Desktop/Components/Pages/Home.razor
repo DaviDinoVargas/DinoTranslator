@@ -3,6 +3,7 @@
 @inject ProfileStore Profiles
 @inject DinoTranslator.Desktop.Services.Translation.TranslationSettingsStore Translation
 @inject ConnectionSettingsStore Connection
+@inject AuthClient Auth
 @inject NavigationManager Navigation
 
 @if (Settings.Mode == ConnectionMode.Code)
@@ -93,7 +94,7 @@
           <button type="button" class="setting-row" @onclick="@(() => Navigation.NavigateTo("/configuracoes/conexao"))">
             <span class="setting-row__icon setting-row__icon--indigo"><Icon Name="rede" /></span>
             <span class="setting-row__label">Conexão</span>
-            <span class="setting-row__value">@(Connection.Current.HasRelay ? "Com retransmissão" : "Direta")</span>
+            <span class="setting-row__value">@ConnectionName</span>
             <Icon Name="seta" />
           </button>
         </nav>
@@ -109,4 +110,11 @@
 
 @code {
     private bool _editing;
+
+    /// <summary>A configurada à mão vale primeiro; com a conta Plus aberta, a chamada tem a conexão garantida.</summary>
+    private string ConnectionName => Connection.Current.HasRelay
+        ? "Com retransmissão"
+        : Auth.CurrentUser is { Plan: DinoTranslator.Shared.Auth.AccountPlan.Plus or DinoTranslator.Shared.Auth.AccountPlan.Pro }
+            ? "Garantida (Plus)"
+            : "Direta";
 }

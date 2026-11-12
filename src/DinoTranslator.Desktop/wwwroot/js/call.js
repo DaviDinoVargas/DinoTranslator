@@ -167,7 +167,7 @@ export class CallPeer {
     this.captures = new Map();
     this.onSpeechAudio = null;
 
-    const iceServers = relay ? [...ICE_SERVERS, relay] : ICE_SERVERS;
+    const iceServers = [...ICE_SERVERS, ...relayList(relay)];
     this.pc = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" });
     // Canais com id fixo: existem dos dois lados sem troca extra de sinais.
     this.app = this.pc.createDataChannel("app", { negotiated: true, id: 0, ordered: true });
@@ -855,6 +855,13 @@ export function tuneOpus(sdp) {
 
 let current = null;
 
+/** Retransmissão: uma configurada à mão ou a lista da conta Plus (conexão garantida). */
+function relayList(relay) {
+  return (Array.isArray(relay) ? relay : relay ? [relay] : [])
+    .filter((r) => r && (typeof r.urls === "string" || Array.isArray(r.urls)))
+    .slice(0, 4);
+}
+
 export function create(dotnet, polite, relay) {
   current?.close();
   current = new CallPeer({
@@ -909,8 +916,9 @@ export async function diagnoseNetwork(relay) {
     ipv4: ipv4.size === 0 ? "sem" : ipv4.size === 1 ? "direta" : "restrita",
     relay: null,
   };
-  if (relay) {
-    result.relay = (await gather([relay], "relay")).some((c) => c.type === "relay");
+  const relays = relayList(relay);
+  if (relays.length > 0) {
+    result.relay = (await gather(relays, "relay")).some((c) => c.type === "relay");
   }
   return result;
 }
