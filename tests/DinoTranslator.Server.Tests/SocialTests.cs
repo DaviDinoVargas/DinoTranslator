@@ -75,6 +75,8 @@ public sealed class SocialTests : IAsyncLifetime
         connection.On<Guid, bool>(nameof(IAppClient.PresenceChanged), (u, o) => live.Presence.Writer.TryWrite((u, o)));
         connection.On<DirectInfo>(nameof(IAppClient.DirectOpened), d => live.Directs.Writer.TryWrite(d));
         await connection.StartAsync();
+        // Como o app: só depois disto a conexão já está nos grupos e recebe os eventos.
+        Assert.True(await connection.InvokeAsync<bool>(AppHubMethods.Ready));
         _connections.Add(connection);
         return live;
     }

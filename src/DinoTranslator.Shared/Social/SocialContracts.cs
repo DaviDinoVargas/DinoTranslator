@@ -173,4 +173,7 @@ public interface IAppClient
 public static class AppHubMethods
 {
     public const string Typing = "Typing";
+
+    /// <summary>Responde depois que a conexão já está inscrita nos grupos (ver AppHub.Ready).</summary>
+    public const string Ready = "Ready";
 }

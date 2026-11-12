@@ -146,7 +146,6 @@ public sealed class PlusState : IAsyncDisposable
             Notify();
             return;
         }
-        await RefreshListsAsync();
         if (_hub is null)
         {
             _hub = new HubConnectionBuilder()
@@ -158,7 +157,11 @@ public sealed class PlusState : IAsyncDisposable
                 .WithAutomaticReconnect([TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)])
                 .Build();
             Subscribe(_hub);
-            _hub.Reconnected += async _ => await RefreshListsAsync();
+            _hub.Reconnected += async _ =>
+            {
+                await ReadyAsync();
+                await RefreshListsAsync();
+            };
             _hub.Reconnecting += _ =>
             {
                 Notify();
@@ -175,14 +178,25 @@ public sealed class PlusState : IAsyncDisposable
             try
             {
                 await _hub.StartAsync();
+                await ReadyAsync();
                 Problem = null;
             }
-            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or System.Net.WebSockets.WebSocketException)
+            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or System.Net.WebSockets.WebSocketException or HubException)
             {
                 Problem = "Sem conexão em tempo real com o servidor. Tentando de novo…";
             }
         }
+        // Depois do tempo real ligado: o que chegar enquanto as listas carregam não se perde.
+        await RefreshListsAsync();
         Notify();
+    }
+
+    private async Task ReadyAsync()
+    {
+        if (_hub?.State == HubConnectionState.Connected)
+        {
+            await _hub.InvokeAsync<bool>(AppHubMethods.Ready);
+        }
     }
 
     private async Task RefreshListsAsync()
