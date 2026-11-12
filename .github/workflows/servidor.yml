@@ -38,5 +38,5 @@ jobs:
       - name: Compose do deploy
         run: |
           cp deploy/.env.exemplo deploy/.env
-          sed -i 's/^JWT_SIGNING_KEY=$/JWT_SIGNING_KEY=dGVzdGU=/; s/^LIVEKIT_API_SECRET=$/LIVEKIT_API_SECRET=segredo-de-teste-com-mais-de-32-caracteres/' deploy/.env
+          sed -i 's/^JWT_SIGNING_KEY=$/JWT_SIGNING_KEY=dGVzdGU=/; s/^LIVEKIT_API_SECRET=$/LIVEKIT_API_SECRET=segredo-de-teste-com-mais-de-32-caracteres/; s/^TURN_SECRET=$/TURN_SECRET=segredo-turn-de-teste-com-mais-de-32-caracteres/' deploy/.env
           docker compose -f deploy/docker-compose.yml config -q
