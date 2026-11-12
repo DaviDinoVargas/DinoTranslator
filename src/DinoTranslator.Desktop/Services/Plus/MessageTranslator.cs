@@ -31,7 +31,10 @@ public sealed class MessageTranslator : IAsyncDisposable
     /// <summary>Uma tradução ficou pronta (o app redesenha o chat).</summary>
     public event Action? Translated;
 
-    public bool Available => _engines.IsReady(_settings.Current);
+    /// <summary>Só motores com licença comercial (a versão Plus é paga): sem o MarianMT, nada de NLLB.</summary>
+    public bool Available => _engines.CreateForPlus(_settings.Current) is not null;
+
+    public string? Problem => _engines.PlusTranslationProblem(_settings.Current);
 
     /// <summary>A tradução, se já estiver pronta; senão, pede e devolve null.</summary>
     public string? Get(long messageId, DateTimeOffset? editedAt, string text, string source, string target)
@@ -55,7 +58,7 @@ public sealed class MessageTranslator : IAsyncDisposable
     /// <summary>Traduz um texto avulso (a própria mensagem antes de mandar, por exemplo).</summary>
     public async Task<string?> TranslateAsync(string text, string source, string target, CancellationToken cancellationToken)
     {
-        if (_engines.Create(_settings.Current) is not { CanTranslateText: true } engine)
+        if (_engines.CreateForPlus(_settings.Current) is not { CanTranslateText: true } engine)
         {
             return null;
         }

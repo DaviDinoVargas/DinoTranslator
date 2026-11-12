@@ -97,13 +97,14 @@ O mesmo app tem as duas versões. A tela inicial continua com a chamada por cód
  App (Windows) ──HTTPS/WSS──► Caddy ──► API DinoTranslator (N instâncias, sem estado)
       │                                   │            │
       │                                   ▼            ▼
-      │                              PostgreSQL      Redis (cache, presença, SignalR entre instâncias)
+      │                              PostgreSQL      Valkey/Redis (cache, presença, SignalR entre instâncias)
       └────────WSS + WebRTC──────────► LiveKit (SFU, chamadas em grupo) ──webhook assinado──► API
 ```
 
 - **Contas**: cadastro pelo app (pode ser fechado ou exigir código), plano grátis ou **Plus** (ativado pelo dono do servidor no comando `users plan`, enquanto não há cobrança), suspensão. Detalhes em `src/DinoTranslator.Server/README.md`.
 - **Estilo Discord**: trilho com os grupos; canais de texto e de voz; amigos, pedidos e conversas diretas; membros com presença; "digitando"; convites com validade e limite de usos; papéis (dono, administrador, membro).
 - **Tradução do chat**: o servidor guarda a mensagem como foi escrita, com o idioma de quem escreveu; cada app traduz para quem lê, com o próprio motor, e mostra o original embaixo. O servidor nunca traduz nem manda texto para fora.
+- **Só o que pode ser vendido**: a versão Plus usa apenas componentes com licença comercial ([LICENCAS.md](LICENCAS.md)). A tradução local da Plus é o MarianMT (CC BY 4.0); o NLLB-200 (CC BY-NC 4.0, não comercial) fica só na versão grátis, sem reserva na Plus. No deploy, Valkey (BSD) no lugar do Redis 8 (AGPL/SSPL).
 - **Chamadas em grupo**: SFU LiveKit hospedado junto (escala para dezenas de pessoas por sala, ao contrário do P2P). A API emite a permissão assinada só para a sala daquele canal e acompanha quem está em cada sala pelos webhooks assinados. O microfone passa pela mesma cadeia do supressor de ruído; cada app reconhece a própria fala e manda, pelo canal de dados da sala, o original e as traduções para os idiomas de quem está ouvindo. A chamada continua enquanto a pessoa navega por outros canais.
 - **Escala**: API sem estado atrás do proxy; PostgreSQL com índices para as consultas quentes (mensagens por canal e id, membros por conta); cache curto de acesso e de sessão (sem consulta ao banco a cada requisição); presença e eventos em tempo real pelo Redis; limites por conta e por IP; migrações do banco uma instância por vez.
 - O antigo modo servidor de duas contas (`"Conexao": { "Modo": "servidor" }`) deu lugar à versão Plus.

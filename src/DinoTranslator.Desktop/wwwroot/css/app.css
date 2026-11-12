@@ -3203,6 +3203,33 @@ h2.handshake__step {
   bottom: 14px;
 }
 
+.link-button {
+  margin-left: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--azul-claro);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.licenses__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13.5px;
+}
+
+.licenses__license {
+  color: var(--texto-3);
+}
+
 /* ---------- Modo servidor (opcional) ---------- */
 
 .login__mark {

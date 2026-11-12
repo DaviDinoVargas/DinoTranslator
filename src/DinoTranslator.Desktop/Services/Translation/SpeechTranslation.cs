@@ -88,6 +88,28 @@ public sealed class SpeechEngineFactory(ModelFolder defaultModels, ExtrasFolder?
     public EngineAvailability Availability(TranslationSettings settings) =>
         EngineAvailability.Check(new MergedFolder(this, settings), Extras);
 
+    /// <summary>
+    /// Motor para a versão Plus (serviço pago): só peças com licença comercial. Local, o MarianMT com o
+    /// Whisper; na nuvem, o provedor configurado (com a chave da própria pessoa). null: sem tradução
+    /// permitida neste computador (falta instalar o MarianMT nos motores extras).
+    /// </summary>
+    public ISpeechTranslationEngine? CreateForPlus(TranslationSettings settings, EngineChoice? preferred = null)
+    {
+        if (settings.Provider != TranslationProvider.Local)
+        {
+            return Create(settings);
+        }
+        return IsReady(settings) && EngineChoice.ForPlus(settings, Availability(settings), preferred) is { } choice
+            ? Create(settings, choice)
+            : null;
+    }
+
+    /// <summary>Por que a versão Plus está sem tradução neste computador, se estiver.</summary>
+    public string? PlusTranslationProblem(TranslationSettings settings) =>
+        CreateForPlus(settings) is not null ? null
+        : !IsReady(settings) ? "A tradução não está configurada neste computador."
+        : "Na versão Plus a tradução local usa o MarianMT (licença comercial). Instale os motores extras em Ajustes › Tradução.";
+
     public ISpeechTranslationEngine? Create(TranslationSettings settings, EngineChoice? choice = null)
     {
         if (!IsReady(settings))
@@ -130,8 +152,9 @@ public sealed class SpeechEngineFactory(ModelFolder defaultModels, ExtrasFolder?
         var gpu = choice.Translator is TranslatorOption.Nllb600Gpu or TranslatorOption.Nllb13Gpu or TranslatorOption.OpusGpu;
         if (choice.Translator is TranslatorOption.OpusGpu or TranslatorOption.OpusCpu)
         {
-            // OPUS-MT: um modelo por grupo de idiomas, carregado quando o par aparece; sem modelo, o NLLB original.
-            var fallback = LocalModels.Translator.All(file => FolderFor(settings, file).IsInstalled(file))
+            // OPUS-MT: um modelo por grupo de idiomas, carregado quando o par aparece; sem modelo, o NLLB
+            // original — menos no uso pago, em que o NLLB (não comercial) nunca entra.
+            var fallback = !choice.Commercial && LocalModels.Translator.All(file => FolderFor(settings, file).IsInstalled(file))
                 ? new NllbOnnxPart(await Task.Run(() => NllbOnnx(settings), cancellationToken))
                 : null;
             return new Ct2Part(python, async (source, target, token) =>
