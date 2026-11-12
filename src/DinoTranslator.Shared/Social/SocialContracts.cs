@@ -24,6 +24,10 @@ public static class SocialRoutes
     public const string Directs = "/api/conversas";
     public static string Direct(Guid userId) => $"/api/conversas/{userId}";
     public static string ChannelVoice(Guid id) => $"/api/canais/{id}/voz";
+    public static string MessageReaction(long id, string emoji) => $"/api/mensagens/{id}/reacoes/{Uri.EscapeDataString(emoji)}";
+    public static string MessagePin(long id) => $"/api/mensagens/{id}/fixar";
+    public static string ChannelPins(Guid id) => $"/api/canais/{id}/fixadas";
+    public const string Search = "/api/busca";
     public const string LiveKitWebhook = "/api/livekit/webhook";
 }
 
@@ -41,6 +45,13 @@ public static class SocialLimits
     public const int MaxInviteUses = 1000;
     public const int MaxInviteHours = 24 * 30;
     public const int MaxFriends = 1000;
+    public const int MaxPinsPerChannel = 50;
+    public const int MinSearchLength = 2;
+    public const int MaxSearchLength = 100;
+    public const int MaxSearchResults = 50;
+
+    /// <summary>Reações rápidas aceitas (lista fixa: nada de texto livre como reação).</summary>
+    public static IReadOnlyList<string> Reactions { get; } = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🎉", "👀", "🔥", "✅"];
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<GroupRole>))]
@@ -78,6 +89,9 @@ public sealed record MemberInfo(UserSummary User, GroupRole Role, bool Online);
 public sealed record GroupDetails(GroupSummary Group, IReadOnlyList<ChannelInfo> Channels, IReadOnlyList<MemberInfo> Members);
 
 /// <summary>Mensagem como foi escrita: cada app traduz para o idioma de quem lê.</summary>
+/// <param name="Reactions">Reações e quem reagiu.</param>
+/// <param name="Mentions">Contas mencionadas com @usuário (só quem pode ver o canal).</param>
+/// <param name="Reply">A mensagem respondida, resumida para a citação.</param>
 public sealed record MessageInfo(
     long Id,
     Guid ChannelId,
@@ -87,7 +101,19 @@ public sealed record MessageInfo(
     DateTimeOffset CreatedAt,
     DateTimeOffset? EditedAt,
     bool Deleted,
-    long? ReplyToId);
+    long? ReplyToId,
+    IReadOnlyList<ReactionInfo>? Reactions = null,
+    IReadOnlyList<Guid>? Mentions = null,
+    bool Pinned = false,
+    MessageQuote? Reply = null);
+
+public sealed record ReactionInfo(string Emoji, IReadOnlyList<Guid> Users);
+
+/// <summary>Citação da mensagem respondida: autor, idioma e o começo do texto.</summary>
+public sealed record MessageQuote(long Id, string AuthorName, string Content, string Language, bool Deleted);
+
+/// <summary>Resultado da busca: a mensagem e onde ela está.</summary>
+public sealed record SearchResult(MessageInfo Message, Guid? GroupId, string ChannelName);
 
 public sealed record MessagePage(IReadOnlyList<MessageInfo> Messages, bool HasMore);
 
@@ -122,6 +148,8 @@ public interface IAppClient
     Task MessageEdited(MessageInfo message);
 
     Task MessageDeleted(Guid channelId, long messageId);
+
+    Task ReactionsChanged(Guid channelId, long messageId, IReadOnlyList<ReactionInfo> reactions);
 
     Task Typing(Guid channelId, Guid userId);
 

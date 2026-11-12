@@ -40,7 +40,7 @@ public sealed class TokenService(IOptions<JwtOptions> jwt, IOptions<AuthOptions>
         };
         if (user.HasPlus(nowUtc))
         {
-            claims[AuthClaims.Plan] = "plus";
+            claims[AuthClaims.Plan] = user.HasPro(nowUtc) ? "pro" : "plus";
             if (user.PlanExpiresAtUtc is { } until)
             {
                 claims[AuthClaims.PlanUntil] = new DateTimeOffset(until, TimeSpan.Zero).ToUnixTimeSeconds();

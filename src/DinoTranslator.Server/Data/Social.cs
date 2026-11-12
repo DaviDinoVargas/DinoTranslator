@@ -72,6 +72,26 @@ public sealed class Message
     public DateTime? DeletedAtUtc { get; set; }
 
     public long? ReplyToId { get; set; }
+
+    /// <summary>Fixada no canal (e quando).</summary>
+    public DateTime? PinnedAtUtc { get; set; }
+}
+
+public sealed class MessageReaction
+{
+    public long MessageId { get; set; }
+
+    public Guid UserId { get; set; }
+
+    public required string Emoji { get; set; }
+}
+
+/// <summary>Quem foi mencionado com @usuário (só contas que podem ver o canal).</summary>
+public sealed class MessageMention
+{
+    public long MessageId { get; set; }
+
+    public Guid UserId { get; set; }
 }
 
 public sealed class GroupInvite

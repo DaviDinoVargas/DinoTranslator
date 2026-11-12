@@ -24,6 +24,9 @@ public sealed class Notifier(IHubContext<AppHub, IAppClient> hub, IPresenceStore
     public Task MessageDeletedAsync(ChannelRef channel, long messageId) =>
         To(channel).MessageDeleted(channel.Id, messageId);
 
+    public Task ReactionsChangedAsync(ChannelRef channel, long messageId, IReadOnlyList<ReactionInfo> reactions) =>
+        To(channel).ReactionsChanged(channel.Id, messageId, reactions);
+
     public Task GroupChangedAsync(Guid groupId) => hub.Clients.Group(GroupName(groupId)).GroupChanged(groupId);
 
     public Task FriendsChangedAsync(params Guid[] userIds) => hub.Clients.Users(userIds.Select(u => u.ToString())).FriendsChanged();
