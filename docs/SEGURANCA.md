@@ -117,13 +117,21 @@ Controles do servidor da versão paga (contas, grupos, chat e chamadas em grupo)
 - Quem sai ou é removido de um grupo é tirado na hora dos grupos do SignalR em todas as instâncias: não recebe mais nada dele.
 - A antiga sala de duas pessoas foi removida: num servidor com muitas contas ela mandaria presença e sinais à conta errada.
 
-### 5.3 Chamadas em grupo (LiveKit)
+### 5.3 Chamada 1:1 pela conta
+
+- O servidor só repassa o convite e a resposta da chamada (os mesmos códigos do modo código) entre as duas pessoas da conversa direta: quem não é da conversa, ou quando uma bloqueou a outra, recebe erro e nada é entregue.
+- Sinais conferidos no hub: tipo da lista, id da chamada com 128 bits em hexadecimal, código só no convite e na resposta, até 16 KB; toques limitados por conexão (5 seguidos, depois 1 a cada 10 s).
+- A mídia continua direta e cifrada de ponta a ponta (DTLS-SRTP); o servidor não a recebe. O código de segurança na tela da chamada vem das impressões digitais DTLS dos dois lados: se o servidor trocasse alguma no caminho, os códigos ficariam diferentes.
+- No app, o convite recebido é validado como no modo código (versão, prazo, campos) e precisa ter o mesmo id da chamada do sinal; o nome mostrado é o da conta, vindo do servidor. Pela conta, o serviço público de encontro não é usado.
+- Atendida ou recusada num aparelho, os outros aparelhos da mesma conta param de tocar; quem já está numa chamada responde "ocupado" sozinho.
+
+### 5.4 Chamadas em grupo (LiveKit)
 
 - A API emite a permissão (JWT HS256 com o segredo do LiveKit, 32+ caracteres) só para a sala do canal de voz que a pessoa pode usar, com validade de 6 h.
 - Os webhooks do LiveKit são aceitos só com assinatura válida (JWT com o SHA-256 do corpo); corpo alterado ou segredo errado é recusado.
 - As legendas que chegam pelo canal de dados são conferidas (tamanho e campos) antes de aparecer.
 
-### 5.4 TURN (conexão garantida)
+### 5.5 TURN (conexão garantida)
 
 - Credencial só para conta Plus ou Pro (`/api/ice-servers` com a política do plano pago), válida por 12 h: `use-auth-secret` com segredo próprio de 32+ caracteres; o coturn confere a assinatura e a validade sozinho.
 - O usuário do TURN não traz o id da conta: é um apelido de 128 bits (HMAC-SHA256 da conta com o segredo), porque o TURN manda o usuário sem cifrar.
@@ -132,7 +140,7 @@ Controles do servidor da versão paga (contas, grupos, chat e chamadas em grupo)
 - Só retransmissão: `no-stun` (sem reflexão de STUN), `no-tcp-relay`, `no-software-attribute`, `fingerprint`, CLI desligada; cotas por credencial (12 alocações), no total (1.200) e banda por sessão (10 Mbit/s).
 - A mídia continua cifrada de ponta a ponta (DTLS-SRTP): o coturn só repassa pacotes.
 
-### 5.5 Infraestrutura
+### 5.6 Infraestrutura
 
 - Firewall negando tudo exceto 80 e 443 (HTTPS), 7881/TCP e 7882/UDP (LiveKit), 3478 UDP/TCP (TURN), faixa de relay do TURN (49160–49999/UDP) e SSH.
 - SSH só por chave, sem login de root.
