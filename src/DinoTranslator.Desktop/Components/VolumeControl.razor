@@ -1,0 +1,46 @@
+@* Volume e mudo de um som da chamada (a voz da pessoa ou o som da tela dela), sobre o quadro.
+   Aparece ao passar o mouse ou com o teclado; o volume muda enquanto o controle é arrastado. *@
+<div class="volume @(Muted ? "volume--muted" : "") @Class" role="group" aria-label="@Label">
+  <button type="button" class="volume__mute" aria-pressed="@(Muted ? "true" : "false")"
+          title="@(Muted ? $"Ligar {Label}" : $"Silenciar {Label}")" aria-label="@(Muted ? $"Ligar {Label}" : $"Silenciar {Label}")"
+          @onclick="() => OnMute.InvokeAsync(!Muted)">
+    <Icon Name="@(Muted || Volume == 0 ? "som-mudo" : "som")" />
+  </button>
+  <input type="range" min="0" max="100" step="5" value="@Volume" aria-label="@($"Volume de {Label}")"
+         @oninput="ChangeAsync" />
+  <span class="volume__value">@(Muted ? "mudo" : $"{Volume}%")</span>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = "";
+
+    [Parameter]
+    public int Volume { get; set; } = 100;
+
+    [Parameter]
+    public bool Muted { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public EventCallback<int> OnVolume { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> OnMute { get; set; }
+
+    private async Task ChangeAsync(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var value))
+        {
+            return;
+        }
+        await OnVolume.InvokeAsync(Math.Clamp(value, 0, 100));
+        // Mexer no volume de algo mudo volta a tocar, como nos outros apps de chamada.
+        if (Muted && value > 0)
+        {
+            await OnMute.InvokeAsync(false);
+        }
+    }
+}

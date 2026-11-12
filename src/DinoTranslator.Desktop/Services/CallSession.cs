@@ -395,6 +395,7 @@ public sealed class CallSession(
         }
         var media = await _module.InvokeAsync<LocalMedia>("startMedia", localVideo, remoteVideo, highFidelity);
         VideoQuality = ParseQuality(await _module.InvokeAsync<string>("currentVideoQuality"));
+        Audio = await _module.InvokeAsync<CallAudio>("audioState");
         _mediaStarted = true;
         await MaybeStartTranslationAsync();
         Notify();
@@ -474,7 +475,61 @@ public sealed class CallSession(
         if (_module is not null)
         {
             await _module.InvokeVoidAsync("setRemoteAudio", enabled);
+            Audio = Audio with { PersonMuted = !enabled };
+            Notify();
         }
+    }
+
+    /// <summary>
+    /// Volumes deste computador: a voz da pessoa e o som da tela que ela compartilha, cada um com
+    /// volume (0–100) e mudo. Guardados para as próximas chamadas.
+    /// </summary>
+    public CallAudio Audio { get; private set; } = CallAudio.Default;
+
+    public async Task SetVolumeAsync(AudioSource source, int percent)
+    {
+        percent = Math.Clamp(percent, 0, 100);
+        Audio = source == AudioSource.Screen ? Audio with { ScreenVolume = percent } : Audio with { PersonVolume = percent };
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("setVolume", source == AudioSource.Screen ? "screen" : "person", percent);
+        }
+        Notify();
+    }
+
+    public async Task SetMutedAsync(AudioSource source, bool muted)
+    {
+        Audio = source == AudioSource.Screen ? Audio with { ScreenMuted = muted } : Audio with { PersonMuted = muted };
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("setMuted", source == AudioSource.Screen ? "screen" : "person", muted);
+        }
+        Notify();
+    }
+
+    /// <summary>Corta ou volta o som da própria tela que está sendo compartilhada.</summary>
+    public async Task SetScreenAudioSendingAsync(bool enabled)
+    {
+        Audio = Audio with { SendingScreenAudio = enabled };
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("setScreenAudioSending", enabled);
+        }
+        Notify();
+    }
+
+    [JSInvokable]
+    public void OnRemoteScreenAudio(bool hasAudio)
+    {
+        Audio = Audio with { RemoteScreenHasAudio = hasAudio };
+        Notify();
+    }
+
+    [JSInvokable]
+    public void OnLocalScreenAudio(bool hasAudio)
+    {
+        Audio = Audio with { SharingHasAudio = hasAudio };
+        Notify();
     }
 
     /// <summary>Abre a janela flutuante; <c>false</c> se este WebView2 não oferece.</summary>
@@ -745,6 +800,10 @@ public sealed class CallSession(
             return;
         }
         Problem = "Não foi possível ajustar o áudio ou o vídeo da chamada.";
+#if DEBUG
+        // Em desenvolvimento, o motivo técnico junto (o teste de ponta a ponta lê daqui).
+        Problem += " [" + (message.Length > 300 ? message[..300] : message) + "]";
+#endif
         Notify();
     }
 
@@ -1097,6 +1156,7 @@ public sealed class CallSession(
         ScreenStats = null;
         Floating = false;
         Noise = null;
+        Audio = Audio with { RemoteScreenHasAudio = false, SharingHasAudio = false };
         Stage = CallStage.Idle;
         titleBar.SetPeer(null, null);
         titleBar.SetStatus(null);

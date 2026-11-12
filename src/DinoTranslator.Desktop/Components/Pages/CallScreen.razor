@@ -1,5 +1,6 @@
 @page "/chamada"
 @implements IDisposable
+@using DinoTranslator.Desktop.Services.Audio
 @using DinoTranslator.Shared.Call
 @inject CallSession Call
 @inject ProfileStore Profiles
@@ -10,14 +11,23 @@
     <section class="call__stage @(Call.RemoteScreen ? "call__stage--screen" : "")" aria-label="Vídeo da chamada">
       @* Os vídeos ficam sempre na página (cada um preso ao seu fluxo); a disposição só troca as classes. *@
       <figure class="stage-tile screen-tile @TileClass(StageSource.PeerScreen)">
-        <video @ref="_remoteScreen" autoplay playsinline muted></video>
+        <video @ref="_remoteScreen" autoplay playsinline></video>
         <figcaption>
           Tela de @Call.Peer?.Name
           @if (!Call.SharingScreen && Call.ScreenStats is { } received)
           {
             <span> · @received</span>
           }
+          @if (!Call.Audio.RemoteScreenHasAudio)
+          {
+            <span> · sem som</span>
+          }
         </figcaption>
+        @if (Call.Audio.RemoteScreenHasAudio)
+        {
+          <VolumeControl Label="@($"o som da tela de {Call.Peer?.Name}")" Volume="Call.Audio.ScreenVolume" Muted="Call.Audio.ScreenMuted"
+                         OnVolume="v => Call.SetVolumeAsync(AudioSource.Screen, v)" OnMute="m => Call.SetMutedAsync(AudioSource.Screen, m)" />
+        }
         <StagePick Source="StageSource.PeerScreen" Layout="Layout" Label="@($"Ver a tela de {Call.Peer?.Name} em destaque")" OnPick="Choose" />
       </figure>
       <figure class="stage-tile screen-tile screen-tile--mine @TileClass(StageSource.MyScreen)">
@@ -34,6 +44,8 @@
       <figure class="stage-tile video-tile tile--other @TileClass(StageSource.PeerCamera)">
         <video @ref="_remoteVideo" autoplay playsinline></video>
         <figcaption>@Call.Peer?.Name@(_sound ? "" : " · som desligado")</figcaption>
+        <VolumeControl Label="@($"a voz de {Call.Peer?.Name}")" Volume="Call.Audio.PersonVolume" Muted="!_sound"
+                       OnVolume="v => Call.SetVolumeAsync(AudioSource.Person, v)" OnMute="SetPersonMutedAsync" />
         <StagePick Source="StageSource.PeerCamera" Layout="Layout" Label="@($"Ver {Call.Peer?.Name} em destaque")" OnPick="Choose" />
       </figure>
       <figure class="stage-tile video-tile tile--me stage-tile--thumb stage-tile--slot-@Layout.Thumbnails.Count @(_camera ? "" : "video-tile--off")">
@@ -122,6 +134,18 @@
             Fluida · vídeo
           </button>
         </div>
+        @if (Call.Audio.SharingHasAudio)
+        {
+          <button type="button" class="button button--quiet call__sharing-audio" aria-pressed="@(Call.Audio.SendingScreenAudio ? "true" : "false")"
+                  @onclick="() => Call.SetScreenAudioSendingAsync(!Call.Audio.SendingScreenAudio)"
+                  title="@(Call.Audio.SendingScreenAudio ? "Parar de enviar o som da tela" : "Voltar a enviar o som da tela")">
+            <Icon Name="@(Call.Audio.SendingScreenAudio ? "som" : "som-mudo")" />@(Call.Audio.SendingScreenAudio ? "Com som" : "Sem som")
+          </button>
+        }
+        else
+        {
+          <span class="call__sharing-stats" title="Ao escolher a tela, marque a opção de compartilhar o áudio do sistema.">sem som</span>
+        }
         <button type="button" class="button button--quiet" @onclick="Call.StopScreenShareAsync">Parar</button>
       </div>
     }
@@ -142,6 +166,10 @@
       <button type="button" class="dock-button @(_sound ? "dock-button--on" : "dock-button--muted")" @onclick="ToggleSoundAsync"
               disabled="@(!Live)" aria-pressed="@(_sound ? "true" : "false")" title="Som da outra pessoa neste computador">
         <Icon Name="@(_sound ? "som" : "som-mudo")" /><span>@(_sound ? "Som da chamada" : "Som desligado")</span>
+      </button>
+      <button type="button" class="dock-button @(_volumes ? "dock-button--active" : "")" @onclick="ToggleVolumes"
+              disabled="@(!Live)" aria-pressed="@(_volumes ? "true" : "false")" title="Volume da voz e da tela da outra pessoa">
+        <Icon Name="volume" /><span>Volumes</span>
       </button>
       <span class="dock__divider" aria-hidden="true"></span>
       <button type="button" class="dock-button @(Call.SharingScreen ? "dock-button--active" : "")" @onclick="ToggleScreenAsync"
@@ -172,6 +200,10 @@
     {
       <NoisePanel OnClose="() => _noise = false" />
     }
+    @if (_volumes)
+    {
+      <VolumePanel OnClose="() => _volumes = false" />
+    }
     </section>
 
   @if (_conversation)
@@ -196,6 +228,7 @@
     private bool _conversation = true;
     private bool _engines;
     private bool _noise;
+    private bool _volumes;
     private bool _mediaStarted;
     private string? _floatingText;
 
@@ -206,12 +239,21 @@
     {
         _noise = !_noise;
         _engines &= !_noise;
+        _volumes &= !_noise;
     }
 
     private void ToggleEngines()
     {
         _engines = !_engines;
         _noise &= !_engines;
+        _volumes &= !_engines;
+    }
+
+    private void ToggleVolumes()
+    {
+        _volumes = !_volumes;
+        _noise &= !_volumes;
+        _engines &= !_volumes;
     }
 
     private StageLayout Layout => StageLayout.For(_chosen, Call.RemoteScreen, Call.SharingScreen);
@@ -261,6 +303,8 @@
             var media = await Call.StartMediaAsync(_localVideo, _remoteVideo, highFidelity: false);
             _hasCamera = _camera = media.Camera;
             _hasMicrophone = _microphone = media.Microphone;
+            // O mudo da voz da pessoa é guardado entre as chamadas.
+            _sound = !Call.Audio.PersonMuted;
         }
         catch (JSException)
         {
@@ -288,6 +332,15 @@
         _sound = !_sound;
         await Call.SetRemoteAudioAsync(_sound);
     }
+
+    private async Task SetPersonMutedAsync(bool muted)
+    {
+        _sound = !muted;
+        await Call.SetRemoteAudioAsync(_sound);
+    }
+
+    // O mudo da voz também muda pelo painel de volumes: o botão do painel inferior acompanha.
+    private void SyncSound() => _sound = !Call.Audio.PersonMuted;
 
     private Task ChangeQualityAsync(ChangeEventArgs e) =>
         Call.SetVideoQualityAsync(Enum.TryParse<VideoQuality>(e.Value?.ToString(), out var quality) ? quality : VideoQuality.Maxima);
@@ -351,6 +404,10 @@
             _chosen = null;
         }
         _peerWasSharing = Call.RemoteScreen;
+        if (_mediaStarted)
+        {
+            SyncSound();
+        }
         StateHasChanged();
         try
         {

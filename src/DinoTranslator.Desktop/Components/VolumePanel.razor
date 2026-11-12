@@ -1,0 +1,61 @@
+@using DinoTranslator.Desktop.Services.Audio
+@implements IDisposable
+@inject CallSession Call
+
+@* Volumes da chamada por código: a voz da pessoa, o som da tela dela e o som da própria tela
+   que está sendo enviada. Vale só neste computador e fica guardado para as próximas chamadas. *@
+<aside class="engines engines--ruido" aria-label="Volumes da chamada">
+  <header class="engines__head">
+    <span class="engines__icon"><Icon Name="som" /></span>
+    <div class="engines__titles">
+      <p class="engines__title">Volumes</p>
+      <p class="engines__where">só neste computador</p>
+    </div>
+    <button type="button" class="conversation__close" @onclick="OnClose" aria-label="Fechar os volumes" title="Fechar"><Icon Name="fechar" /></button>
+  </header>
+
+  <div class="volumes__person">
+    <p class="volumes__name">Voz de @Call.Peer?.Name</p>
+    <VolumeControl Class="volume--inline" Label="@($"a voz de {Call.Peer?.Name}")" Volume="Call.Audio.PersonVolume" Muted="Call.Audio.PersonMuted"
+                   OnVolume="v => Call.SetVolumeAsync(AudioSource.Person, v)" OnMute="m => Call.SetRemoteAudioAsync(!m)" />
+  </div>
+
+  <div class="volumes__person">
+    <p class="volumes__name">Som da tela de @Call.Peer?.Name</p>
+    @if (Call.Audio.RemoteScreenHasAudio)
+    {
+      <VolumeControl Class="volume--inline" Label="@($"o som da tela de {Call.Peer?.Name}")" Volume="Call.Audio.ScreenVolume" Muted="Call.Audio.ScreenMuted"
+                     OnVolume="v => Call.SetVolumeAsync(AudioSource.Screen, v)" OnMute="m => Call.SetMutedAsync(AudioSource.Screen, m)" />
+    }
+    else
+    {
+      <p class="engines__note">@(Call.RemoteScreen ? "A tela compartilhada está sem som." : "Aparece quando a pessoa compartilhar a tela com som.")</p>
+    }
+  </div>
+
+  <div class="volumes__person">
+    <p class="volumes__name">Som da sua tela</p>
+    @if (Call.SharingScreen && Call.Audio.SharingHasAudio)
+    {
+      <label class="noise__check">
+        <input type="checkbox" checked="@Call.Audio.SendingScreenAudio" @onchange="@(e => Call.SetScreenAudioSendingAsync(e.Value is true))" />
+        Enviar o som do que está na tela
+      </label>
+    }
+    else
+    {
+      <p class="engines__note">Ao compartilhar, marque "compartilhar o áudio do sistema" na escolha da tela. O som da chamada não vai junto, então não há eco.</p>
+    }
+  </div>
+</aside>
+
+@code {
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    protected override void OnInitialized() => Call.Changed += OnCallChanged;
+
+    private void OnCallChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Call.Changed -= OnCallChanged;
+}

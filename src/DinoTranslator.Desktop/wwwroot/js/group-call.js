@@ -32,6 +32,7 @@ function participantsOf(room) {
     microphone: p.isMicrophoneEnabled,
     camera: p.isCameraEnabled,
     screen: p.isScreenShareEnabled,
+    screenAudio: Boolean(p.getTrackPublication(Track.Source.ScreenShareAudio)),
   }));
 }
 
@@ -221,10 +222,20 @@ export async function setScreen(enabled) {
   }
   const local = call.room.localParticipant;
   if (enabled) {
-    call.screenTracks = await createLocalScreenTracks({ audio: false, resolution: { width: 2560, height: 1440, frameRate: 30 }, contentHint: "detail" });
+    // Com o som do que está na tela, sem o som do próprio app (evita eco) e sem processamento de voz.
+    call.screenTracks = await createLocalScreenTracks({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 },
+      systemAudio: "include",
+      suppressLocalAudioPlayback: false,
+      resolution: { width: 2560, height: 1440, frameRate: 30 },
+      contentHint: "detail",
+    });
     for (const track of call.screenTracks) {
-      track.mediaStreamTrack.addEventListener("ended", () => setScreen(false));
-      await local.publishTrack(track, { source: Track.Source.ScreenShare, simulcast: false });
+      if (track.kind === Track.Kind.Video) {
+        track.mediaStreamTrack.addEventListener("ended", () => setScreen(false));
+      }
+      // Cada faixa já vem marcada como tela ou som da tela.
+      await local.publishTrack(track, track.kind === Track.Kind.Video ? { simulcast: false } : { dtx: false, red: true });
     }
   } else {
     for (const track of call.screenTracks) {
@@ -276,6 +287,16 @@ export async function sendCaption(json) {
 }
 
 // ---- Supressão de ruído ------------------------------------------------------------
+
+/** Volume (0–100) e mudo da voz ("person") ou do som da tela ("screen") de uma pessoa da sala. */
+export function setParticipantVolume(identity, kind, percent, muted) {
+  const participant = call?.room.remoteParticipants.get(identity);
+  if (!participant) {
+    return;
+  }
+  const volume = muted ? 0 : Math.min(1, Math.max(0, Number(percent) / 100 || 0));
+  participant.setVolume(volume, kind === "screen" ? Track.Source.ScreenShareAudio : Track.Source.Microphone);
+}
 
 export function noiseState() {
   return {

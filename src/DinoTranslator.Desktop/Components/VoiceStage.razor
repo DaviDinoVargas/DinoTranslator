@@ -71,8 +71,12 @@
       <button type="button" class="dock-button @(Call.Deafened ? "dock-button--muted" : "dock-button--on")" @onclick="Call.ToggleDeafenAsync" aria-pressed="@(Call.Deafened ? "true" : "false")">
         <Icon Name="@(Call.Deafened ? "som-mudo" : "som")" /><span>@(Call.Deafened ? "Sem som" : "Som")</span>
       </button>
-      <button type="button" class="dock-button @(_noise ? "dock-button--active" : "")" @onclick="() => _noise = !_noise" aria-pressed="@(_noise ? "true" : "false")">
+      <button type="button" class="dock-button @(_noise ? "dock-button--active" : "")" @onclick="ToggleNoise" aria-pressed="@(_noise ? "true" : "false")">
         <Icon Name="ruido" /><span>Ruído</span>
+      </button>
+      <button type="button" class="dock-button @(_volumes ? "dock-button--active" : "")" @onclick="ToggleVolumes" aria-pressed="@(_volumes ? "true" : "false")"
+              title="Volume de cada pessoa e do som da tela dela">
+        <Icon Name="som" /><span>Volumes</span>
       </button>
       <button type="button" class="dock-button @(Call.Camera ? "dock-button--active" : "")" @onclick="Call.ToggleCameraAsync" aria-pressed="@(Call.Camera ? "true" : "false")">
         <Icon Name="@(Call.Camera ? "camera" : "camera-desligada")" /><span>Câmera</span>
@@ -84,6 +88,40 @@
         <Icon Name="desligar" /><span>Sair</span>
       </button>
     </footer>
+
+    @if (_volumes)
+    {
+      <aside class="engines engines--ruido" aria-label="Volumes">
+        <header class="engines__head">
+          <span class="engines__icon"><Icon Name="som" /></span>
+          <div class="engines__titles">
+            <p class="engines__title">Volumes</p>
+            <p class="engines__where">só neste computador</p>
+          </div>
+          <button type="button" class="conversation__close" @onclick="() => _volumes = false" aria-label="Fechar os volumes"><Icon Name="fechar" /></button>
+        </header>
+        @if (Call.Participants.All(p => p.Local))
+        {
+          <p class="engines__note">Ninguém mais na chamada ainda.</p>
+        }
+        @foreach (var person in Call.Participants.Where(p => !p.Local))
+        {
+          var audio = Call.VolumeOf(person.Id);
+          <div class="volumes__person">
+            <p class="volumes__name">@person.Name</p>
+            <VolumeControl Class="volume--inline" Label="@($"a voz de {person.Name}")" Volume="audio.Voice" Muted="audio.VoiceMuted"
+                           OnVolume="v => Call.SetParticipantVolumeAsync(person.Id, AudioSource.Person, v)"
+                           OnMute="m => Call.SetParticipantMutedAsync(person.Id, AudioSource.Person, m)" />
+            @if (person.ScreenAudio)
+            {
+              <VolumeControl Class="volume--inline" Label="@($"o som da tela de {person.Name}")" Volume="audio.Screen" Muted="audio.ScreenMuted"
+                             OnVolume="v => Call.SetParticipantVolumeAsync(person.Id, AudioSource.Screen, v)"
+                             OnMute="m => Call.SetParticipantMutedAsync(person.Id, AudioSource.Screen, m)" />
+            }
+          </div>
+        }
+      </aside>
+    }
 
     @if (_noise)
     {
@@ -115,6 +153,20 @@
     private ElementReference _grid;
     private NoiseControls? _noiseControls;
     private bool _noise;
+    private bool _volumes;
+
+    // Os dois painéis ocupam o mesmo canto: abrir um fecha o outro.
+    private void ToggleNoise()
+    {
+        _noise = !_noise;
+        _volumes &= !_noise;
+    }
+
+    private void ToggleVolumes()
+    {
+        _volumes = !_volumes;
+        _noise &= !_volumes;
+    }
     private bool _noiseBusy;
     private bool _meterBound;
 

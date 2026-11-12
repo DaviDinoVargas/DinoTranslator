@@ -10,7 +10,10 @@ using Microsoft.JSInterop;
 
 namespace DinoTranslator.Desktop.Services.Plus;
 
-public sealed record GroupParticipant(string Id, string Name, string Language, bool Local, bool Speaking, bool Microphone, bool Camera, bool Screen);
+public sealed record GroupParticipant(string Id, string Name, string Language, bool Local, bool Speaking, bool Microphone, bool Camera, bool Screen, bool ScreenAudio = false);
+
+/// <summary>Volume (0–100) e mudo da voz e do som da tela de uma pessoa da sala, neste computador.</summary>
+public sealed record ParticipantAudio(int Voice = 100, bool VoiceMuted = false, int Screen = 100, bool ScreenMuted = false);
 
 /// <summary>Legenda de alguém da sala, já no idioma de quem lê.</summary>
 public sealed record GroupCaption(string ParticipantId, string Name, int Segment, string Text, bool Final, DateTimeOffset At);
@@ -58,6 +61,31 @@ public sealed class GroupCall(IJSRuntime js, PlusApi api, PlusState state, Speec
     public bool CaptionsOn => _speech is not null;
 
     public NoiseState? Noise { get; private set; }
+
+    private readonly Dictionary<string, ParticipantAudio> _volumes = [];
+
+    public ParticipantAudio VolumeOf(string participantId) => _volumes.GetValueOrDefault(participantId) ?? new ParticipantAudio();
+
+    public Task SetParticipantVolumeAsync(string participantId, AudioSource source, int percent) =>
+        ApplyVolumeAsync(participantId, source, VolumeOf(participantId) is var current && source == AudioSource.Screen
+            ? current with { Screen = Math.Clamp(percent, 0, 100) }
+            : current with { Voice = Math.Clamp(percent, 0, 100) });
+
+    public Task SetParticipantMutedAsync(string participantId, AudioSource source, bool muted) =>
+        ApplyVolumeAsync(participantId, source, VolumeOf(participantId) is var current && source == AudioSource.Screen
+            ? current with { ScreenMuted = muted }
+            : current with { VoiceMuted = muted });
+
+    private async Task ApplyVolumeAsync(string participantId, AudioSource source, ParticipantAudio audio)
+    {
+        if (participantId.Length > 64)
+        {
+            return;
+        }
+        _volumes[participantId] = audio;
+        var (percent, muted) = source == AudioSource.Screen ? (audio.Screen, audio.ScreenMuted) : (audio.Voice, audio.VoiceMuted);
+        await Invoke("setParticipantVolume", participantId, source == AudioSource.Screen ? "screen" : "person", percent, muted);
+    }
 
     public IReadOnlyList<GroupCaption> Captions
     {

@@ -146,6 +146,12 @@ export class CallPeer {
     // Tela compartilhada: um transceptor só para ela, reaproveitado a cada compartilhamento,
     // e um fluxo de id fixo que o outro lado usa para separar a tela da câmera.
     this.screenTransceiver = null;
+    // Som da tela (vídeo, música, jogo): outro transceptor, no mesmo fluxo da tela, para o outro
+    // lado tocar com volume próprio e a tradução não legendar.
+    this.screenAudioTransceiver = null;
+    this.screenAudioTrack = null;
+    this.screenAudioSending = true;
+    this.remoteScreenHasAudio = false;
     this.screenStream = new MediaStream();
     this.screenTrack = null;
     this.screenMode = "detail";
@@ -190,12 +196,14 @@ export class CallPeer {
     };
     this.pc.ontrack = ({ track, streams, receiver }) => {
       if (streams[0]?.id && streams[0].id === this.remoteScreenStreamId) {
-        for (const previous of this.remoteScreen.getTracks()) {
+        for (const previous of this.remoteScreen.getTracks().filter((t) => t.kind === track.kind)) {
           this.remoteScreen.removeTrack(previous);
         }
         this.remoteScreen.addTrack(track);
-        this.remoteScreenReceiver = receiver;
-        this.events.onRemoteScreen?.(true);
+        if (track.kind === "video") {
+          this.remoteScreenReceiver = receiver;
+          this.events.onRemoteScreen?.(true);
+        }
         return;
       }
       this.remoteStream.addTrack(track);
@@ -219,6 +227,10 @@ export class CallPeer {
     this.pc.onsignalingstatechange = () => {
       if (this.pc.signalingState === "stable") {
         this.tuneSenders();
+        if (this.negotiateWhenStable) {
+          this.negotiateWhenStable = false;
+          this.negotiate();
+        }
       }
     };
   }
@@ -289,7 +301,14 @@ export class CallPeer {
       await this.pc.setLocalDescription(offer);
       this.sendSignal({ description: { type: offer.type, sdp: this.pc.localDescription.sdp } });
     } catch (error) {
-      this.events.onError?.(String(error));
+      if (error?.name === "InvalidStateError" && this.pc.signalingState !== "stable" && this.pc.signalingState !== "closed") {
+        // Os dois lados renegociaram ao mesmo tempo e a oferta do outro chegou primeiro (ela é
+        // respondida no onSignal). Não é falha: as mudanças daqui vão numa nova oferta quando a
+        // conexão estabilizar.
+        this.negotiateWhenStable = true;
+      } else {
+        this.events.onError?.(String(error));
+      }
     } finally {
       this.makingOffer = false;
     }
@@ -347,9 +366,13 @@ export class CallPeer {
     if (screen === null) {
       this.remoteScreenStreamId = null;
       this.remoteScreenReceiver = null;
+      this.remoteScreenHasAudio = false;
       this.events.onRemoteScreen?.(false);
+      this.events.onRemoteScreenAudio?.(false);
     } else if (typeof screen?.streamId === "string" && screen.streamId.length <= MAX_STREAM_ID_LENGTH) {
       this.remoteScreenStreamId = screen.streamId;
+      this.remoteScreenHasAudio = screen.audio === true;
+      this.events.onRemoteScreenAudio?.(this.remoteScreenHasAudio);
     }
   }
 
@@ -546,10 +569,21 @@ export class CallPeer {
         height: { max: SCREEN_MAX.height },
         frameRate: { ideal: SCREEN_MAX.frameRate, max: SCREEN_MAX.frameRate },
       },
-      audio: false,
+      // Som do que está na tela. Sem o som do próprio app (a voz da outra pessoa voltaria para
+      // ela como eco) e sem processamento de voz, que estraga música.
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 2,
+        sampleRate: 48000,
+        suppressLocalAudioPlayback: false,
+        restrictOwnAudio: true,
+      },
       selfBrowserSurface: "exclude",
       surfaceSwitching: "include",
-      systemAudio: "exclude",
+      systemAudio: "include",
+      windowAudio: "system",
     });
     const track = capture.getVideoTracks()[0];
     // Parar pelo próprio Windows também encerra o compartilhamento.
@@ -557,8 +591,14 @@ export class CallPeer {
     this.screenTrack = track;
     this.showLocalScreen();
     this.setScreenMode(mode);
+    const audio = capture.getAudioTracks()[0] ?? null;
+    this.screenAudioTrack = audio;
+    if (audio) {
+      audio.contentHint = "music";
+      audio.enabled = this.screenAudioSending;
+    }
 
-    this.sendSignal({ screen: { streamId: this.screenStream.id } });
+    this.sendSignal({ screen: { streamId: this.screenStream.id, audio: Boolean(audio) } });
     if (this.screenTransceiver) {
       await this.screenTransceiver.sender.replaceTrack(track);
       this.screenTransceiver.direction = "sendonly";
@@ -572,7 +612,22 @@ export class CallPeer {
         // Sem preferência: o navegador usa a ordem padrão.
       }
     }
+    if (this.screenAudioTransceiver) {
+      await this.screenAudioTransceiver.sender.replaceTrack(audio);
+      this.screenAudioTransceiver.direction = audio ? "sendonly" : "inactive";
+    } else if (audio) {
+      this.screenAudioTransceiver = this.pc.addTransceiver(audio, { direction: "sendonly", streams: [this.screenStream] });
+    }
     this.events.onLocalScreen?.(true);
+    this.events.onLocalScreenAudio?.(Boolean(audio));
+  }
+
+  /** Liga ou corta o som da tela que está sendo enviado, sem parar o compartilhamento. */
+  setScreenAudioSending(enabled) {
+    this.screenAudioSending = enabled;
+    if (this.screenAudioTrack) {
+      this.screenAudioTrack.enabled = enabled;
+    }
   }
 
   async stopScreenShare() {
@@ -584,12 +639,19 @@ export class CallPeer {
     this.showLocalScreen();
     track.onended = null;
     track.stop();
+    this.screenAudioTrack?.stop();
+    this.screenAudioTrack = null;
     if (this.screenTransceiver && this.pc.signalingState !== "closed") {
       await this.screenTransceiver.sender.replaceTrack(null);
       this.screenTransceiver.direction = "inactive";
     }
+    if (this.screenAudioTransceiver && this.pc.signalingState !== "closed") {
+      await this.screenAudioTransceiver.sender.replaceTrack(null);
+      this.screenAudioTransceiver.direction = "inactive";
+    }
     this.sendSignal({ screen: null });
     this.events.onLocalScreen?.(false);
+    this.events.onLocalScreenAudio?.(false);
   }
 
   showLocalScreen() {
@@ -645,7 +707,11 @@ export class CallPeer {
           continue;
         }
         const encoding = parameters.encodings[0];
-        if (sender.track.kind === "audio") {
+        if (sender === this.screenAudioTransceiver?.sender) {
+          encoding.maxBitrate = AUDIO_MAX_BITRATE;
+          encoding.priority = "medium";
+          encoding.networkPriority = "medium";
+        } else if (sender.track.kind === "audio") {
           encoding.maxBitrate = AUDIO_MAX_BITRATE;
           encoding.priority = "high";
           encoding.networkPriority = "high";
@@ -740,6 +806,7 @@ export class CallPeer {
     this.audioContext?.close();
     this.microphone?.close();
     this.screenTrack?.stop();
+    this.screenAudioTrack?.stop();
     for (const track of this.localStream?.getTracks() ?? []) {
       track.stop();
     }
@@ -801,6 +868,8 @@ export function create(dotnet, polite, relay) {
     onLocalScreen: (active) => dotnet.invokeMethodAsync("OnLocalScreen", active),
     onScreenStats: (sending, width, height, fps, codec) => dotnet.invokeMethodAsync("OnScreenStats", sending, width, height, fps, codec),
     onNoiseStatus: ({ mode, problem }) => dotnet.invokeMethodAsync("OnNoiseStatus", mode, problem),
+    onRemoteScreenAudio: (hasAudio) => dotnet.invokeMethodAsync("OnRemoteScreenAudio", hasAudio),
+    onLocalScreenAudio: (hasAudio) => dotnet.invokeMethodAsync("OnLocalScreenAudio", hasAudio),
   }, { polite, relay: relay ?? null });
 }
 
@@ -880,8 +949,10 @@ export const setScreenMode = (mode) => current?.setScreenMode(mode);
 export const shareStream = (stream, mode) => current.startScreenShare({ mode, stream });
 
 export function bindRemoteScreen(video) {
-  video.muted = true;
+  remoteScreenElement = video;
   video.srcObject = current.remoteScreen;
+  applyVolumes();
+  applySpeaker(video);
 }
 
 export function bindLocalScreen(video) {
@@ -890,11 +961,80 @@ export function bindLocalScreen(video) {
 }
 
 let remoteElement = null;
+let remoteScreenElement = null;
+
+// ---- Volumes: a voz da pessoa e o som da tela dela, cada um com volume e mudo -----------
+// Guardados como preferência deste computador; valem para as próximas chamadas também.
+const VOLUME_KEYS = { person: "dt.volume.pessoa", screen: "dt.volume.tela" };
+const volumes = { person: { volume: 1, muted: false }, screen: { volume: 1, muted: false } };
+for (const kind of Object.keys(VOLUME_KEYS)) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(VOLUME_KEYS[kind]) ?? "null");
+    if (saved && typeof saved.volume === "number" && saved.volume >= 0 && saved.volume <= 1) {
+      volumes[kind] = { volume: saved.volume, muted: saved.muted === true };
+    }
+  } catch {
+    // Sem preferência guardada: volume cheio.
+  }
+}
+
+function applyVolumes() {
+  if (remoteElement) {
+    remoteElement.volume = volumes.person.volume;
+    remoteElement.muted = volumes.person.muted;
+  }
+  if (remoteScreenElement) {
+    remoteScreenElement.volume = volumes.screen.volume;
+    remoteScreenElement.muted = volumes.screen.muted;
+  }
+}
+
+function saveVolume(kind) {
+  try {
+    localStorage.setItem(VOLUME_KEYS[kind], JSON.stringify(volumes[kind]));
+  } catch {
+    // Vale só nesta sessão.
+  }
+}
+
+/** kind: "person" (a voz) ou "screen" (o som da tela); percent: 0 a 100. */
+export function setVolume(kind, percent) {
+  if (!Object.hasOwn(volumes, kind)) {
+    return;
+  }
+  volumes[kind].volume = Math.min(1, Math.max(0, Number(percent) / 100 || 0));
+  applyVolumes();
+  saveVolume(kind);
+}
+
+export function setMuted(kind, muted) {
+  if (!Object.hasOwn(volumes, kind)) {
+    return;
+  }
+  volumes[kind].muted = muted === true;
+  applyVolumes();
+  saveVolume(kind);
+}
+
+export function audioState() {
+  return {
+    personVolume: Math.round(volumes.person.volume * 100),
+    personMuted: volumes.person.muted,
+    screenVolume: Math.round(volumes.screen.volume * 100),
+    screenMuted: volumes.screen.muted,
+    remoteScreenHasAudio: current?.remoteScreenHasAudio ?? false,
+    sendingScreenAudio: current?.screenAudioSending ?? true,
+    sharingHasAudio: Boolean(current?.screenAudioTrack),
+  };
+}
+
+export const setScreenAudioSending = (enabled) => current?.setScreenAudioSending(enabled === true);
 
 /** Liga câmera e microfone; devolve o que ficou disponível ({ camera, microphone }). */
 export async function startMedia(localVideo, remoteVideo, highFidelity) {
   remoteElement = remoteVideo;
   remoteVideo.srcObject = current.remoteStream;
+  applyVolumes();
   await applySpeaker(remoteVideo);
   const stream = await current.startLocalMedia({ highFidelity });
   showPreview(localVideo, stream);
@@ -923,10 +1063,9 @@ export function bindNoiseMeter(fill, mark) {
 export const currentVideoQuality = () => current?.quality ?? videoQuality();
 
 /** Som da chamada (o que a outra pessoa fala). A tradução continua ouvindo mesmo mudo. */
+/** Som da chamada (a voz da pessoa), o mesmo mudo do controle de volume dela. */
 export function setRemoteAudio(enabled) {
-  if (remoteElement) {
-    remoteElement.muted = !enabled;
-  }
+  setMuted("person", !enabled);
 }
 
 // ---- Janela flutuante -----------------------------------------------------------------
@@ -1096,4 +1235,5 @@ export function hangup() {
   current?.close();
   current = null;
   remoteElement = null;
+  remoteScreenElement = null;
 }
