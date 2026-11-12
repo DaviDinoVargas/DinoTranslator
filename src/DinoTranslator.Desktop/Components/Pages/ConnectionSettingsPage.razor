@@ -1,6 +1,7 @@
 @page "/configuracoes/conexao"
 @implements IAsyncDisposable
 @inject ConnectionSettingsStore Store
+@inject DinoTranslator.Desktop.Services.Plus.IRelayProvider PlusRelay
 @inject IJSRuntime Js
 @inject NavigationManager Navigation
 
@@ -36,7 +37,14 @@
         @if (diagnosis.Relay is { } relay)
         {
           <li class="checklist__item checklist__item--@(relay ? "ok" : "off")">
-            @(relay ? "Retransmissão respondeu: a chamada passa mesmo em redes fechadas." : "A retransmissão configurada não respondeu. Confira endereço, usuário e senha.")
+            @if (_testedPlus)
+            {
+              @(relay ? "Conexão garantida da conta Plus respondeu: a chamada passa mesmo em redes fechadas." : "A retransmissão da conta Plus não respondeu agora. A chamada tenta a ligação direta.")
+            }
+            else
+            {
+              @(relay ? "Retransmissão respondeu: a chamada passa mesmo em redes fechadas." : "A retransmissão configurada não respondeu. Confira endereço, usuário e senha.")
+            }
           </li>
         }
       </ul>
@@ -51,6 +59,10 @@
       Só é preciso quando a ligação direta não passa — por exemplo, NAT restritivo dos dois lados sem IPv6.
       Crie uma conta num serviço de TURN (há planos gratuitos) e copie aqui endereço, usuário e senha.
       A chamada continua cifrada de ponta a ponta: a retransmissão só repassa pacotes. Basta um dos dois configurar.
+    </p>
+    <p class="handshake__hint">
+      Com a conta Plus ou Pro aberta neste computador, a conexão garantida já usa a retransmissão do seu servidor
+      sozinha. Configure aqui só se quiser usar outra.
     </p>
 
     <div class="login__form">
@@ -92,6 +104,7 @@
     private IJSObjectReference? _module;
     private NetworkDiagnosis? _diagnosis;
     private bool _testing;
+    private bool _testedPlus;
     private string? _testError;
     private string? _url;
     private string? _user;
@@ -115,7 +128,16 @@
         try
         {
             _module ??= await Js.InvokeAsync<IJSObjectReference>("import", "./js/call.js");
-            _diagnosis = await _module.InvokeAsync<NetworkDiagnosis>("diagnoseNetwork", CallSession.RelayFor(Store.Current));
+            // A configurada à mão vale primeiro, como na chamada; senão, testa a da conta Plus, se houver.
+            object? relay = CallSession.RelayFor(Store.Current);
+            _testedPlus = false;
+            if (relay is null)
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                relay = await PlusRelay.RelayAsync(timeout.Token);
+                _testedPlus = relay is not null;
+            }
+            _diagnosis = await _module.InvokeAsync<NetworkDiagnosis>("diagnoseNetwork", relay);
         }
         catch (JSException)
         {

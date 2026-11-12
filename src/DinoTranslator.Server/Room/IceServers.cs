@@ -41,14 +41,17 @@ public static class IceServers
             principal.GetUserId() is { } userId
                 ? Results.Ok(Create(options.Value, userId, time.GetUtcNow()))
                 : Results.Unauthorized())
-            .RequireAuthorization();
+            // Conexão garantida é do plano pago: a banda da retransmissão sai do seu servidor.
+            .RequireAuthorization(AuthClaims.PlusPolicy);
         return app;
     }
 
     /// <summary>
     /// Credencial temporária no formato do <c>use-auth-secret</c> do coturn:
-    /// usuário = "&lt;expiração unix&gt;:&lt;id&gt;", senha = base64(HMAC-SHA1(segredo, usuário)).
+    /// usuário = "&lt;expiração unix&gt;:&lt;apelido&gt;", senha = base64(HMAC-SHA1(segredo, usuário)).
     /// O coturn recusa a credencial depois da expiração, sem precisar consultar o servidor.
+    /// O apelido é derivado da conta com o segredo: estável para a mesma pessoa, mas o id da conta
+    /// não aparece na rede (o usuário do TURN não é cifrado) nem nos registros do coturn.
     /// </summary>
     public static IceServersResponse Create(IceOptions options, Guid userId, DateTimeOffset now)
     {
@@ -62,7 +65,7 @@ public static class IceServers
 
         if (options.TurnUrls.Length > 0 && options.TurnSecret.Length > 0)
         {
-            var username = $"{expiresAt.ToUnixTimeSeconds()}:{userId:N}";
+            var username = $"{expiresAt.ToUnixTimeSeconds()}:{Alias(options.TurnSecret, userId)}";
             // HMAC-SHA1 é o que o protocolo do coturn exige; como MAC ele continua seguro.
             var credential = Convert.ToBase64String(
                 HMACSHA1.HashData(Encoding.UTF8.GetBytes(options.TurnSecret), Encoding.UTF8.GetBytes(username)));
@@ -71,4 +74,8 @@ public static class IceServers
 
         return new IceServersResponse(servers, expiresAt);
     }
+
+    /// <summary>128 bits do HMAC-SHA256 da conta com o segredo do TURN, em hexadecimal.</summary>
+    public static string Alias(string secret, Guid userId) =>
+        Convert.ToHexStringLower(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes($"dino-turn:{userId:N}")), 0, 16);
 }

@@ -123,15 +123,18 @@ Controles do servidor da versão paga (contas, grupos, chat e chamadas em grupo)
 - Os webhooks do LiveKit são aceitos só com assinatura válida (JWT com o SHA-256 do corpo); corpo alterado ou segredo errado é recusado.
 - As legendas que chegam pelo canal de dados são conferidas (tamanho e campos) antes de aparecer.
 
-### 5.4 TURN
+### 5.4 TURN (conexão garantida)
 
-- `use-auth-secret` com segredo próprio; credenciais válidas por 12 h emitidas pelo servidor.
-- Sem acesso a redes internas: `denied-peer-ip` para `0.0.0.0/8`, `10.0.0.0/8`, `100.64.0.0/10`, `127.0.0.0/8`, `169.254.0.0/16`, `172.16.0.0/12`, `192.168.0.0/16`, `::1`, `fc00::/7`, `fe80::/10`; `no-multicast-peers`.
-- `no-cli`, `fingerprint`, TLS com o certificado do domínio, cotas por usuário e banda máxima.
+- Credencial só para conta Plus ou Pro (`/api/ice-servers` com a política do plano pago), válida por 12 h: `use-auth-secret` com segredo próprio de 32+ caracteres; o coturn confere a assinatura e a validade sozinho.
+- O usuário do TURN não traz o id da conta: é um apelido de 128 bits (HMAC-SHA256 da conta com o segredo), porque o TURN manda o usuário sem cifrar.
+- O app só aceita endereços `turn:`/`turns:` da resposta (no máximo 4), guarda a credencial só em memória e a renova meia hora antes de vencer; sair da conta ou trocar de servidor descarta a guardada.
+- Sem acesso a redes internas nem ao próprio servidor: `denied-peer-ip` para todas as faixas privadas e reservadas de IPv4 e IPv6 (inclui a rede do Docker, onde ficam banco e Redis), `no-multicast-peers`; laço local negado por padrão.
+- Só retransmissão: `no-stun` (sem reflexão de STUN), `no-tcp-relay`, `no-software-attribute`, `fingerprint`, CLI desligada; cotas por credencial (12 alocações), no total (1.200) e banda por sessão (10 Mbit/s).
+- A mídia continua cifrada de ponta a ponta (DTLS-SRTP): o coturn só repassa pacotes.
 
 ### 5.5 Infraestrutura
 
-- Firewall negando tudo exceto 443/TCP (HTTPS), 3478 UDP/TCP e 5349/TCP (TURN), faixa de portas de relay do TURN e SSH.
+- Firewall negando tudo exceto 80 e 443 (HTTPS), 7881/TCP e 7882/UDP (LiveKit), 3478 UDP/TCP (TURN), faixa de relay do TURN (49160–49999/UDP) e SSH.
 - SSH só por chave, sem login de root.
 - Atualizações automáticas de segurança do sistema.
 - Contêineres sem root, imagens com versão fixa, sistema de arquivos somente leitura onde possível.

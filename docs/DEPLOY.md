@@ -1,7 +1,8 @@
 # DinoTranslator Plus — subir no seu servidor
 
 O que roda no servidor: a API (várias réplicas), PostgreSQL, Redis, o servidor de mídia das
-chamadas em grupo (LiveKit) e o Caddy, que cuida do HTTPS. Tudo em Docker Compose, na pasta
+chamadas em grupo (LiveKit), a retransmissão da conexão garantida (coturn) e o Caddy, que cuida do
+HTTPS. Tudo em Docker Compose, na pasta
 `deploy/`. A versão grátis (chamada por código) não precisa de nada disto.
 
 ## 1. O que você precisa
@@ -11,7 +12,9 @@ chamadas em grupo (LiveKit) e o Caddy, que cuida do HTTPS. Tudo em Docker Compos
 - Dois nomes no seu domínio apontando (registro A/AAAA) para o IP do VPS:
   `api.seudominio.com` (API) e `midia.seudominio.com` (chamadas em grupo).
 - Portas abertas no firewall: **80/tcp e 443/tcp+udp** (HTTPS), **7881/tcp e 7882/udp** (mídia
-  do LiveKit). Nenhuma outra: banco e Redis ficam só na rede interna do Docker.
+  do LiveKit), **3478/udp+tcp e 49160–49999/udp** (TURN da conexão garantida). Nenhuma outra:
+  banco e Redis ficam só na rede interna do Docker.
+- O nome da API sem proxy de CDN (no Cloudflare, "DNS only"): o TURN precisa chegar direto no IP.
 
 ## 2. Subir
 
@@ -49,6 +52,9 @@ Outros comandos (`users add`, `reset-password`, `disable`, `enable`, `remove`) e
 cd DinoTranslator && git pull && cd deploy && sudo docker compose up -d --build
 ```
 
+Se o `.env` foi criado antes da conexão garantida, acrescente o segredo do TURN uma vez:
+`echo "TURN_SECRET=$(openssl rand -hex 32)" >> .env`.
+
 As réplicas são trocadas e o Caddy só manda tráfego às que respondem em `/health/pronto`.
 
 ## 5. Backup
@@ -73,6 +79,10 @@ Guarde também o `deploy/.env` (sem ele, as sessões e as chamadas param de vale
   (troque só `ConnectionStrings__Database`).
 - **Chamadas em grupo**: o LiveKit já usa o Redis; para mais salas simultâneas, suba outro nó do
   LiveKit em outra máquina apontando para o mesmo Redis.
+- **Conexão garantida**: só as chamadas 1:1 que não fecham direto passam pelo coturn (cada uma
+  usa a banda do vídeo nos dois sentidos). A cota total é de 1.200 alocações e 10 Mbit/s por
+  sessão (`total-quota`, `max-bps` no `docker-compose.yml`); para mais, suba outro coturn com o
+  mesmo `TURN_SECRET` em outra máquina e acrescente o endereço dele em `Ice__TurnUrls`.
 - **Vários servidores**: a API pode rodar em mais de uma máquina atrás de um balanceador, todas
   com o mesmo `.env` (mesmo banco, mesmo Redis, mesma chave JWT).
 

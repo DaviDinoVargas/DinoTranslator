@@ -1,8 +1,8 @@
 # Versão Plus num servidor (VPS Linux com Docker). Passo a passo em docs/DEPLOY.md.
 #   cd deploy && sh gerar-env.sh && docker compose up -d --build
 #
-# Só o Caddy (HTTPS automático) e as portas de mídia do LiveKit ficam abertos para a internet;
-# banco e Redis ficam na rede interna, com senha. A API roda em várias réplicas sem estado.
+# Só o Caddy (HTTPS automático), as portas de mídia do LiveKit e o TURN (coturn) ficam abertos para
+# a internet; banco e Redis ficam na rede interna, com senha. A API roda em várias réplicas sem estado.
 
 name: dinotranslator
 
@@ -16,6 +16,10 @@ x-api-ambiente: &api-ambiente
   LiveKit__Url: "wss://${DOMINIO_MIDIA:?}"
   LiveKit__ApiKey: "${LIVEKIT_API_KEY:?}"
   LiveKit__ApiSecret: "${LIVEKIT_API_SECRET:?}"
+  # Conexão garantida (Plus): a API assina credenciais temporárias do coturn abaixo.
+  Ice__TurnUrls__0: "turn:${DOMINIO_API:?}:3478?transport=udp"
+  Ice__TurnUrls__1: "turn:${DOMINIO_API:?}:3478?transport=tcp"
+  Ice__TurnSecret: "${TURN_SECRET:?}"
 
 services:
   caddy:
@@ -115,6 +119,67 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+
+  # Conexão garantida (Plus): retransmissão TURN da chamada 1:1 quando a ligação direta não fecha
+  # (CGNAT dos dois lados, firewall). Só contas Plus/Pro recebem credencial, válida por 12 h: a API
+  # assina com o TURN_SECRET e o coturn confere sozinho, sem banco. Ele só repassa pacotes já
+  # cifrados de ponta a ponta (DTLS-SRTP). Rede do host: a faixa de portas de relay fica direto na
+  # máquina, sem milhares de regras de NAT do Docker; por isso ele não alcança a rede interna
+  # (denied-peer-ip). As chamadas em grupo não precisam dele: o LiveKit já é um servidor público.
+  coturn:
+    image: coturn/coturn:4.18.0-alpine
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      # Vazio: o contêiner descobre o IP público sozinho. Atrás de NAT 1:1 (AWS, GCP), informe-o.
+      REAL_EXTERNAL_IP: "${TURN_IP_EXTERNO:-}"
+    configs:
+      - source: coturn
+        target: /etc/coturn/turnserver.conf
+
+configs:
+  coturn:
+    content: |
+      listening-port=3478
+      min-port=49160
+      max-port=49999
+      no-tls
+      fingerprint
+      use-auth-secret
+      static-auth-secret=${TURN_SECRET:?}
+      realm=${DOMINIO_API:?}
+      # Só retransmissão: o STUN público o app já tem (e STUN aberto serve para ataques de reflexão).
+      no-stun
+      no-tcp-relay
+      no-multicast-peers
+      no-software-attribute
+      # Cotas: alocações por credencial e no total; banda por sessão em bytes/s (10 Mbit/s).
+      user-quota=12
+      total-quota=1200
+      max-bps=1250000
+      # Nada de redes internas, da máquina ou reservadas (inclui a rede do Docker, 172.30.0.0/24).
+      denied-peer-ip=0.0.0.0-0.255.255.255
+      denied-peer-ip=10.0.0.0-10.255.255.255
+      denied-peer-ip=100.64.0.0-100.127.255.255
+      denied-peer-ip=127.0.0.0-127.255.255.255
+      denied-peer-ip=169.254.0.0-169.254.255.255
+      denied-peer-ip=172.16.0.0-172.31.255.255
+      denied-peer-ip=192.0.0.0-192.0.0.255
+      denied-peer-ip=192.0.2.0-192.0.2.255
+      denied-peer-ip=192.88.99.0-192.88.99.255
+      denied-peer-ip=192.168.0.0-192.168.255.255
+      denied-peer-ip=198.18.0.0-198.19.255.255
+      denied-peer-ip=198.51.100.0-198.51.100.255
+      denied-peer-ip=203.0.113.0-203.0.113.255
+      denied-peer-ip=240.0.0.0-255.255.255.255
+      denied-peer-ip=::1
+      denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255
+      denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff
+      denied-peer-ip=100::-100::ffff:ffff:ffff:ffff
+      denied-peer-ip=2001::-2001:1ff:ffff:ffff:ffff:ffff:ffff:ffff
+      denied-peer-ip=2002::-2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+      denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+      denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 
 networks:
   default:

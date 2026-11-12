@@ -84,8 +84,12 @@ public sealed class CallSession(
     RendezvousRelay relay,
     IUiDispatcher ui,
     TimeProvider time,
-    EngineChoiceStore? engineChoices = null) : IAsyncDisposable
+    EngineChoiceStore? engineChoices = null,
+    Plus.IRelayProvider? plusRelay = null) : IAsyncDisposable
 {
+    /// <summary>Quanto a chamada espera pela retransmissão da conta Plus antes de seguir sem ela.</summary>
+    private static readonly TimeSpan PlusRelayWait = TimeSpan.FromSeconds(3);
+
     /// <summary>Intervalo mínimo entre legendas provisórias enviadas ao outro lado; finais vão sempre.</summary>
     private static readonly TimeSpan PartialCaptionInterval = TimeSpan.FromMilliseconds(150);
 
@@ -486,6 +490,9 @@ public sealed class CallSession(
     /// </summary>
     public CallAudio Audio { get; private set; } = CallAudio.Default;
 
+    /// <summary>Esta chamada tem a retransmissão da conta Plus de reserva.</summary>
+    public bool PlusRelayActive { get; private set; }
+
     public async Task SetVolumeAsync(AudioSource source, int percent)
     {
         percent = Math.Clamp(percent, 0, 100);
@@ -702,7 +709,7 @@ public sealed class CallSession(
         {
             "host" => "rede local",
             "srflx" or "prflx" => "direta",
-            "relay" => "retransmitida",
+            "relay" => PlusRelayActive ? "garantida (Plus)" : "retransmitida",
             _ => null,
         };
         titleBar.SetStatus(RoundTripMs is { } rtt ? $"ping {rtt} ms" : null);
@@ -833,8 +840,29 @@ public sealed class CallSession(
     {
         _module ??= await js.InvokeAsync<IJSObjectReference>("import", "./js/call.js");
         _self ??= DotNetObjectReference.Create(this);
-        await _module.InvokeVoidAsync("create", _self, polite, RelayFor(connectionSettings.Current));
+        await _module.InvokeVoidAsync("create", _self, polite, await RelayAsync());
         return _module;
+    }
+
+    /// <summary>
+    /// A retransmissão configurada à mão vale primeiro; senão, a da conta Plus (conexão garantida),
+    /// se houver. Sem nenhuma, a chamada tenta só a conexão direta.
+    /// </summary>
+    private async Task<object?> RelayAsync()
+    {
+        PlusRelayActive = false;
+        if (RelayFor(connectionSettings.Current) is { } configured)
+        {
+            return configured;
+        }
+        if (plusRelay is null)
+        {
+            return null;
+        }
+        using var timeout = new CancellationTokenSource(PlusRelayWait);
+        var relay = await plusRelay.RelayAsync(timeout.Token);
+        PlusRelayActive = relay is { Count: > 0 };
+        return relay;
     }
 
     /// <summary>Liga a tradução quando este computador foi escolhido e a mídia já começou.</summary>
@@ -1150,6 +1178,7 @@ public sealed class CallSession(
         SecurityCode = null;
         RoundTripMs = null;
         Route = null;
+        PlusRelayActive = false;
         Problem = null;
         SharingScreen = false;
         RemoteScreen = false;

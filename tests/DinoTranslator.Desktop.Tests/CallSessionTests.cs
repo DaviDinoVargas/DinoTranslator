@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using DinoTranslator.Desktop.Services;
+using DinoTranslator.Desktop.Services.Plus;
 using DinoTranslator.Desktop.Services.Translation;
 using DinoTranslator.Desktop.Services.Translation.Local;
 using DinoTranslator.Shared;
@@ -133,24 +134,84 @@ public sealed class CallSessionTests : IDisposable
         Assert.Equal(CallStage.WaitingAnswer, host.Stage);
     }
 
-    private (CallSession Session, FakeModule Module) Session(Profile profile, bool relay = true)
+    [Fact]
+    public async Task Conexao_garantida_da_conta_plus_entra_na_chamada()
+    {
+        var plus = new FakePlusRelay([new RtcIceServer(["turn:turn.exemplo:3478?transport=udp"], "1700000000:abc", "c2VncmVkbw==")]);
+        var (host, module) = Session(Dino, plusRelay: plus);
+
+        await host.CreateInviteAsync();
+        host.OnStats(40, "relay");
+
+        var relay = Assert.IsAssignableFrom<IReadOnlyList<RtcIceServer>>(module.Args["create"]![2]);
+        Assert.Equal("turn:turn.exemplo:3478?transport=udp", Assert.Single(Assert.Single(relay).Urls));
+        Assert.True(host.PlusRelayActive);
+        Assert.Equal("garantida (Plus)", host.Route);
+    }
+
+    [Fact]
+    public async Task Retransmissao_configurada_vale_antes_da_conta_plus()
+    {
+        var plus = new FakePlusRelay([new RtcIceServer(["turn:turn.exemplo:3478"], "1700000000:abc", "c2VncmVkbw==")]);
+        var (host, module) = Session(Dino, plusRelay: plus, connection: new ConnectionSettings("turn:meu.exemplo:3478", "eu", "senha"));
+
+        await host.CreateInviteAsync();
+        host.OnStats(40, "relay");
+
+        Assert.Equal(0, plus.Calls);
+        Assert.Contains("turn:meu.exemplo:3478", module.Args["create"]![2]!.ToString());
+        Assert.False(host.PlusRelayActive);
+        Assert.Equal("retransmitida", host.Route);
+    }
+
+    [Fact]
+    public async Task Sem_conta_plus_a_chamada_segue_so_com_a_ligacao_direta()
+    {
+        var (host, module) = Session(Dino, plusRelay: new FakePlusRelay(null));
+
+        await host.CreateInviteAsync();
+
+        Assert.Null(module.Args["create"]![2]);
+        Assert.False(host.PlusRelayActive);
+    }
+
+    private (CallSession Session, FakeModule Module) Session(
+        Profile profile, bool relay = true, IRelayProvider? plusRelay = null, ConnectionSettings? connection = null)
     {
         var folder = Path.Combine(_folder, profile.Name);
         Directory.CreateDirectory(folder);
         var profiles = new ProfileStore(Path.Combine(folder, "perfil.json"));
         profiles.Save(profile);
+        var connectionStore = new ConnectionSettingsStore(Path.Combine(folder, "conexao.dat"));
+        if (connection is not null)
+        {
+            connectionStore.Save(connection);
+        }
         var module = new FakeModule();
         var session = new CallSession(
             new FakeJs(module),
             profiles,
             new TitleBarState(),
             new TranslationSettingsStore(Path.Combine(folder, "motores.dat")),
-            new ConnectionSettingsStore(Path.Combine(folder, "conexao.dat")),
+            connectionStore,
             new SpeechEngineFactory(new ModelFolder(Path.Combine(folder, "modelos"))),
             new RendezvousRelay(new HttpClient(_relay), relay ? new Uri("https://encontro.exemplo/") : null),
             new ImmediateDispatcher(),
-            _time);
+            _time,
+            plusRelay: plusRelay);
         return (session, module);
+    }
+
+    /// <summary>Retransmissão da conta Plus simulada.</summary>
+    private sealed class FakePlusRelay(IReadOnlyList<RtcIceServer>? servers) : IRelayProvider
+    {
+        public int Calls { get; private set; }
+
+        public Task<IReadOnlyList<RtcIceServer>?> RelayAsync(CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(servers);
+        }
     }
 
     private static async Task WaitUntil(Func<bool> condition)
@@ -185,9 +246,13 @@ public sealed class CallSessionTests : IDisposable
     {
         public List<string> Calls { get; } = [];
 
+        /// <summary>Argumentos da última chamada de cada função.</summary>
+        public Dictionary<string, object?[]?> Args { get; } = [];
+
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
         {
             Calls.Add(identifier);
+            Args[identifier] = args;
             object? result = identifier switch
             {
                 "createInvite" or "acceptInvite" or "localSdp" => CallCodesTests.Sdp,

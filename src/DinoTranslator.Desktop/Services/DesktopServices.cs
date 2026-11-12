@@ -44,6 +44,7 @@ public static class DesktopServices
         services.AddSingleton<Plus.PlusApi>();
         services.AddSingleton<Plus.MessageTranslator>();
         services.AddSingleton<Plus.PlusState>();
+        services.AddSingleton<Plus.IRelayProvider, Plus.PlusRelay>();
         // A chamada em grupo usa o WebView2 da janela: uma por janela, como a chamada por código.
         services.AddScoped<Plus.GroupCall>();
 
