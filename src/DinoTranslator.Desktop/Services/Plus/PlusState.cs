@@ -59,7 +59,9 @@ public sealed class PlusState : IAsyncDisposable
 
     public UserProfile? Me => _auth.CurrentUser;
 
-    public bool Plus => Me is { Plan: AccountPlan.Plus } me && (me.PlanExpiresAt is not { } until || until > _time.GetUtcNow());
+    public bool Plus => Me is { Plan: AccountPlan.Plus or AccountPlan.Pro } me && (me.PlanExpiresAt is not { } until || until > _time.GetUtcNow());
+
+    public bool Pro => Plus && Me is { Plan: AccountPlan.Pro };
 
     public bool Connected => _hub?.State == HubConnectionState.Connected;
 
@@ -342,6 +344,40 @@ public sealed class PlusState : IAsyncDisposable
         return edited.Error;
     }
 
+    /// <summary>Põe ou tira a própria reação.</summary>
+    public async Task<string?> ToggleReactionAsync(MessageInfo message, string emoji)
+    {
+        var mine = Me is { } me && message.Reactions?.FirstOrDefault(r => r.Emoji == emoji)?.Users.Contains(me.Id) == true;
+        var result = await _api.ReactAsync(message.Id, emoji, add: !mine);
+        if (result.Value is { } reactions)
+        {
+            SetReactions(message.ChannelId, message.Id, reactions);
+        }
+        return result.Error;
+    }
+
+    public async Task<string?> PinAsync(MessageInfo message, bool pin)
+    {
+        var result = await _api.PinAsync(message.Id, pin);
+        if (result.Value is { } updated)
+        {
+            Upsert(updated);
+        }
+        return result.Error;
+    }
+
+    public Task<ApiResult<List<MessageInfo>>> PinsAsync(Guid channelId) => _api.PinsAsync(channelId);
+
+    public Task<ApiResult<List<SearchResult>>> SearchAsync(string query, Guid? channelId, Guid? groupId) => _api.SearchAsync(query, channelId, groupId);
+
+    /// <summary>Pode fixar: numa conversa direta, qualquer das duas pessoas; num grupo, administradores.</summary>
+    public bool CanPin(Guid channelId) =>
+        DirectFor(channelId) is not null
+        || (SelectedGroup is { } group && Details(group) is { } details && details.Group.MyRole >= GroupRole.Admin);
+
+    /// <summary>A mensagem menciona a própria pessoa.</summary>
+    public bool MentionsMe(MessageInfo message) => Me is { } me && message.Mentions?.Contains(me.Id) == true;
+
     public async Task<string?> DeleteAsync(MessageInfo message)
     {
         var deleted = await _api.DeleteMessageAsync(message.Id);
@@ -449,6 +485,7 @@ public sealed class PlusState : IAsyncDisposable
         });
         hub.On<MessageInfo>(nameof(IAppClient.MessageEdited), Upsert);
         hub.On<Guid, long>(nameof(IAppClient.MessageDeleted), MarkDeleted);
+        hub.On<Guid, long, IReadOnlyList<ReactionInfo>>(nameof(IAppClient.ReactionsChanged), SetReactions);
         hub.On<Guid, Guid>(nameof(IAppClient.Typing), (channelId, userId) =>
         {
             lock (_lock)
@@ -518,6 +555,20 @@ public sealed class PlusState : IAsyncDisposable
         Notify();
     }
 
+    private void SetReactions(Guid channelId, long messageId, IReadOnlyList<ReactionInfo> reactions)
+    {
+        lock (_lock)
+        {
+            var messages = Messages(channelId);
+            var index = messages.Items.FindIndex(m => m.Id == messageId);
+            if (index >= 0)
+            {
+                messages.Items[index] = messages.Items[index] with { Reactions = reactions };
+            }
+        }
+        Notify();
+    }
+
     private void MarkDeleted(Guid channelId, long messageId)
     {
         lock (_lock)
@@ -526,7 +577,7 @@ public sealed class PlusState : IAsyncDisposable
             var index = messages.Items.FindIndex(m => m.Id == messageId);
             if (index >= 0)
             {
-                messages.Items[index] = messages.Items[index] with { Content = string.Empty, Deleted = true };
+                messages.Items[index] = messages.Items[index] with { Content = string.Empty, Deleted = true, Reactions = [], Pinned = false };
             }
         }
         Notify();

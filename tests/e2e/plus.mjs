@@ -113,6 +113,21 @@ try {
   await waitFor(b, type("Escrever mensagem", "Привет, Дино!"), "escrever (B)");
   await waitFor(b, submit("Escrever mensagem"), "enviar (B)");
   result.chat_em_a = await waitFor(a, `(() => { const m = ${messages}.find(m => m.original?.includes('Привет')); return m?.texto?.startsWith('[pt-BR]') ? m : null; })()`, "resposta traduzida (A)", 20000);
+  // Reação (Anna → mensagem do Dino), resposta com citação e menção (Dino → Anna), fixar e busca.
+  const onMessage = (contains, selector) => `(() => { const m = [...document.querySelectorAll('.chat-message')].find(m => m.textContent.includes(${JSON.stringify(contains)})); const b = m?.querySelector(${JSON.stringify(selector)}); if (!b) return false; b.click(); return true; })()`;
+  await waitFor(b, onMessage("Oi, Anna", 'button[aria-label="Reagir à mensagem"]'), "abrir reações (B)");
+  await waitFor(b, onMessage("Oi, Anna", 'button[aria-label="Reagir com 👍"]'), "reagir 👍 (B)");
+  result.reacao_em_a = await waitFor(a, `(() => { const m = [...document.querySelectorAll('.chat-message')].find(m => m.textContent.includes('Oi, Anna')); const r = m?.querySelector('.reaction'); return r ? r.textContent.replace(/\\s+/g, ' ').trim() : null; })()`, "reação vista (A)", 15000);
+  await waitFor(a, onMessage("Привет", 'button[aria-label="Responder à mensagem"]'), "responder (A)");
+  await waitFor(a, type("Escrever mensagem", "Que bom, @anna! Vamos marcar."), "escrever resposta (A)");
+  await waitFor(a, submit("Escrever mensagem"), "enviar resposta (A)");
+  result.resposta_em_b = await waitFor(b, `(() => { const m = [...document.querySelectorAll('.chat-message--mention')].find(m => m.textContent.includes('Vamos marcar')); const q = m?.querySelector('.chat-message__quote'); return q ? q.textContent.trim() : null; })()`, "resposta com citação e menção (B)", 15000);
+  await waitFor(a, onMessage("Vamos marcar", 'button[aria-label="Fixar a mensagem"]'), "fixar (A)");
+  result.fixada_em_b = await waitFor(b, `(() => { const m = [...document.querySelectorAll('.chat-message--pinned')].find(m => m.textContent.includes('Vamos marcar')); return m ? 'fixada' : null; })()`, "fixada vista (B)", 15000);
+  await waitFor(b, type("Buscar mensagens", "marcar"), "buscar (B)");
+  await waitFor(b, submit("Buscar mensagens"), "enviar busca (B)");
+  result.busca_b = await waitFor(b, `(() => { const p = document.querySelector('.chat__panel[aria-label="Resultado da busca"]'); return p && p.querySelectorAll('.chat-message').length === 1 ? p.querySelector('.chat__panel-title').textContent.trim() : null; })()`, "resultado da busca (B)", 15000);
+
   if (process.env.E2E_SHOTS) {
     await a.screenshot(`${process.env.E2E_SHOTS}-plus-grupo-dino.png`);
     await b.screenshot(`${process.env.E2E_SHOTS}-plus-grupo-anna.png`);

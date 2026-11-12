@@ -5,15 +5,65 @@
 @inject IJSRuntime Js
 
 @* Um canal de texto ou uma conversa direta. Cada mensagem aparece no idioma de quem lê
-   (traduzida neste computador), com o original embaixo. *@
+   (traduzida neste computador), com o original embaixo; reações, respostas citando, menções em
+   destaque, mensagens fixadas e busca. *@
 <div class="chat" data-canal="@Channel.Id">
   <header class="chat__head">
     <p class="chat__title">@Title</p>
-    @if (!State.Translator.Available)
-    {
-      <p class="chat__note"><Icon Name="info" />@(State.Translator.Problem ?? "Sem tradução neste computador.") As mensagens aparecem no original.</p>
-    }
+    <form class="chat__search" @onsubmit="SearchAsync" role="search">
+      <input class="field__input" @bind="_query" placeholder="Buscar" aria-label="Buscar mensagens" maxlength="@SocialLimits.MaxSearchLength" />
+    </form>
+    <button type="button" class="icon-button @(_pins is not null ? "icon-button--on" : "")" title="Mensagens fixadas" aria-label="Mensagens fixadas"
+            aria-pressed="@(_pins is not null ? "true" : "false")" @onclick="TogglePinsAsync"><Icon Name="fixar" /></button>
   </header>
+  @if (!State.Translator.Available)
+  {
+    <p class="chat__note chat__note--bar"><Icon Name="info" />@(State.Translator.Problem ?? "Sem tradução neste computador.") As mensagens aparecem no original.</p>
+  }
+
+  @if (_results is not null)
+  {
+    <div class="chat__panel" aria-label="Resultado da busca">
+      <p class="chat__panel-title">
+        @(_results.Count == 0 ? "Nada encontrado" : $"{_results.Count} resultado(s)") para “@_searched”
+        <button type="button" class="icon-button" aria-label="Fechar a busca" @onclick="() => _results = null"><Icon Name="fechar" /></button>
+      </p>
+      <ol class="chat__list chat__list--panel">
+        @foreach (var result in _results)
+        {
+          <li class="chat-message chat-message--result">
+            <Avatar Name="@result.Message.Author.DisplayName" Class="avatar--small" />
+            <div class="chat-message__body">
+              <p class="chat-message__meta"><span class="chat-message__author">@result.Message.Author.DisplayName</span> <span>@result.ChannelName</span>
+                <time>@result.Message.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</time></p>
+              <p class="chat-message__text">@TextFor(result.Message)</p>
+            </div>
+          </li>
+        }
+      </ol>
+    </div>
+  }
+  else if (_pins is not null)
+  {
+    <div class="chat__panel" aria-label="Mensagens fixadas">
+      <p class="chat__panel-title">
+        @(_pins.Count == 0 ? "Nenhuma mensagem fixada" : $"{_pins.Count} fixada(s)")
+        <button type="button" class="icon-button" aria-label="Fechar as fixadas" @onclick="() => _pins = null"><Icon Name="fechar" /></button>
+      </p>
+      <ol class="chat__list chat__list--panel">
+        @foreach (var pinned in _pins)
+        {
+          <li class="chat-message chat-message--result">
+            <Avatar Name="@pinned.Author.DisplayName" Class="avatar--small" />
+            <div class="chat-message__body">
+              <p class="chat-message__meta"><span class="chat-message__author">@pinned.Author.DisplayName</span> <time>@pinned.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</time></p>
+              <p class="chat-message__text">@TextFor(pinned)</p>
+            </div>
+          </li>
+        }
+      </ol>
+    </div>
+  }
 
   <ol class="chat__list" @ref="_list" aria-live="polite">
     @if (Messages.HasMore && Messages.Loaded)
@@ -25,15 +75,23 @@
       var mine = message.Author.Id == State.Me?.Id;
       var translated = mine || message.Deleted ? null : State.Translator.Get(message.Id, message.EditedAt, message.Content, message.Language, MyLanguage);
       var pending = !mine && !message.Deleted && translated is null && message.Language != MyLanguage && State.Translator.Available;
-      <li class="chat-message @(mine ? "chat-message--mine" : "")" data-id="@message.Id">
+      <li class="chat-message @(mine ? "chat-message--mine" : "") @(State.MentionsMe(message) ? "chat-message--mention" : "") @(message.Pinned ? "chat-message--pinned" : "")" data-id="@message.Id">
         <Avatar Name="@message.Author.DisplayName" Mine="mine" Class="avatar--small" />
         <div class="chat-message__body">
+          @if (message.Reply is { } quote)
+          {
+            <p class="chat-message__quote"><span class="chat-message__quote-author">@quote.AuthorName</span> @(quote.Deleted ? "mensagem apagada" : QuoteText(quote))</p>
+          }
           <p class="chat-message__meta">
             <span class="chat-message__author">@message.Author.DisplayName</span>
             <time>@message.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")</time>
             @if (message.EditedAt is not null && !message.Deleted)
             {
               <span>· editada</span>
+            }
+            @if (message.Pinned)
+            {
+              <span class="chat-message__pin"><Icon Name="fixar" Class="icon--inline" />fixada</span>
             }
           </p>
           @if (message.Deleted)
@@ -60,19 +118,51 @@
               <p class="chat-message__original">traduzindo…</p>
             }
           }
+          @if (message.Reactions is { Count: > 0 } reactions)
+          {
+            <div class="reactions" role="group" aria-label="Reações">
+              @foreach (var reaction in reactions)
+              {
+                var reacted = State.Me is { } me && reaction.Users.Contains(me.Id);
+                <button type="button" class="reaction @(reacted ? "reaction--mine" : "")" aria-pressed="@(reacted ? "true" : "false")"
+                        aria-label="@($"{reaction.Emoji} {reaction.Users.Count}")" title="@Names(reaction.Users)" @onclick="() => ReactAsync(message, reaction.Emoji)">
+                  @reaction.Emoji <span>@reaction.Users.Count</span>
+                </button>
+              }
+            </div>
+          }
+          @if (_reacting == message.Id)
+          {
+            <div class="reactions reactions--picker" role="group" aria-label="Escolher reação">
+              @foreach (var emoji in SocialLimits.Reactions)
+              {
+                <button type="button" class="reaction" aria-label="@($"Reagir com {emoji}")" @onclick="() => ReactAsync(message, emoji)">@emoji</button>
+              }
+            </div>
+          }
         </div>
-        @if (mine && !message.Deleted && _editing != message.Id)
+        @if (!message.Deleted && _editing != message.Id)
         {
           <div class="chat-message__actions">
-            <button type="button" class="icon-button" title="Editar" aria-label="Editar a mensagem" @onclick="() => StartEdit(message)"><Icon Name="editar" /></button>
-            <button type="button" class="icon-button" title="Apagar" aria-label="Apagar a mensagem" @onclick="() => DeleteAsync(message)"><Icon Name="lixeira" /></button>
+            <button type="button" class="icon-button" title="Reagir" aria-label="Reagir à mensagem" @onclick="() => _reacting = _reacting == message.Id ? null : message.Id"><Icon Name="reagir" /></button>
+            <button type="button" class="icon-button" title="Responder" aria-label="Responder à mensagem" @onclick="() => _replyTo = message"><Icon Name="responder" /></button>
+            @if (State.CanPin(Channel.Id))
+            {
+              <button type="button" class="icon-button" title="@(message.Pinned ? "Soltar" : "Fixar")" aria-label="@(message.Pinned ? "Soltar a mensagem" : "Fixar a mensagem")"
+                      @onclick="() => PinAsync(message)"><Icon Name="fixar" /></button>
+            }
+            @if (mine)
+            {
+              <button type="button" class="icon-button" title="Editar" aria-label="Editar a mensagem" @onclick="() => StartEdit(message)"><Icon Name="editar" /></button>
+              <button type="button" class="icon-button" title="Apagar" aria-label="Apagar a mensagem" @onclick="() => DeleteAsync(message)"><Icon Name="lixeira" /></button>
+            }
           </div>
         }
       </li>
     }
     @if (Messages.Loaded && Messages.Items.Count == 0)
     {
-      <li class="plus__empty">Nenhuma mensagem ainda. Escreva no seu idioma: cada pessoa lê no dela.</li>
+      <li class="plus__empty">Nenhuma mensagem ainda. Escreva no seu idioma: cada pessoa lê no dela. Use @@usuário para chamar alguém.</li>
     }
   </ol>
 
@@ -83,6 +173,13 @@
   @if (_error is not null)
   {
     <p class="login__error" role="alert"><Icon Name="alerta" />@_error</p>
+  }
+  @if (_replyTo is { } replying)
+  {
+    <div class="chat__replying">
+      <Icon Name="responder" Class="icon--inline" />Respondendo a <strong>@replying.Author.DisplayName</strong>: <span>@Shorten(TextFor(replying))</span>
+      <button type="button" class="icon-button" aria-label="Cancelar a resposta" @onclick="() => _replyTo = null"><Icon Name="fechar" /></button>
+    </div>
   }
   <form class="composer chat__composer" @onsubmit="SendAsync">
     <input class="composer__input" type="text" @bind="_draft" @bind:event="oninput" @bind:after="TypedAsync" maxlength="@SocialLimits.MaxMessageLength"
@@ -97,7 +194,13 @@
     private ElementReference _list;
     private string _draft = "";
     private string _editText = "";
+    private string _query = "";
+    private string _searched = "";
     private long? _editing;
+    private long? _reacting;
+    private MessageInfo? _replyTo;
+    private List<SearchResult>? _results;
+    private List<MessageInfo>? _pins;
     private bool _sending;
     private string? _error;
     private long _lastShown;
@@ -117,6 +220,21 @@
     private static string LanguageName(string code) => Languages.IsSupported(code) ? Languages.Get(code).NativeName : code;
 
     private static string LanguageTag(string code) => $"[{code}]";
+
+    private static string Shorten(string text) => text.Length <= 120 ? text : text[..120] + "…";
+
+    /// <summary>O texto no idioma de quem lê, se a tradução já estiver pronta; senão, o original.</summary>
+    private string TextFor(MessageInfo message) =>
+        message.Deleted ? "Mensagem apagada." :
+        message.Author.Id == State.Me?.Id ? message.Content :
+        State.Translator.Get(message.Id, message.EditedAt, message.Content, message.Language, MyLanguage) ?? message.Content;
+
+    // A citação é traduzida como uma mensagem à parte (id negativo, para não misturar com a original no cache).
+    private string QuoteText(MessageQuote quote) =>
+        State.Translator.Get(-quote.Id, null, quote.Content, quote.Language, MyLanguage) ?? quote.Content;
+
+    private string Names(IReadOnlyList<Guid> users) =>
+        string.Join(", ", users.Select(id => id == State.Me?.Id ? "você" : State.FindUser(id)?.DisplayName ?? "alguém"));
 
     protected override void OnInitialized() => State.Changed += OnChanged;
 
@@ -143,12 +261,61 @@
             return;
         }
         _sending = true;
-        _error = await State.SendAsync(Channel.Id, text);
+        _error = await State.SendAsync(Channel.Id, text, _replyTo?.Id);
         if (_error is null)
         {
             _draft = "";
+            _replyTo = null;
         }
         _sending = false;
+    }
+
+    private async Task ReactAsync(MessageInfo message, string emoji)
+    {
+        _reacting = null;
+        // A versão mais nova da mensagem (as reações podem ter mudado desde o desenho).
+        var current = Messages.Items.FirstOrDefault(m => m.Id == message.Id) ?? message;
+        _error = await State.ToggleReactionAsync(current, emoji);
+    }
+
+    private async Task PinAsync(MessageInfo message)
+    {
+        _error = await State.PinAsync(message, !message.Pinned);
+        if (_error is null && _pins is not null)
+        {
+            _pins = (await State.PinsAsync(Channel.Id)).Value ?? _pins;
+        }
+    }
+
+    private async Task TogglePinsAsync()
+    {
+        if (_pins is not null)
+        {
+            _pins = null;
+            return;
+        }
+        _results = null;
+        var pins = await State.PinsAsync(Channel.Id);
+        _pins = pins.Value;
+        _error = pins.Error;
+    }
+
+    private async Task SearchAsync()
+    {
+        var query = _query.Trim();
+        if (query.Length < SocialLimits.MinSearchLength)
+        {
+            _results = null;
+            return;
+        }
+        _pins = null;
+        // Num grupo, busca em todos os canais dele; na conversa direta, só nela.
+        var found = Channel.GroupId is { } group
+            ? await State.SearchAsync(query, null, group)
+            : await State.SearchAsync(query, Channel.Id, null);
+        _searched = query;
+        _results = found.Value ?? [];
+        _error = found.Error;
     }
 
     private void StartEdit(MessageInfo message)

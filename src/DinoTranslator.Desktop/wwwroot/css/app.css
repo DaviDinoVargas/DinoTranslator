@@ -3323,6 +3323,133 @@ h2.handshake__step {
   right: 16px;
 }
 
+/* Chat da versão Plus: busca, fixadas, reações, citação da resposta e menção. */
+.chat__search {
+  margin-left: auto;
+}
+
+.chat__search .field__input {
+  width: 180px;
+  height: 32px;
+  font-size: 13px;
+}
+
+.icon-button--on {
+  background: var(--azul-fundo);
+  color: var(--azul-claro);
+}
+
+.chat__note--bar {
+  padding: 6px 18px;
+  border-bottom: 1px solid var(--separador);
+}
+
+.chat__panel {
+  display: flex;
+  max-height: 45%;
+  flex-direction: column;
+  border-bottom: 1px solid var(--separador);
+  background: rgba(10, 132, 255, .06);
+}
+
+.chat__panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 18px 0;
+  color: var(--texto-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chat__list--panel {
+  flex: 0 1 auto;
+}
+
+.chat-message--mention {
+  border-left: 3px solid var(--amarelo);
+  background: rgba(255, 214, 10, .07);
+}
+
+.chat-message--pinned .chat-message__pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--laranja);
+}
+
+.chat-message__quote {
+  overflow: hidden;
+  padding-left: 10px;
+  border-left: 2px solid var(--texto-3);
+  color: var(--texto-2);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-message__quote-author {
+  font-weight: 700;
+}
+
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--vidro-borda);
+  border-radius: var(--pilula);
+  background: var(--vidro);
+  color: var(--texto);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.reaction span {
+  color: var(--texto-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.reaction--mine {
+  border-color: var(--azul);
+  background: var(--azul-fundo);
+}
+
+.reactions--picker {
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(20, 24, 40, .9);
+}
+
+.chat__replying {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 16px 6px;
+  padding: 6px 6px 6px 12px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--vidro);
+  color: var(--texto-2);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.chat__replying span {
+  overflow: hidden;
+  flex: 1;
+  text-overflow: ellipsis;
+}
+
 /* ---------- Modo servidor (opcional) ---------- */
 
 .login__mark {

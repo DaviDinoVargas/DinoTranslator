@@ -53,6 +53,18 @@ public sealed class PlusApi(PlusHttp plus, AuthClient auth)
 
     public Task<ApiResult<object>> DeleteMessageAsync(long messageId) => SendAsync<object>(HttpMethod.Delete, SocialRoutes.Message(messageId));
 
+    public Task<ApiResult<List<ReactionInfo>>> ReactAsync(long messageId, string emoji, bool add) =>
+        SendAsync<List<ReactionInfo>>(add ? HttpMethod.Put : HttpMethod.Delete, SocialRoutes.MessageReaction(messageId, emoji));
+
+    public Task<ApiResult<MessageInfo>> PinAsync(long messageId, bool pin) =>
+        SendAsync<MessageInfo>(pin ? HttpMethod.Put : HttpMethod.Delete, SocialRoutes.MessagePin(messageId));
+
+    public Task<ApiResult<List<MessageInfo>>> PinsAsync(Guid channelId) => SendAsync<List<MessageInfo>>(HttpMethod.Get, SocialRoutes.ChannelPins(channelId));
+
+    public Task<ApiResult<List<SearchResult>>> SearchAsync(string query, Guid? channelId = null, Guid? groupId = null) =>
+        SendAsync<List<SearchResult>>(HttpMethod.Get, SocialRoutes.Search + "?q=" + Uri.EscapeDataString(query)
+            + (channelId is { } c ? $"&canal={c}" : string.Empty) + (groupId is { } g ? $"&grupo={g}" : string.Empty));
+
     public Task<ApiResult<List<FriendInfo>>> FriendsAsync() => SendAsync<List<FriendInfo>>(HttpMethod.Get, SocialRoutes.Friends);
 
     public Task<ApiResult<FriendInfo>> AddFriendAsync(string userName) => SendAsync<FriendInfo>(HttpMethod.Post, SocialRoutes.Friends, new FriendRequest(userName));
