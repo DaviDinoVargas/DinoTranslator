@@ -113,6 +113,21 @@ try {
   await waitFor(b, type("Escrever mensagem", "Привет, Дино!"), "escrever (B)");
   await waitFor(b, submit("Escrever mensagem"), "enviar (B)");
   result.chat_em_a = await waitFor(a, `(() => { const m = ${messages}.find(m => m.original?.includes('Привет')); return m?.texto?.startsWith('[pt-BR]') ? m : null; })()`, "resposta traduzida (A)", 20000);
+  // Glossário do grupo: o Dino (dono) dá uma tradução fixa para o russo; a Anna lê com ela.
+  await waitFor(a, click("Glossário do grupo"), "abrir glossário do grupo (A)");
+  await waitFor(a, type("Termo do glossário", "Pão de Açúcar"), "termo (A)");
+  await waitFor(a, type("Tradução do termo", "Сахарная Голова"), "tradução (A)");
+  await waitFor(a, type("Idioma da tradução", "ru-RU"), "idioma (A)");
+  await waitFor(a, submit("Termo do glossário"), "adicionar termo (A)");
+  await waitFor(a, click("Salvar", ".plus-dialog"), "salvar glossário (A)");
+  result.glossario_salvo = await waitFor(a, text(".glossary__saved"), "glossário salvo (A)", 10000);
+  if (process.env.E2E_SHOTS) {
+    await a.screenshot(`${process.env.E2E_SHOTS}-plus-glossario-dino.png`);
+  }
+  await waitFor(a, click("Fechar", ".plus-dialog"), "fechar glossário (A)");
+  await waitFor(a, type("Escrever mensagem", "Vamos ao Pão de Açúcar amanhã?"), "escrever com termo (A)");
+  await waitFor(a, submit("Escrever mensagem"), "enviar com termo (A)");
+  result.glossario_em_b = await waitFor(b, `(() => { const m = ${messages}.find(m => m.original?.includes('Pão de Açúcar')); return m?.texto?.includes('Сахарная Голова') ? m.texto : null; })()`, "termo do glossário traduzido (B)", 20000);
   // Reação (Anna → mensagem do Dino), resposta com citação e menção (Dino → Anna), fixar e busca.
   const onMessage = (contains, selector) => `(() => { const m = [...document.querySelectorAll('.chat-message')].find(m => m.textContent.includes(${JSON.stringify(contains)})); const b = m?.querySelector(${JSON.stringify(selector)}); if (!b) return false; b.click(); return true; })()`;
   await waitFor(b, onMessage("Oi, Anna", 'button[aria-label="Reagir à mensagem"]'), "abrir reações (B)");

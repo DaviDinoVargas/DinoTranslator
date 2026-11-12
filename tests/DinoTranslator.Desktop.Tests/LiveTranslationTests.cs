@@ -2,6 +2,7 @@ using DinoTranslator.Desktop.Services;
 using DinoTranslator.Desktop.Services.Translation;
 using DinoTranslator.Shared;
 using DinoTranslator.Shared.Call;
+using DinoTranslator.Shared.Social;
 
 namespace DinoTranslator.Desktop.Tests;
 
@@ -44,7 +45,7 @@ public class LiveTranslationTests
         var engine = new FakeEngine();
         await using var translation = new LiveTranslation(engine, Dino, Anna, TimeProvider.System);
 
-        await translation.StartAsync(["Anna"], CancellationToken.None);
+        await translation.StartAsync(new Glossary([new GlossaryEntry("Anna")]), CancellationToken.None);
 
         Assert.Equal(
             [new SpeechStreamOptions(Languages.PortugueseBrazil, Languages.Russian, ["Anna"]),
@@ -58,7 +59,7 @@ public class LiveTranslationTests
     {
         var engine = new FakeEngine();
         await using var translation = new LiveTranslation(engine, Dino, Anna, TimeProvider.System);
-        await translation.StartAsync([], CancellationToken.None);
+        await translation.StartAsync(Glossary.Empty, CancellationToken.None);
 
         translation.WriteAudio("local", new byte[3200]);
         translation.WriteAudio("remote", new byte[100]);
@@ -75,7 +76,7 @@ public class LiveTranslationTests
         await using var translation = new LiveTranslation(engine, Dino, Anna, TimeProvider.System);
         var captions = new List<Caption>();
         translation.CaptionReady += captions.Add;
-        await translation.StartAsync([], CancellationToken.None);
+        await translation.StartAsync(Glossary.Empty, CancellationToken.None);
 
         engine.Streams[0].Stream.Emit(new SpeechUpdate(0, 0, "Oi, Anna", "Привет, Анна", Final: false));
         engine.Streams[1].Stream.Emit(new SpeechUpdate(3, 1, "Привет!", "Oi!", Final: true));
@@ -108,7 +109,7 @@ public class LiveTranslationTests
         await using var translation = new LiveTranslation(engine, spanish, Anna with { Language = Languages.Spanish }, TimeProvider.System);
         Caption? caption = null;
         translation.CaptionReady += c => caption = c;
-        await translation.StartAsync([], CancellationToken.None);
+        await translation.StartAsync(Glossary.Empty, CancellationToken.None);
 
         engine.Streams[0].Stream.Emit(new SpeechUpdate(0, 0, "Hola", "Hola", Final: true));
 
@@ -122,7 +123,7 @@ public class LiveTranslationTests
         await using var translation = new LiveTranslation(engine, Dino, Anna, TimeProvider.System);
         string? failure = null;
         translation.Failed += m => failure = m;
-        await translation.StartAsync([], CancellationToken.None);
+        await translation.StartAsync(Glossary.Empty, CancellationToken.None);
 
         engine.Streams[1].Stream.Fail("Sem conexão com o serviço.");
 
@@ -134,7 +135,7 @@ public class LiveTranslationTests
     {
         var engine = new FakeEngine();
         var translation = new LiveTranslation(engine, Dino, Anna, TimeProvider.System);
-        await translation.StartAsync([], CancellationToken.None);
+        await translation.StartAsync(Glossary.Empty, CancellationToken.None);
 
         await translation.DisposeAsync();
 
@@ -163,8 +164,8 @@ public class LiveTranslationTests
         var captions = new List<Caption>();
         first.CaptionReady += captions.Add;
         second.CaptionReady += captions.Add;
-        await first.StartAsync([], CancellationToken.None);
-        await second.StartAsync([], CancellationToken.None);
+        await first.StartAsync(Glossary.Empty, CancellationToken.None);
+        await second.StartAsync(Glossary.Empty, CancellationToken.None);
 
         engine.Streams[0].Stream.Emit(new SpeechUpdate(0, 0, "Oi", "Привет", Final: true));
         engine.Streams[2].Stream.Emit(new SpeechUpdate(0, 0, "Oi de novo", "Снова привет", Final: true));

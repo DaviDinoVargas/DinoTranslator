@@ -1,0 +1,145 @@
+@using DinoTranslator.Shared.Social
+
+@* Termos do glossário: nomes, marcas e jargão. Sem tradução, o termo fica como está em todos os
+   idiomas; com tradução, vale para o idioma escolhido. *@
+<div class="glossary">
+  @if (_entries.Count == 0)
+  {
+    <p class="glossary__empty">
+      Nenhum termo ainda. Nomes, marcas e jargão entram aqui: o reconhecimento de fala passa a acertá-los
+      e a tradução não mexe neles (ou usa a tradução que você der).
+    </p>
+  }
+  else
+  {
+    <ul class="glossary__list" aria-label="Termos do glossário">
+      @foreach (var entry in _entries)
+      {
+        <li class="glossary__item">
+          <span class="glossary__term">@entry.Term</span>
+          <span class="glossary__rule">@(entry.Translation is null ? "fica como está" : $"→ {entry.Translation} · {Languages.Get(entry.Language!).Tag}")</span>
+          @if (!ReadOnly)
+          {
+            <button type="button" class="icon-button" title="Tirar do glossário" aria-label="Tirar @entry.Term" @onclick="() => Remove(entry)"><Icon Name="fechar" /></button>
+          }
+        </li>
+      }
+    </ul>
+  }
+  @if (ReadOnly)
+  {
+    <p class="glossary__note"><Icon Name="info" Class="icon--inline" />Só administradores do grupo mudam este glossário.</p>
+  }
+  else
+  {
+    <form class="glossary__add" @onsubmit="Add">
+      <input class="field__input" @bind="_term" placeholder="Termo (ex.: Rosa, Kanban)" aria-label="Termo do glossário" maxlength="@GlossaryLimits.MaxTermLength" />
+      <input class="field__input" @bind="_translation" @bind:event="oninput" placeholder="Tradução (opcional)" aria-label="Tradução do termo" maxlength="@GlossaryLimits.MaxTermLength" />
+      <select class="field__input" @bind="_language" aria-label="Idioma da tradução" disabled="@string.IsNullOrWhiteSpace(_translation)">
+        @foreach (var language in Languages.All)
+        {
+          <option value="@language.Code">@language.NativeName</option>
+        }
+      </select>
+      <button type="submit" class="button" disabled="@string.IsNullOrWhiteSpace(_term)"><Icon Name="mais" />Adicionar</button>
+    </form>
+    <div class="form__actions">
+      <button type="button" class="button button--primary" disabled="@(!_dirty || _saving)" @onclick="SaveAsync">@(_saving ? "Salvando…" : "Salvar")</button>
+    </div>
+  }
+  @if (_error is not null)
+  {
+    <p class="login__error" role="alert"><Icon Name="alerta" />@_error</p>
+  }
+  else if (_saved)
+  {
+    <p class="glossary__saved" role="status"><Icon Name="ok" Class="icon--inline" />Glossário salvo. Vale para as próximas mensagens e chamadas.</p>
+  }
+</div>
+
+@code {
+    private IReadOnlyList<GlossaryEntry>? _source;
+    private List<GlossaryEntry> _entries = [];
+    private string _term = "";
+    private string _translation = "";
+    private string _language = Languages.English;
+    private string? _error;
+    private bool _dirty;
+    private bool _saving;
+    private bool _saved;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<GlossaryEntry> Entries { get; set; } = [];
+
+    [Parameter]
+    public bool ReadOnly { get; set; }
+
+    [Parameter]
+    public int Max { get; set; } = GlossaryLimits.MaxPersonal;
+
+    /// <summary>Grava a lista inteira; devolve a mensagem de erro, se houver.</summary>
+    [Parameter]
+    public Func<IReadOnlyList<GlossaryEntry>, Task<string?>>? OnSave { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        // Mudou no servidor (outro aparelho, outro administrador): mostra, se não houver edição pela metade.
+        if (!ReferenceEquals(_source, Entries) && !_dirty)
+        {
+            _source = Entries;
+            _entries = [.. Entries];
+        }
+    }
+
+    private void Add()
+    {
+        _error = null;
+        _saved = false;
+        var term = _term.Trim();
+        var translation = string.IsNullOrWhiteSpace(_translation) ? null : _translation.Trim();
+        var language = translation is null ? null : _language;
+        if (term.Length is 0 or > GlossaryLimits.MaxTermLength || translation is { Length: > GlossaryLimits.MaxTermLength })
+        {
+            _error = $"Termo e tradução com até {GlossaryLimits.MaxTermLength} caracteres.";
+            return;
+        }
+        if (_entries.Any(e => string.Equals(e.Term, term, StringComparison.OrdinalIgnoreCase) && e.Language == language))
+        {
+            _error = translation is null ? $"“{term}” já está no glossário." : $"“{term}” já tem tradução para este idioma.";
+            return;
+        }
+        if (_entries.Count >= Max)
+        {
+            _error = $"O glossário aceita até {Max} termos.";
+            return;
+        }
+        _entries.Add(new GlossaryEntry(term, translation, language));
+        _term = "";
+        _translation = "";
+        _dirty = true;
+    }
+
+    private void Remove(GlossaryEntry entry)
+    {
+        _entries.Remove(entry);
+        _dirty = true;
+        _saved = false;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (OnSave is null)
+        {
+            return;
+        }
+        _saving = true;
+        _error = await OnSave(_entries);
+        _saving = false;
+        if (_error is null)
+        {
+            _dirty = false;
+            _saved = true;
+        }
+    }
+}

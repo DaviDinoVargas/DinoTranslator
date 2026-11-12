@@ -95,7 +95,8 @@ public sealed class CallSession(
     IUiDispatcher ui,
     TimeProvider time,
     EngineChoiceStore? engineChoices = null,
-    Plus.IRelayProvider? plusRelay = null) : IAsyncDisposable
+    Plus.IRelayProvider? plusRelay = null,
+    IGlossarySource? glossaries = null) : IAsyncDisposable
 {
     /// <summary>Quanto a chamada espera pela retransmissão da conta Plus antes de seguir sem ela.</summary>
     private static readonly TimeSpan PlusRelayWait = TimeSpan.FromSeconds(3);
@@ -932,7 +933,8 @@ public sealed class CallSession(
         _translation = translation;
         try
         {
-            await translation.StartAsync([], CancellationToken.None);
+            // Glossário pessoal da conta Plus (se aberta): dica ao reconhecimento e termos na tradução.
+            await translation.StartAsync(glossaries?.Personal ?? Glossary.Empty, CancellationToken.None);
             await _module.InvokeVoidAsync("enableSpeechCapture", _self);
         }
         catch (Exception ex)

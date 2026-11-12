@@ -3,6 +3,7 @@
 @implements IDisposable
 @inject PlusState State
 @inject DirectCalls Calls
+@inject PlusGlossary Glossaries
 @inject IJSRuntime Js
 
 @* Um canal de texto ou uma conversa direta. Cada mensagem aparece no idioma de quem lê
@@ -79,7 +80,7 @@
     @foreach (var message in Messages.Items)
     {
       var mine = message.Author.Id == State.Me?.Id;
-      var translated = mine || message.Deleted ? null : State.Translator.Get(message.Id, message.EditedAt, message.Content, message.Language, MyLanguage);
+      var translated = mine || message.Deleted || Glossary is not { } glossary ? null : State.Translator.Get(message.Id, message.EditedAt, message.Content, message.Language, MyLanguage, glossary);
       var pending = !mine && !message.Deleted && translated is null && message.Language != MyLanguage && State.Translator.Available;
       <li class="chat-message @(mine ? "chat-message--mine" : "") @(State.MentionsMe(message) ? "chat-message--mention" : "") @(message.Pinned ? "chat-message--pinned" : "")" data-id="@message.Id">
         <Avatar Name="@message.Author.DisplayName" Mine="mine" Class="avatar--small" />
@@ -233,11 +234,14 @@
     private string TextFor(MessageInfo message) =>
         message.Deleted ? "Mensagem apagada." :
         message.Author.Id == State.Me?.Id ? message.Content :
-        State.Translator.Get(message.Id, message.EditedAt, message.Content, message.Language, MyLanguage) ?? message.Content;
+        (Glossary is { } glossary ? State.Translator.Get(message.Id, message.EditedAt, message.Content, message.Language, MyLanguage, glossary) : null) ?? message.Content;
 
     // A citação é traduzida como uma mensagem à parte (id negativo, para não misturar com a original no cache).
     private string QuoteText(MessageQuote quote) =>
-        State.Translator.Get(-quote.Id, null, quote.Content, quote.Language, MyLanguage) ?? quote.Content;
+        (Glossary is { } glossary ? State.Translator.Get(-quote.Id, null, quote.Content, quote.Language, MyLanguage, glossary) : null) ?? quote.Content;
+
+    /// <summary>O glossário desta conversa (o do grupo com o pessoal por cima); null enquanto carrega.</summary>
+    private DinoTranslator.Desktop.Services.Translation.Glossary? Glossary => Glossaries.For(Channel.GroupId);
 
     private string Names(IReadOnlyList<Guid> users) =>
         string.Join(", ", users.Select(id => id == State.Me?.Id ? "você" : State.FindUser(id)?.DisplayName ?? "alguém"));
@@ -246,6 +250,7 @@
     {
         State.Changed += OnChanged;
         Calls.Changed += OnChanged;
+        Glossaries.Changed += OnChanged;
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
@@ -349,5 +354,6 @@
     {
         State.Changed -= OnChanged;
         Calls.Changed -= OnChanged;
+        Glossaries.Changed -= OnChanged;
     }
 }

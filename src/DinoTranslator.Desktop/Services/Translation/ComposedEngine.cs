@@ -148,9 +148,12 @@ public sealed class ComposedSpeechTranslationEngine(SpeechEngineFactory parts, T
         {
             _recognition = recognition;
             _segmenter = new SpeechSegmenter(detector, choice.PauseMs);
-            var translate = translation is null
-                ? (Func<string, bool, CancellationToken, Task<string>>?)null
-                : (text, careful, token) => translation.TranslateAsync(text, options.SourceLanguage, options.TargetLanguage, careful, token);
+            Func<string, bool, CancellationToken, Task<string>>? translate = translation is null
+                ? null
+                : options.Glossary is { IsEmpty: false } glossary
+                    ? (text, careful, token) => glossary.TranslateAsync(text, options.TargetLanguage,
+                        part => translation.TranslateAsync(part, options.SourceLanguage, options.TargetLanguage, careful, token))
+                    : (text, careful, token) => translation.TranslateAsync(text, options.SourceLanguage, options.TargetLanguage, careful, token);
             _pipeline = new SpeechPipeline(
                 (segment, token) => recognition.TranscribeAsync(segment.Samples, segment.Final, token),
                 translate,

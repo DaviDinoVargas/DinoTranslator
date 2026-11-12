@@ -4,6 +4,7 @@
 @implements IDisposable
 @inject AuthClient Auth
 @inject PlusState State
+@inject PlusGlossary Glossary
 @inject NavigationManager Navigation
 @inject IJSRuntime Js
 
@@ -66,6 +67,7 @@ else
         <header class="plus__side-head">
           <p class="plus__side-title">@group.Group.Name</p>
           <button type="button" class="icon-button" title="Convidar" aria-label="Convidar" @onclick="() => InviteAsync(groupId)"><Icon Name="convidar" /></button>
+          <button type="button" class="icon-button" title="Glossário do grupo" aria-label="Glossário do grupo" @onclick="() => OpenGroupGlossary(groupId)"><Icon Name="traducao" /></button>
           <button type="button" class="icon-button" title="@(group.Group.MyRole == GroupRole.Owner ? "Apagar o grupo" : "Sair do grupo")" aria-label="Sair do grupo" @onclick="() => LeaveAsync(group)"><Icon Name="sair" /></button>
         </header>
         <div class="plus__side-scroll">
@@ -165,6 +167,7 @@ else
       <footer class="plus__me">
         <Avatar Name="@me.DisplayName" Mine="true" Class="avatar--small" />
         <span class="person__name">@me.DisplayName<span class="person__user">@me.UserName · @(State.Pro ? "Pro" : "Plus")</span></span>
+        <button type="button" class="icon-button" title="Glossário pessoal" aria-label="Glossário pessoal" @onclick="() => Open(Dialog.Glossary)"><Icon Name="traducao" /></button>
         <button type="button" class="icon-button" title="Câmera, áudio e ruído" aria-label="Câmera, áudio e ruído" @onclick="@(() => Navigation.NavigateTo("/configuracoes/dispositivos"))"><Icon Name="fone" /></button>
         <button type="button" class="icon-button" title="Tela inicial" aria-label="Tela inicial" @onclick="@(() => Navigation.NavigateTo("/"))"><Icon Name="voltar" /></button>
         <button type="button" class="icon-button" title="Sair da conta" aria-label="Sair da conta" @onclick="LogoutAsync"><Icon Name="sair" /></button>
@@ -257,6 +260,36 @@ else
         <button type="button" class="button button--quiet" @onclick="Close">Cancelar</button>
       </div>
     }
+    @if (_dialog == Dialog.Glossary)
+    {
+      <div class="plus-dialog" role="dialog" aria-modal="true" aria-label="Glossário pessoal">
+        <div class="plus-dialog__box plus-dialog__box--wide">
+          <p class="plus-dialog__title">Glossário pessoal</p>
+          <p class="plus-dialog__hint">Vale nas suas chamadas e nas mensagens que você lê, em todos os seus computadores.</p>
+          <GlossaryEditor Entries="Glossary.Personal.Entries" Max="GlossaryLimits.MaxPersonal" OnSave="Glossary.SavePersonalAsync" />
+        </div>
+        <button type="button" class="button button--quiet" @onclick="Close">Fechar</button>
+      </div>
+    }
+    @if (_dialog == Dialog.GroupGlossary && _glossaryGroup is { } glossaryGroup && State.Details(glossaryGroup) is { } glossaryDetails)
+    {
+      <div class="plus-dialog" role="dialog" aria-modal="true" aria-label="Glossário do grupo">
+        <div class="plus-dialog__box plus-dialog__box--wide">
+          <p class="plus-dialog__title">Glossário de @glossaryDetails.Group.Name</p>
+          <p class="plus-dialog__hint">Vale para todos do grupo, nas mensagens. O glossário pessoal de cada um vale por cima.</p>
+          @if (Glossary.Group(glossaryGroup) is { } groupTerms)
+          {
+            <GlossaryEditor Entries="groupTerms.Entries" Max="GlossaryLimits.MaxGroup" ReadOnly="@(glossaryDetails.Group.MyRole == GroupRole.Member)"
+                            OnSave="entries => Glossary.SaveGroupAsync(glossaryGroup, entries)" />
+          }
+          else
+          {
+            <p class="login__status">Carregando…</p>
+          }
+        </div>
+        <button type="button" class="button button--quiet" @onclick="Close">Fechar</button>
+      </div>
+    }
     @if (_dialog == Dialog.NewChannel)
     {
       <div class="plus-dialog" role="dialog" aria-modal="true" aria-label="Novo canal">
@@ -276,7 +309,9 @@ else
 }
 
 @code {
-    private enum Dialog { None, NewGroup, NewChannel }
+    private enum Dialog { None, NewGroup, NewChannel, Glossary, GroupGlossary }
+
+    private Guid? _glossaryGroup;
 
     private Dialog _dialog;
     private string? _dialogError;
@@ -297,6 +332,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         State.Changed += OnChanged;
+        Glossary.Changed += OnChanged;
         if (Auth.CurrentUser is null && !await Auth.TryResumeAsync())
         {
             Navigation.NavigateTo("/conta");
@@ -335,6 +371,13 @@ else
     }
 
     private void Close() => _dialog = Dialog.None;
+
+    private void OpenGroupGlossary(Guid groupId)
+    {
+        _glossaryGroup = groupId;
+        Open(Dialog.GroupGlossary);
+        _ = Glossary.LoadGroupAsync(groupId);
+    }
 
     private void NewChannel(ChannelKind kind)
     {
@@ -440,5 +483,9 @@ else
         Navigation.NavigateTo("/");
     }
 
-    public void Dispose() => State.Changed -= OnChanged;
+    public void Dispose()
+    {
+        State.Changed -= OnChanged;
+        Glossary.Changed -= OnChanged;
+    }
 }

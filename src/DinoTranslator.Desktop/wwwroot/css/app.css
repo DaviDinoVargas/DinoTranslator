@@ -2943,6 +2943,78 @@ h2.handshake__step {
   font-weight: 700;
 }
 
+.plus-dialog__box--wide {
+  width: min(560px, 100%);
+}
+
+.plus-dialog__hint {
+  margin: -4px 0 4px;
+  color: var(--texto-2);
+  font-size: 13px;
+}
+
+/* Glossário: termo e regra numa linha; o formulário de adicionar embaixo. */
+.glossary {
+  display: grid;
+  gap: 10px;
+}
+
+.glossary__empty,
+.glossary__note,
+.glossary__saved {
+  margin: 0;
+  color: var(--texto-2);
+  font-size: 13px;
+}
+
+.glossary__list {
+  display: grid;
+  max-height: 260px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  gap: 2px;
+}
+
+.glossary__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--raio);
+  background: var(--vidro);
+}
+
+.glossary__term {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.glossary__rule {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--texto-2);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.glossary__add {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto auto;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .glossary__add {
+    grid-template-columns: 1fr;
+  }
+}
+
 .chat {
   display: flex;
   min-height: 0;

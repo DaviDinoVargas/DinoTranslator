@@ -46,6 +46,7 @@ public sealed class LiveTranslation(ISpeechTranslationEngine engine, Profile me,
 {
     private ISpeechTranslationStream? _mine;
     private ISpeechTranslationStream? _theirs;
+    private Glossary _glossary = Glossary.Empty;
 
     /// <summary>Disparado na thread do motor.</summary>
     public event Action<Caption>? CaptionReady;
@@ -55,8 +56,9 @@ public sealed class LiveTranslation(ISpeechTranslationEngine engine, Profile me,
 
     public event Action<string>? Failed;
 
-    public async Task StartAsync(IReadOnlyList<string> glossary, CancellationToken cancellationToken)
+    public async Task StartAsync(Glossary glossary, CancellationToken cancellationToken)
     {
+        _glossary = glossary;
         _mine = await OpenAsync(me.Language, peer.Language, CaptionOwner.Me, glossary, cancellationToken);
         _theirs = await OpenAsync(peer.Language, me.Language, CaptionOwner.Other, glossary, cancellationToken);
     }
@@ -74,7 +76,10 @@ public sealed class LiveTranslation(ISpeechTranslationEngine engine, Profile me,
         {
             return null;
         }
-        return await engine.TranslateTextAsync(text, source, target, cancellationToken) is { } translated ? Clean(translated) : null;
+        var translated = _glossary.IsEmpty
+            ? await engine.TranslateTextAsync(text, source, target, cancellationToken)
+            : await _glossary.TranslateAsync(text, target, async part => await engine.TranslateTextAsync(part, source, target, cancellationToken) ?? string.Empty);
+        return string.IsNullOrEmpty(translated) ? null : Clean(translated);
     }
 
     /// <param name="source">"local" (microfone) ou "remote" (áudio da outra pessoa).</param>
@@ -111,9 +116,9 @@ public sealed class LiveTranslation(ISpeechTranslationEngine engine, Profile me,
     }
 
     private async Task<ISpeechTranslationStream> OpenAsync(
-        string source, string target, CaptionOwner owner, IReadOnlyList<string> glossary, CancellationToken cancellationToken)
+        string source, string target, CaptionOwner owner, Glossary glossary, CancellationToken cancellationToken)
     {
-        var stream = await engine.StartAsync(new SpeechStreamOptions(source, target, glossary), cancellationToken);
+        var stream = await engine.StartAsync(new SpeechStreamOptions(source, target, glossary.Phrases(source), glossary), cancellationToken);
         var translate = Languages.NeedsTranslation(source, target);
         stream.Updated += update =>
         {

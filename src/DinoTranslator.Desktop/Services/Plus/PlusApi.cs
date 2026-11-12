@@ -65,6 +65,17 @@ public sealed class PlusApi(PlusHttp plus, AuthClient auth)
         SendAsync<List<SearchResult>>(HttpMethod.Get, SocialRoutes.Search + "?q=" + Uri.EscapeDataString(query)
             + (channelId is { } c ? $"&canal={c}" : string.Empty) + (groupId is { } g ? $"&grupo={g}" : string.Empty));
 
+    public Task<ApiResult<List<GlossaryEntry>>> GlossaryAsync() => SendAsync<List<GlossaryEntry>>(HttpMethod.Get, SocialRoutes.Glossary);
+
+    public Task<ApiResult<List<GlossaryEntry>>> SetGlossaryAsync(IReadOnlyList<GlossaryEntry> entries) =>
+        SendAsync<List<GlossaryEntry>>(HttpMethod.Put, SocialRoutes.Glossary, new GlossaryRequest(entries));
+
+    public Task<ApiResult<List<GlossaryEntry>>> GroupGlossaryAsync(Guid groupId) =>
+        SendAsync<List<GlossaryEntry>>(HttpMethod.Get, SocialRoutes.GroupGlossary(groupId));
+
+    public Task<ApiResult<List<GlossaryEntry>>> SetGroupGlossaryAsync(Guid groupId, IReadOnlyList<GlossaryEntry> entries) =>
+        SendAsync<List<GlossaryEntry>>(HttpMethod.Put, SocialRoutes.GroupGlossary(groupId), new GlossaryRequest(entries));
+
     public Task<ApiResult<List<FriendInfo>>> FriendsAsync() => SendAsync<List<FriendInfo>>(HttpMethod.Get, SocialRoutes.Friends);
 
     public Task<ApiResult<FriendInfo>> AddFriendAsync(string userName) => SendAsync<FriendInfo>(HttpMethod.Post, SocialRoutes.Friends, new FriendRequest(userName));
