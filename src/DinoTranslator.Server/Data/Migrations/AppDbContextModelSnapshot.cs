@@ -108,6 +108,45 @@ namespace DinoTranslator.Server.Data.Migrations
                     b.ToTable("Friendships");
                 });
 
+            modelBuilder.Entity("DinoTranslator.Server.Data.GlossaryTerm", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid?>("GroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Language")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<Guid?>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Term")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("Translation")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GroupId");
+
+                    b.HasIndex("OwnerId");
+
+                    b.ToTable("GlossaryTerms");
+                });
+
             modelBuilder.Entity("DinoTranslator.Server.Data.Group", b =>
                 {
                     b.Property<Guid>("Id")
@@ -403,6 +442,19 @@ namespace DinoTranslator.Server.Data.Migrations
                         .HasForeignKey("LowId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("DinoTranslator.Server.Data.GlossaryTerm", b =>
+                {
+                    b.HasOne("DinoTranslator.Server.Data.Group", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("DinoTranslator.Server.Data.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("DinoTranslator.Server.Data.GroupInvite", b =>

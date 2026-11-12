@@ -13,6 +13,24 @@ public sealed class Group
     public DateTime CreatedAtUtc { get; set; }
 }
 
+/// <summary>Termo do glossário pessoal (dono = a conta) ou do grupo.</summary>
+public sealed class GlossaryTerm
+{
+    public long Id { get; set; }
+
+    public Guid? OwnerId { get; set; }
+
+    public Guid? GroupId { get; set; }
+
+    public required string Term { get; set; }
+
+    public string? Translation { get; set; }
+
+    public string? Language { get; set; }
+
+    public int Position { get; set; }
+}
+
 public sealed class GroupMember
 {
     public Guid GroupId { get; set; }

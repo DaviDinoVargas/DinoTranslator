@@ -1,3 +1,4 @@
+using DinoTranslator.Shared.Social;
 using Microsoft.EntityFrameworkCore;
 
 namespace DinoTranslator.Server.Data;
@@ -25,6 +26,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<MessageReaction> MessageReactions => Set<MessageReaction>();
 
     public DbSet<MessageMention> MessageMentions => Set<MessageMention>();
+
+    public DbSet<GlossaryTerm> GlossaryTerms => Set<GlossaryTerm>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -95,6 +98,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             mention.HasIndex(m => m.UserId);
             mention.HasOne<Message>().WithMany().HasForeignKey(m => m.MessageId).OnDelete(DeleteBehavior.Cascade);
             mention.HasOne<User>().WithMany().HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GlossaryTerm>(term =>
+        {
+            term.Property(t => t.Id).ValueGeneratedOnAdd();
+            term.Property(t => t.Term).HasMaxLength(GlossaryLimits.MaxTermLength);
+            term.Property(t => t.Translation).HasMaxLength(GlossaryLimits.MaxTermLength);
+            term.Property(t => t.Language).HasMaxLength(8);
+            term.HasIndex(t => t.OwnerId);
+            term.HasIndex(t => t.GroupId);
+            term.HasOne<User>().WithMany().HasForeignKey(t => t.OwnerId).OnDelete(DeleteBehavior.Cascade);
+            term.HasOne<Group>().WithMany().HasForeignKey(t => t.GroupId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<GroupInvite>(invite =>
