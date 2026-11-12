@@ -72,6 +72,10 @@ const read = (selector) => `document.querySelector(${JSON.stringify(selector)})?
 const result = {};
 const a = await connect(portA);
 const b = await connect(portB);
+// Erros que o app escreve no console (inclusive os não tratados do Blazor), para o resultado.
+const watchErrors = `(() => { if (window.__erros) return true; window.__erros = []; const original = console.error; console.error = (...args) => { window.__erros.push(args.map(String).join(' ').slice(0, 600)); original(...args); }; window.addEventListener('error', (e) => window.__erros.push('error: ' + e.message)); window.addEventListener('unhandledrejection', (e) => window.__erros.push('rejection: ' + String(e.reason).slice(0, 600))); return true; })()`;
+await a.evaluate(watchErrors).catch(() => {});
+await b.evaluate(watchErrors).catch(() => {});
 try {
   await waitFor(a, click("Nova chamada"), "botão Nova chamada (A)");
   const invite = await waitFor(a, `(${read('textarea[aria-label="Código de convite"]')} || '').startsWith('DT1.') && ${read('textarea[aria-label="Código de convite"]')}`, "convite");
@@ -226,10 +230,49 @@ try {
       for (let line = 0; line < 30; line++) context.fillText('linha de texto pequeno para conferir a nitidez ' + line, 120, 360 + line * 34);
     }, 33);
     const media = await import('./js/call.js');
-    await media.shareStream(canvas.captureStream(30), 'detail');
+    // Som da tela: um tom de 440 Hz, como se fosse um vídeo tocando.
+    const sound = new AudioContext();
+    const tone = sound.createOscillator();
+    const sink = sound.createMediaStreamDestination();
+    tone.frequency.value = 440;
+    tone.connect(sink);
+    tone.start();
+    window.__somSintetico = sound;
+    const screen = canvas.captureStream(30);
+    screen.addTrack(sink.stream.getAudioTracks()[0]);
+    await media.shareStream(screen, 'detail');
     return true;
   })()`);
   await waitFor(b, `!!document.querySelector('.call__stage--screen')`, "palco com a tela (B)");
+
+  // O som da tela chega numa faixa à parte, com volume e mudo próprios; a voz também tem os seus.
+  result.tela_com_som_a = await waitFor(a, `(() => { const b = document.querySelector('.call__sharing-audio'); return b ? b.textContent.trim() : null; })()`, "botão do som da tela (A)", 15000).catch(() => null);
+  result.som_da_tela_b = await waitFor(b, `(() => { const v = document.querySelector('.screen-tile video'); const s = v?.srcObject; return s && s.getAudioTracks().length === 1 && s.getVideoTracks().length === 1 && !v.muted && !!document.querySelector('.screen-tile .volume') ? 'faixa de som recebida, tocando' : null; })()`, "som da tela recebido (B)", 20000).catch(() => null);
+  const range = (aria, value) => `(() => { const r = document.querySelector('input[aria-label="${aria}"]'); if (!r) return false; r.value = '${value}'; r.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`;
+  await waitFor(b, range("Volume de o som da tela de Dino", 40), "volume da tela (B)", 10000);
+  await waitFor(b, range("Volume de a voz de Dino", 30), "volume da voz (B)", 10000);
+  result.volumes_b = await waitFor(b, `(() => { const tela = document.querySelector('.screen-tile video'); const voz = document.querySelector('.tile--other video'); return Math.abs(tela.volume - 0.4) < 0.01 && Math.abs(voz.volume - 0.3) < 0.01 ? { tela: tela.volume, voz: voz.volume } : null; })()`, "volumes aplicados (B)", 10000).catch(() => null);
+  await waitFor(b, `(() => { const m = document.querySelector('button[aria-label="Silenciar o som da tela de Dino"]'); if (!m) return false; m.click(); return true; })()`, "silenciar a tela (B)", 10000);
+  result.tela_muda_b = await waitFor(b, `(() => { const tela = document.querySelector('.screen-tile video'); const voz = document.querySelector('.tile--other video'); return tela.muted && !voz.muted ? 'tela muda, voz tocando' : null; })()`, "tela muda (B)", 10000).catch(() => null);
+  await waitFor(b, `(() => { const m = document.querySelector('button[aria-label="Ligar o som da tela de Dino"]'); if (!m) return false; m.click(); return true; })()`, "religar a tela (B)", 10000);
+  await waitFor(b, range("Volume de o som da tela de Dino", 100), "volume da tela cheio (B)", 10000);
+  await waitFor(b, range("Volume de a voz de Dino", 100), "volume da voz cheio (B)", 10000);
+  // Painel de volumes: voz, som da tela recebida e o envio do som da própria tela.
+  await waitFor(b, click("Volumes"), "abrir volumes (B)", 10000);
+  result.painel_volumes_b = await waitFor(b, `(() => { const p = document.querySelector('aside[aria-label="Volumes da chamada"]'); return p && p.querySelectorAll('.volume').length === 2 ? p.querySelectorAll('.volume').length + ' controles' : null; })()`, "painel de volumes (B)", 10000).catch(() => null);
+  await waitFor(a, click("Volumes"), "abrir volumes (A)", 10000);
+  result.enviar_som_a = await waitFor(a, `(() => { const c = [...document.querySelectorAll('aside[aria-label="Volumes da chamada"] input[type=checkbox]')][0]; return c ? (c.checked ? 'enviando o som da tela' : 'sem enviar') : null; })()`, "envio do som da tela (A)", 10000).catch(() => null);
+  if (process.env.E2E_SHOTS) {
+    await b.screenshot(`${process.env.E2E_SHOTS}-volumes-anna.png`);
+    await a.screenshot(`${process.env.E2E_SHOTS}-volumes-dino.png`);
+  }
+  await waitFor(a, `(() => { const c = document.querySelector('aside[aria-label="Volumes da chamada"] .conversation__close'); if (!c) return false; c.click(); return true; })()`, "fechar volumes (A)");
+  await waitFor(b, `(() => { const c = document.querySelector('aside[aria-label="Volumes da chamada"] .conversation__close'); if (!c) return false; c.click(); return true; })()`, "fechar volumes (B)");
+
+  // Nenhum aviso de erro de mídia depois de começar a tela com som.
+  const warning = `(() => { const ui = document.getElementById('blazor-error-ui'); if (ui && getComputedStyle(ui).display !== 'none') return 'erro do app: ' + ui.textContent.trim(); return document.querySelector('.call__problem')?.textContent.trim() || null; })()`;
+  result.aviso_midia_a = await a.evaluate(warning);
+  result.aviso_midia_b = await b.evaluate(warning);
   result.tela_banner_a = await waitFor(a, `document.querySelector('.call__sharing')?.textContent.replace(/\\s+/g, ' ').trim()`, "faixa de compartilhamento (A)");
   result.tela_recebida_b = await waitFor(b, `(() => { const t = document.querySelector('.screen-tile figcaption')?.textContent.replace(/\\s+/g, ' ').trim(); return t && t.includes('2560×1440') ? t : null; })()`, "tela 2560×1440 recebida (B)", 40000);
   // Quem compartilha vê a própria tela numa miniatura e pode pô-la em destaque.
@@ -286,7 +329,9 @@ try {
     await a.evaluate(click("Encerrar"));
     result.b_aviso_encerramento = await waitFor(b, `document.querySelector('.call__problem')?.textContent.includes('encerrou') && document.querySelector('.call__problem').textContent.trim()`, "aviso de encerramento (B)").catch(async (error) => { result.b_depois_de_encerrar = await b.evaluate(`({ url: location.pathname, problema: document.querySelector('.call__problem')?.textContent.trim() || null, botoes: [...document.querySelectorAll('.call__dock button')].map(x => x.textContent.trim() + (x.disabled ? ' (off)' : '')).join(' | ') })`); result.a_depois_de_encerrar = await a.evaluate(`location.pathname`); throw error; });
   }
-  result.ok = result.codigos_iguais
+  result.erros_console_a = await a.evaluate(`window.__erros?.slice(0, 5) ?? []`).catch(() => null);
+  result.erros_console_b = await b.evaluate(`window.__erros?.slice(0, 5) ?? []`).catch(() => null);
+  result.ok = !result.aviso_midia_a && !result.aviso_midia_b && result.codigos_iguais
     && result.previa_muda_a === true
     && result.chat_anna_em_b !== null
     && result.chat_anna_em_a !== null

@@ -3230,6 +3230,99 @@ h2.handshake__step {
   color: var(--texto-3);
 }
 
+/* Volume e mudo sobre o quadro da pessoa e da tela dela: aparece com o mouse ou o teclado. */
+.volume {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid var(--vidro-borda);
+  border-radius: var(--pilula);
+  background: rgba(10, 12, 22, .66);
+  -webkit-backdrop-filter: var(--vidro-desfoque);
+  backdrop-filter: var(--vidro-desfoque);
+  opacity: 0;
+  transition: opacity var(--rapido) var(--curva);
+}
+
+.stage-tile:hover .volume,
+.volume:focus-within,
+.volume--muted {
+  opacity: 1;
+}
+
+.stage-tile--thumb .volume {
+  display: none;
+}
+
+.volume__mute {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--vidro-2);
+  color: var(--texto);
+  cursor: pointer;
+}
+
+.volume--muted .volume__mute {
+  background: var(--vermelho-fundo);
+  color: var(--vermelho);
+}
+
+.volume__mute .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.volume input[type="range"] {
+  width: 110px;
+  accent-color: var(--azul);
+}
+
+.volume__value {
+  min-width: 38px;
+  color: var(--texto-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.call__sharing-audio .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.volume--inline {
+  position: static;
+  opacity: 1;
+  background: rgba(255, 255, 255, .06);
+}
+
+.volumes__person {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid var(--separador);
+}
+
+.volumes__name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Na tela em destaque, o controle de volume fica abaixo da barra do topo. */
+.stage-tile--main .volume {
+  top: 88px;
+  right: 16px;
+}
+
 /* ---------- Modo servidor (opcional) ---------- */
 
 .login__mark {
